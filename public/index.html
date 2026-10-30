@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#100c25" />
+  <meta name="description" content="Entre na arena de bombas, convide até três amigos e seja o último sobrevivente." />
+  <title>Bomberman · Arena Online</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="/game.js" defer></script>
+</head>
+<body>
+  <div class="ambient ambient-a" aria-hidden="true"></div>
+  <div class="ambient ambient-b" aria-hidden="true"></div>
+  <div class="pixel-pattern" aria-hidden="true"></div>
+
+  <div class="site-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Bomberman, início">
+        <span class="brand-bomb" aria-hidden="true"><span class="fuse"></span><span class="shine"></span></span>
+        <span><strong>BOMBER<span class="brand-highlight">MAN</span></strong><small>ONLINE ARENA</small></span>
+      </a>
+      <div class="topbar-right">
+        <span class="live-pill"><span id="serverDot" class="status-dot"></span><span id="serverText">Conectando...</span></span>
+        <span class="topbar-cap">4 PLAYERS MAX</span>
+      </div>
+    </header>
+
+    <main>
+      <section id="homePanel" class="home-layout">
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="mini-spark">✦</span> O CLÁSSICO JEITO DE SE DIVERTIR <span class="mini-spark">✦</span></div>
+          <h1>PREPARE A<br/><span class="title-hot">BOMBA.</span><br/><span class="title-cool">DOMINE A</span><br/>ARENA.</h1>
+          <p class="hero-subtitle">Chame seus amigos, exploda os obstáculos e corra para não virar fumaça. Uma batalha de arena em tempo real, direto no navegador.</p>
+          <div class="feature-pills">
+            <span>💣 Bombas & poderes</span><span>⚡ Tempo real</span><span>🎮 Até 4 pessoas</span>
+          </div>
+          <div class="illustration" aria-hidden="true">
+            <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+            <div class="big-bomb"><div class="big-fuse"></div><div class="big-shine"></div><div class="bomb-face"><i></i><i></i></div></div>
+            <div class="spark spark-one">✦</div><div class="spark spark-two">✳</div><div class="spark spark-three">✧</div>
+          </div>
+        </div>
+
+        <div class="entry-card">
+          <div class="card-top"><span class="card-chip">NOVO JOGO</span><span class="card-decor">● ● ●</span></div>
+          <h2>Entrar na batalha</h2>
+          <p class="card-subtitle">Tudo pronto? Só falta você.</p>
+          <label class="input-label" for="nameInput">SEU APELIDO</label>
+          <input id="nameInput" maxlength="18" autocomplete="nickname" placeholder="Como quer ser chamado?" value="" />
+          <button id="createBtn" class="primary-btn" type="button"><span>Criar sala</span><span class="btn-arrow">↗</span></button>
+          <div class="separator"><span>OU ENTRE COM UM CÓDIGO</span></div>
+          <label class="input-label" for="codeInput">CÓDIGO DA SALA</label>
+          <div class="join-line">
+            <input id="codeInput" class="code-input" maxlength="5" autocomplete="off" autocapitalize="characters" placeholder="ABCDE" />
+            <button id="joinBtn" class="secondary-btn" type="button">Entrar <span>→</span></button>
+          </div>
+          <div class="help-note"><span class="note-icon">i</span> Gratuito, sem cadastro e sem instalar nada.</div>
+        </div>
+      </section>
+
+      <section id="roomPanel" class="room-panel" hidden>
+        <div class="section-head"><span class="section-eyebrow">SUA SALA PRIVADA</span><h2>Monte sua equipe<span class="accent-dot">.</span></h2><p>Compartilhe seu código com até três amigos. O anfitrião decide quando a partida começa.</p></div>
+        <div class="room-grid">
+          <div class="room-card">
+            <div class="room-card-header"><span class="input-label">CÓDIGO DA SUA SALA</span><span class="room-open"><span class="status-dot live"></span> ABERTA</span></div>
+            <div id="roomCode" class="room-code">-----</div>
+            <button id="shareBtn" class="primary-btn" type="button"><span>Copiar link do convite</span><span>↗</span></button>
+            <p class="room-tip">Se estiver no celular, envie o link diretamente no WhatsApp dos amigos.</p>
+          </div>
+          <div class="player-card">
+            <div class="player-card-head"><h3>Jogadores conectados</h3><span id="playerCount" class="count-badge">0 / 4</span></div>
+            <div id="lobbyPlayers" class="lobby-players"></div>
+            <div class="room-buttons"><button id="startBtn" class="primary-btn" type="button">Iniciar partida <span>▶</span></button><button id="leaveBtn" class="ghost-btn" type="button">Sair da sala</button></div>
+            <p id="hostHint" class="small-hint"></p>
+          </div>
+        </div>
+      </section>
+
+      <section id="gamePanel" class="game-panel" hidden>
+        <div class="game-header">
+          <div><span class="section-eyebrow">ARENA EM TEMPO REAL</span><h2>Que vença o melhor<span class="accent-dot">.</span></h2></div>
+          <div class="game-room-tag">SALA <strong id="gameCode">-----</strong></div>
+        </div>
+        <div class="game-layout">
+          <div class="board-card">
+            <div class="board-topline"><div><span class="status-dot live"></span> <span id="roundStatus">PARTIDA EM ANDAMENTO</span></div><button id="soundBtn" class="icon-btn" type="button" aria-label="Ativar ou desativar som">♫ <span id="soundLabel">SOM</span></button></div>
+            <div class="canvas-wrap"><canvas id="arena" width="720" height="624" aria-label="Tabuleiro de Bomberman"></canvas><div id="roundOverlay" class="round-overlay" hidden><div id="overlayIcon" class="overlay-icon">💣</div><h3 id="overlayTitle">Prepare-se</h3><p id="overlayText">A partida vai começar!</p><button id="playAgainBtn" class="primary-btn overlay-btn" type="button" hidden>Jogar novamente <span>↻</span></button></div></div>
+            <div class="touch-controls" id="touchControls">
+              <div class="dpad" aria-label="Controle direcional">
+                <button class="ctrl up" data-dx="0" data-dy="-1" aria-label="Cima" type="button">▲</button>
+                <button class="ctrl left" data-dx="-1" data-dy="0" aria-label="Esquerda" type="button">◀</button>
+                <button class="ctrl right" data-dx="1" data-dy="0" aria-label="Direita" type="button">▶</button>
+                <button class="ctrl down" data-dx="0" data-dy="1" aria-label="Baixo" type="button">▼</button>
+              </div>
+              <button id="touchBomb" class="bomb-btn" type="button" aria-label="Soltar bomba"><span>💣</span><small>BOMBA</small></button>
+            </div>
+          </div>
+          <aside class="game-sidebar">
+            <div class="sidebar-card"><div class="sidebar-head"><span class="section-eyebrow">STATUS DA ARENA</span><span class="tiny-light">● LIVE</span></div><h3>Sobreviventes</h3><div id="gamePlayers" class="game-players"></div></div>
+            <div class="sidebar-card"><span class="section-eyebrow">COMO JOGAR</span><h3>Controles</h3><div class="control-guide"><div><span class="key-bunch">↑ ← ↓ →</span><span>ou <strong>W A S D</strong> para mover</span></div><div><span class="key-bunch space-key">ESPAÇO</span><span>para soltar uma bomba</span></div></div><div class="guide-rule"></div><div class="power-guide"><span>🔥 Aumenta o alcance</span><span>💣 Bomba extra</span><span>⚡ Mais velocidade</span></div></div>
+            <button id="exitGameBtn" class="ghost-btn full" type="button">← Sair da partida</button>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <footer><span>FEITO PARA JOGAR JUNTO. FEITO PARA SE DIVERTIR.</span><span>Jogo independente inspirado no gênero de arenas com bombas.</span></footer>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
