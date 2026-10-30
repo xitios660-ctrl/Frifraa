@@ -14,3 +14,47 @@ footer{display:flex;align-items:center;justify-content:space-between;gap:16px;bo
 @media(max-width:480px){.site-shell{width:calc(100% - 24px)}.topbar-right{gap:0}.brand{font-size:15px;gap:9px}.brand small{font-size:6px;letter-spacing:3px}.brand-bomb{transform:scale(.65);margin-right:-7px}.live-pill{font-size:9px;padding:7px 9px}.hero-copy h1{font-size:clamp(48px,12.1vw,60px)}.eyebrow{font-size:9px;letter-spacing:1px}.feature-pills span{font-size:10px;padding:8px}.entry-card{padding:22px 18px;border-radius:18px}.entry-card h2{font-size:25px}.room-card,.player-card{padding:21px}.room-code{font-size:52px;letter-spacing:5px}.room-buttons{flex-wrap:wrap}.room-buttons .ghost-btn{width:100%}.game-panel{padding-top:33px}.game-header h2{font-size:22px}.game-room-tag{font-size:9px}.game-room-tag strong{font-size:14px}.board-card{padding:8px}.game-sidebar{grid-template-columns:1fr}.touch-controls{padding:13px 6px 6px}.dpad{grid-template-columns:46px 46px 46px;grid-template-rows:43px 43px 43px}.bomb-btn{width:88px;height:88px;flex-basis:88px}.bomb-btn span{font-size:30px}.round-overlay h3{font-size:32px}}
 @media(hover:hover) and (pointer:fine){.touch-controls{opacity:.78}.touch-controls:hover{opacity:1}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;scroll-behavior:auto!important;transition:none!important}}
+
+/* Skins, home-screen installation, and thumb-first controls. */
+.player-info{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}.player-info .player-name{flex:auto}.skin-label{color:#9987b8;font-size:9px;font-weight:900;letter-spacing:1px;text-transform:uppercase}.skin-tip{font-size:11px;color:#b3a2ca;line-height:1.6;margin:0 0 20px}.player-avatar{font-size:19px;color:#221331}.skin-0{box-shadow:0 0 12px #a77aff55}.skin-1{box-shadow:0 0 12px #ff6e9655}.skin-2{box-shadow:0 0 12px #55dcff55}.skin-3{box-shadow:0 0 12px #ffd36f55}
+.pin-label{margin-top:18px}
+.board-actions{display:flex;gap:6px}.mobile-hud{display:none}.hud-player{border:1px solid var(--skin-color);background:#100b25d9;border-radius:100px;padding:5px 7px;color:#f6eafa;font-size:10px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px}.hud-out{opacity:.35;filter:grayscale(1)}
+.install-card{margin-top:20px;display:flex;align-items:center;gap:12px;border:1px solid #7562a0;background:#36284c;border-radius:11px;padding:13px}.install-card .install-icon{font-size:29px}.install-card>div{flex:1;min-width:0}.install-card strong{font-size:12px}.install-card p{font-size:11px;color:#c9bdd9;margin:4px 0 0;line-height:1.5}.install-btn{background:#c9a8ff;color:#24133c;border:0;border-radius:8px;font-size:11px;font-weight:900;padding:10px}
+.joystick-wrap{display:flex;align-items:center;flex-direction:column;gap:8px;user-select:none;-webkit-user-select:none;touch-action:none}.joystick-wrap small{font-size:9px;letter-spacing:2px;font-weight:1000;color:#a997c4}.joystick{position:relative;width:144px;height:144px;flex:0 0 144px;border-radius:50%;border:3px solid #a48cc6;background:radial-gradient(circle,#3a2c59 0,#281d42 70%);box-shadow:0 8px 0 #110e21,0 14px 30px #0006,inset 0 0 25px #0e0b24;touch-action:none;pointer-events:auto}.joystick-ring{position:absolute;inset:25px;border:2px dashed #8b70b4;border-radius:50%;opacity:.7;pointer-events:none}.joystick-knob{position:absolute;width:62px;height:62px;border-radius:50%;left:calc(50% - 31px);top:calc(50% - 31px);background:radial-gradient(circle at 30% 22%,#d6bdff,#9270d1 60%,#624594);border:3px solid #e0cdff;box-shadow:0 5px 14px #0907188e;pointer-events:none;will-change:transform}.joystick.active .joystick-knob{background:radial-gradient(circle at 25% 20%,#e9dbff,#bc95ff 70%,#7356ad)}
+.rotate-overlay{position:fixed;z-index:2000;inset:0;background:radial-gradient(circle at center,#3a2758,#100b24 75%);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:calc(20px + env(safe-area-inset-top)) calc(22px + env(safe-area-inset-right)) calc(20px + env(safe-area-inset-bottom)) calc(22px + env(safe-area-inset-left));text-align:center}.rotate-phone{font-size:68px;animation:rotatePhone 2.7s ease-in-out infinite;line-height:1.2}.rotate-phone span{font-size:45px;color:#ffe18e}.rotate-overlay h2{font-size:clamp(30px,8vw,48px);font-weight:1000;letter-spacing:-1.5px;margin:22px 0 10px}.rotate-overlay p{font-size:15px;color:#e0d1f2;max-width:330px;line-height:1.6;margin:6px auto}.rotate-overlay .rotate-small{font-size:12px;color:#ac96c8}.rotate-overlay .primary-btn{max-width:260px;margin-top:22px}@keyframes rotatePhone{50%{transform:rotate(32deg)}}
+
+@media(max-width:770px){.touch-controls{justify-content:space-between}.game-sidebar .control-guide{display:none}.joystick{width:128px;height:128px;flex-basis:128px}.joystick-knob{width:58px;height:58px;left:calc(50% - 29px);top:calc(50% - 29px)}}
+
+/* Landscape phone is an immersive game screen, without site chrome or scrolling. */
+@media(pointer:coarse) and (orientation:landscape){
+  body.play-mode{overflow:hidden;background:#100b24;overscroll-behavior:none}
+  body.play-mode .ambient,body.play-mode .pixel-pattern,body.play-mode .topbar,body.play-mode .game-header,body.play-mode .game-sidebar,body.play-mode footer{display:none!important}
+  body.play-mode .site-shell{width:100vw;max-width:none;margin:0;height:100dvh}
+  body.play-mode main,body.play-mode .game-panel,body.play-mode .game-layout{height:100dvh;min-height:0;margin:0;padding:0}
+  body.play-mode .game-layout{display:block}
+  body.play-mode .board-card{height:100dvh;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;border:0;border-radius:0;box-shadow:none;padding:0;background:radial-gradient(circle at center,#291e45,#100b24)}
+  body.play-mode .board-topline{position:absolute;top:calc(4px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));right:calc(8px + env(safe-area-inset-right));z-index:12;pointer-events:none;padding:0}
+  body.play-mode .board-topline>div:first-child{display:none}
+  body.play-mode .board-actions{margin-left:auto;pointer-events:auto}
+  body.play-mode .board-actions .icon-btn{padding:5px 9px;background:#231735c9;border-color:#765a99}
+  body.play-mode .canvas-wrap{width:min(115dvh,calc(100vw - 280px));height:auto;max-height:100dvh;aspect-ratio:15/13;flex:0 0 auto;border:0;border-radius:0;box-shadow:0 0 28px #0007}
+  body.play-mode canvas{width:100%;height:auto;aspect-ratio:15/13}
+  body.play-mode .mobile-hud{position:absolute;z-index:11;display:flex;gap:4px;top:calc(5px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);max-width:calc(100vw - 200px);justify-content:center;overflow:hidden;pointer-events:none}
+  body.play-mode .touch-controls{position:absolute;z-index:10;inset:0;pointer-events:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 calc(10px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));gap:0}
+  body.play-mode .joystick-wrap,body.play-mode .bomb-btn{pointer-events:auto}
+  body.play-mode .joystick-wrap{gap:5px}
+  body.play-mode .joystick{width:min(26vh,135px);height:min(26vh,135px);flex-basis:auto;aspect-ratio:1}
+  body.play-mode .joystick-knob{width:46%;height:46%;left:27%;top:27%}
+  body.play-mode .joystick-wrap small{font-size:8px}
+  body.play-mode .bomb-btn{width:min(25vh,120px);height:min(25vh,120px);flex-basis:auto;aspect-ratio:1;border-width:4px}
+  body.play-mode .bomb-btn span{font-size:29px}
+  body.play-mode .round-overlay{z-index:6;background:#120d23de;padding:12px}
+  body.play-mode .overlay-icon{font-size:min(9vh,48px)}
+  body.play-mode .round-overlay h3{font-size:clamp(24px,6vh,42px);margin:4px 0}
+  body.play-mode .round-overlay p{font-size:13px;margin:2px 0;max-width:380px}
+  body.play-mode .overlay-btn{height:41px;margin-top:8px}
+}
+
+@media(pointer:coarse) and (orientation:landscape) and (max-height:380px){body.play-mode .canvas-wrap{width:min(113dvh,calc(100vw - 235px))}body.play-mode .joystick{width:min(24vh,100px);height:min(24vh,100px)}body.play-mode .bomb-btn{width:min(23vh,95px);height:min(23vh,95px)}body.play-mode .mobile-hud{top:4px}.hud-player{font-size:8px;padding:3px 5px}}
+
+@media(pointer:coarse) and (orientation:portrait){body.play-mode{overflow:hidden}body.play-mode .site-shell{width:100%;max-width:none}body.play-mode .game-panel{padding:0;min-height:100dvh}body.play-mode .board-card{border:0;border-radius:0}body.play-mode .topbar,body.play-mode .game-header,body.play-mode .game-sidebar,body.play-mode footer{display:none!important}}

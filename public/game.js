@@ -6,12 +6,16 @@
   const ctx = canvas.getContext('2d');
   const SIZE = 48;
   const COLOR = ['#ac82ff', '#ff6e96', '#55dcff', '#ffd36f'];
+  const SKIN_ICONS = ['🔮', '💗', '🤖', '👑'];
+  const SKIN_LABELS = ['MÍSTICA', 'RUBI', 'CYBER', 'SOLAR'];
   const params = new URLSearchParams(location.search);
   const prefill = (params.get('sala') || '').replace(/[^a-z0-9]/gi, '').slice(0, 5).toUpperCase();
   const nameInput = $('nameInput');
+  const pinInput = $('pinInput');
   const codeInput = $('codeInput');
   codeInput.value = prefill;
   nameInput.value = localStorage.getItem('arena-name') || '';
+  pinInput.value = localStorage.getItem('bomba-party-pin') || '';
 
   let socket = null;
   let meId = null;
@@ -23,6 +27,8 @@
   let toastTimer;
   let lastPhase = null;
   let lastSoundKey = '';
+  let deferredInstallPrompt = null;
+  let penaltyNotified = false;
   const heldKeys = new Set();
   let touchDirection = null;
   let lastDirection = '0,0';
@@ -55,7 +61,7 @@
       $('serverDot').classList.add('live');
       $('serverText').textContent = 'Servidor online';
       if (disconnected && currentCode) {
-        safeSend({ type: 'join', code: currentCode, name: getName() });
+        safeSend({ type: 'join', code: currentCode, name: getName(), pin: getPin() });
       }
       disconnected = false;
     });
@@ -112,6 +118,18 @@
   }
   function show(panel) {
     for (const id of ['homePanel', 'roomPanel', 'gamePanel']) $(id).hidden = id !== panel;
+    document.body.classList.toggle('play-mode', panel === 'gamePanel');
+    updateOrientationPrompt();
+  }
+  function updateOrientationPrompt() {
+    const onPhone = matchMedia('(pointer: coarse)').matches;
+    $('rotateOverlay').hidden = !(onPhone && !$('gamePanel').hidden && matchMedia('(orientation: portrait)').matches);
+  }
+  function requestImmersive() {
+    if (document.fullscreenElement || !document.documentElement.requestFullscreen) return;
+    Promise.resolve(document.documentElement.requestFullscreen({ navigationUI: 'hide' }))
+      .then(() => window.screen.orientation?.lock?.('landscape'))
+      .catch(() => { /* alguns navegadores não permitem tela cheia/rotação */ });
   }
   function leave(notifyServer = true) {
     if (notifyServer && currentCode) safeSend({ type: 'leave' });
@@ -122,14 +140,17 @@
     heldKeys.clear();
     touchDirection = null;
     lastDirection = '0,0';
+    penaltyNotified = false;
     history.replaceState(null, '', location.pathname);
     show('homePanel');
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
   }
   function makeAvatar(slot) {
     const avatar = document.createElement('div');
-    avatar.className = 'player-avatar';
+    avatar.className = `player-avatar skin-${slot}`;
     avatar.style.background = COLOR[slot];
-    avatar.textContent = '●';
+    avatar.textContent = SKIN_ICONS[slot];
+    avatar.title = `Skin ${SKIN_LABELS[slot]}`;
     return avatar;
   }
   function makePlayerRow(p, roomMode) {
@@ -137,13 +158,19 @@
     row.className = roomMode === 'lobby' ? 'lobby-row' : 'game-player';
     if (!p.alive && roomMode !== 'lobby') row.classList.add('eliminated');
     row.append(makeAvatar(p.slot));
+    const info = document.createElement('div');
+    info.className = 'player-info';
     const name = document.createElement('div');
     name.className = 'player-name';
     name.textContent = p.name + (p.id === meId ? ' (você)' : '');
-    row.append(name);
+    const skin = document.createElement('div');
+    skin.className = 'skin-label';
+    skin.textContent = `SKIN ${p.skin || SKIN_LABELS[p.slot]}`;
+    info.append(name, skin);
+    row.append(info);
     const role = document.createElement('span');
     role.className = 'player-role';
-    role.textContent = roomMode === 'lobby' ? (p.id === state.hostId ? 'ANFITRIÃO' : 'PRONTO') : (p.alive ? 'VIVO' : 'FORA');
+    role.textContent = roomMode === 'lobby' ? (p.id === state.hostId ? 'ANFITRIÃO' : 'PRONTO') : (p.place ? `${p.place}º LUGAR` : (p.alive ? 'VIVO' : 'FORA'));
     row.append(role);
     return row;
   }
@@ -156,6 +183,15 @@
     for (const p of ordered) {
       lobby.append(makePlayerRow(p, 'lobby'));
       sidebar.append(makePlayerRow(p, 'game'));
+    }
+    const mobileHud = $('mobileHud');
+    mobileHud.replaceChildren();
+    for (const p of ordered) {
+      const chip = document.createElement('div');
+      chip.className = `hud-player ${p.alive ? '' : 'hud-out'}`;
+      chip.style.setProperty('--skin-color', p.color);
+      chip.textContent = `${SKIN_ICONS[p.slot]} ${p.name.slice(0, 10)}`;
+      mobileHud.append(chip);
     }
     for (let i = ordered.length; i < 4; i++) {
       const empty = document.createElement('div');
@@ -176,6 +212,8 @@
     $('gameCode').textContent = currentCode;
     $('playerCount').textContent = `${state.players.length} / 4`;
     const isHost = state.hostId === meId;
+    const me = state.players.find(p => p.id === meId);
+    const isLast = state.participantsAtStart > 1 && me?.place === state.participantsAtStart;
     $('startBtn').disabled = !isHost;
     $('startBtn').textContent = 'Iniciar partida ▶';
     $('hostHint').textContent = isHost ? 'Você é o anfitrião. Pode iniciar com 1 a 4 pessoas.' : 'Aguardando o anfitrião iniciar a partida.';
@@ -189,6 +227,7 @@
       const repeat = $('playAgainBtn');
       repeat.hidden = true;
       if (state.phase === 'countdown') {
+        penaltyNotified = false;
         overlay.hidden = false;
         $('overlayIcon').textContent = '⚡';
         $('overlayTitle').textContent = String(state.countdown || 'JÁ!');
@@ -196,11 +235,14 @@
         $('roundStatus').textContent = 'PREPARANDO ARENA';
       } else if (state.phase === 'playing') {
         overlay.hidden = false;
-        const me = state.players.find(p => p.id === meId);
         if (me && !me.alive) {
-          $('overlayIcon').textContent = '💥';
-          $('overlayTitle').textContent = 'VOCÊ EXPLODIU!';
-          $('overlayText').textContent = 'Acompanhe os sobreviventes até o fim.';
+          if (isLast) {
+            showLastPlace();
+          } else {
+            $('overlayIcon').textContent = '💥';
+            $('overlayTitle').textContent = 'VOCÊ EXPLODIU!';
+            $('overlayText').textContent = me.place ? `Você ficou em ${me.place}º lugar. Acompanhe a partida!` : 'Acompanhe os sobreviventes até o fim.';
+          }
         } else {
           overlay.hidden = true;
         }
@@ -208,9 +250,12 @@
       } else if (state.phase === 'finished') {
         overlay.hidden = false;
         const winner = state.players.find(p => p.id === state.winnerId);
-        $('overlayIcon').textContent = winner ? '🏆' : '💥';
-        $('overlayTitle').textContent = winner?.id === meId ? 'VOCÊ VENCEU!' : (winner ? `${winner.name} VENCEU!` : 'EMPATE!');
-        $('overlayText').textContent = isHost ? 'Pronto para mais uma? Reúna sua turma para a revanche.' : 'Aguarde o anfitrião começar a revanche.';
+        if (isLast) showLastPlace();
+        else {
+          $('overlayIcon').textContent = winner ? '🏆' : '💥';
+          $('overlayTitle').textContent = winner?.id === meId ? 'VOCÊ VENCEU!' : (winner ? `${winner.name} VENCEU!` : 'EMPATE!');
+          $('overlayText').textContent = isHost ? 'Pronto para mais uma? Reúna sua turma para a revanche.' : 'Aguarde o anfitrião começar a revanche.';
+        }
         repeat.hidden = !isHost;
         $('roundStatus').textContent = 'FIM DA PARTIDA';
       }
@@ -226,17 +271,47 @@
       lastSoundKey = key;
     }
   }
+  function showLastPlace() {
+    $('overlayIcon').textContent = '🍻';
+    $('overlayTitle').textContent = 'VISH, SE FODEU!';
+    $('overlayText').textContent = 'Vai ter que beber! Você ficou em último lugar. 😂';
+    if (!penaltyNotified) {
+      penaltyNotified = true;
+      if (soundOn) beep(165, .35, 'sawtooth');
+      if (navigator.vibrate) navigator.vibrate([100, 60, 100]);
+    }
+  }
   function joinFromInput() {
     const code = codeInput.value.replace(/[^a-z0-9]/gi, '').slice(0, 5).toUpperCase();
     if (code.length !== 5) return toast('Digite o código de cinco caracteres da sala.');
-    safeSend({ type: 'join', code, name: getName() });
+    const pin = getPin();
+    if (!pin) return toast('Digite também a senha privada do jogo.');
+    safeSend({ type: 'join', code, name: getName(), pin });
   }
-  $('createBtn').addEventListener('click', () => safeSend({ type: 'create', name: getName() }));
+  function getPin() {
+    const pin = pinInput.value.trim().toUpperCase();
+    if (pin) localStorage.setItem('bomba-party-pin', pin);
+    return pin;
+  }
+  $('createBtn').addEventListener('click', () => {
+    const pin = getPin();
+    if (!pin) return toast('Digite a senha privada da arena.');
+    safeSend({ type: 'create', name: getName(), pin });
+  });
   $('joinBtn').addEventListener('click', joinFromInput);
   codeInput.addEventListener('keydown', e => { if (e.key === 'Enter') joinFromInput(); });
   nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') $('createBtn').click(); });
-  $('startBtn').addEventListener('click', () => safeSend({ type: 'start' }));
-  $('playAgainBtn').addEventListener('click', () => safeSend({ type: 'start' }));
+  pinInput.addEventListener('keydown', e => { if (e.key === 'Enter') $('createBtn').click(); });
+  $('startBtn').addEventListener('click', () => {
+    requestImmersive();
+    safeSend({ type: 'start' });
+  });
+  $('playAgainBtn').addEventListener('click', () => {
+    requestImmersive();
+    safeSend({ type: 'start' });
+  });
+  $('fullscreenBtn').addEventListener('click', requestImmersive);
+  $('rotateFullscreenBtn').addEventListener('click', requestImmersive);
   $('leaveBtn').addEventListener('click', () => leave());
   $('exitGameBtn').addEventListener('click', () => leave());
   $('shareBtn').addEventListener('click', async () => {
@@ -248,6 +323,33 @@
       toast(`Copie o código da sala: ${currentCode}`);
     }
   });
+
+  const installed = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  if (matchMedia('(pointer: coarse)').matches && !installed) {
+    $('installCard').hidden = false;
+    $('installInstructions').textContent = /iPhone|iPad|iPod/i.test(navigator.userAgent)
+      ? 'No Safari, toque em Compartilhar e depois em “Adicionar à Tela de Início”.'
+      : 'Instale o Bomba Party na tela inicial para abrir sem a barra do navegador.';
+  }
+  window.addEventListener('beforeinstallprompt', event => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    $('installCard').hidden = false;
+    $('installBtn').hidden = false;
+  });
+  $('installBtn').addEventListener('click', async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    $('installBtn').hidden = true;
+  });
+  window.addEventListener('appinstalled', () => { $('installCard').hidden = true; });
+  window.addEventListener('resize', updateOrientationPrompt);
+  window.addEventListener('orientationchange', updateOrientationPrompt);
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+  }
 
   function beep(freq, duration, type = 'sine') {
     try {
@@ -314,27 +416,49 @@
     touchDirection = null;
     syncDirection();
   });
-  for (const button of document.querySelectorAll('.ctrl')) {
-    const direction = [Number(button.dataset.dx), Number(button.dataset.dy)];
-    button.addEventListener('pointerdown', event => {
-      event.preventDefault();
-      button.setPointerCapture(event.pointerId);
-      touchDirection = direction;
-      button.classList.add('pressed');
-      syncDirection();
-    });
-    const end = () => {
-      touchDirection = null;
-      button.classList.remove('pressed');
-      syncDirection();
-    };
-    button.addEventListener('pointerup', end);
-    button.addEventListener('pointercancel', end);
-    button.addEventListener('lostpointercapture', end);
+  const joystick = $('joystick');
+  const knob = $('joystickKnob');
+  let joystickPointer = null;
+  function moveJoystick(event) {
+    if (joystickPointer !== event.pointerId) return;
+    const rect = joystick.getBoundingClientRect();
+    const dx = event.clientX - (rect.left + rect.width / 2);
+    const dy = event.clientY - (rect.top + rect.height / 2);
+    const distance = Math.hypot(dx, dy);
+    const radius = Math.min(42, distance);
+    const x = distance ? (dx / distance) * radius : 0;
+    const y = distance ? (dy / distance) * radius : 0;
+    knob.style.transform = `translate(${x}px, ${y}px)`;
+    if (distance < 15) touchDirection = [0, 0];
+    else touchDirection = Math.abs(dx) >= Math.abs(dy) ? [Math.sign(dx), 0] : [0, Math.sign(dy)];
+    syncDirection();
   }
+  function releaseJoystick(event) {
+    if (joystickPointer !== event.pointerId) return;
+    joystickPointer = null;
+    joystick.classList.remove('active');
+    knob.style.transform = 'translate(0,0)';
+    touchDirection = null;
+    syncDirection();
+  }
+  joystick.addEventListener('pointerdown', event => {
+    event.preventDefault();
+    if (joystickPointer !== null) return;
+    joystickPointer = event.pointerId;
+    joystick.setPointerCapture(event.pointerId);
+    joystick.classList.add('active');
+    moveJoystick(event);
+  });
+  joystick.addEventListener('pointermove', event => { event.preventDefault(); moveJoystick(event); });
+  joystick.addEventListener('pointerup', releaseJoystick);
+  joystick.addEventListener('pointercancel', releaseJoystick);
+  joystick.addEventListener('lostpointercapture', releaseJoystick);
   $('touchBomb').addEventListener('pointerdown', event => {
     event.preventDefault();
-    if (isPlaying()) safeSend({ type: 'bomb' });
+    if (isPlaying()) {
+      safeSend({ type: 'bomb' });
+      if (navigator.vibrate) navigator.vibrate(20);
+    }
   });
 
   function rectangle(x, y, w, h, color) {
@@ -424,6 +548,14 @@
     if (!p.alive) return;
     const color = p.color;
     circle(x, y + 22, 16, '#09071688');
+    if (p.slot === 0) { // Mística: capa e chapéu mágico
+      ctx.fillStyle = '#7150bd';
+      ctx.beginPath();ctx.moveTo(x - 9, y + 4);ctx.lineTo(x - 22, y + 26);ctx.lineTo(x + 22, y + 26);ctx.lineTo(x + 9, y + 4);ctx.closePath();ctx.fill();
+    }
+    if (p.slot === 3) { // Solar: capa de raio dourado
+      ctx.fillStyle = '#ff9859';
+      ctx.beginPath();ctx.moveTo(x - 10, y + 3);ctx.lineTo(x - 18, y + 26);ctx.lineTo(x + 17, y + 26);ctx.lineTo(x + 10, y + 3);ctx.closePath();ctx.fill();
+    }
     roundRect(x - 12, y + 8, 24, 18, 8, color);
     roundRect(x - 15, y - 20, 30, 34, 11, color);
     roundRect(x - 19, y - 11, 6, 18, 3, color);
@@ -433,11 +565,35 @@
     circle(x + 5, y - 3, 2.5, '#2b213e');
     roundRect(x - 4, y - 25, 8, 8, 3, '#f6f3ff');
     circle(x - 7, y - 15, 4, '#ffffff8a');
+    if (p.slot === 0) {
+      ctx.fillStyle = '#6c45c0';
+      ctx.beginPath();ctx.moveTo(x - 15, y - 17);ctx.lineTo(x + 1, y - 38);ctx.lineTo(x + 17, y - 17);ctx.closePath();ctx.fill();
+      roundRect(x - 15, y - 20, 30, 5, 2, '#eac3ff');
+      circle(x + 1, y - 26, 3.6, '#ffe38a');
+    } else if (p.slot === 1) {
+      // Rubi: laço e pequenas orelhas de coração.
+      circle(x - 14, y - 24, 8, '#ff3d83');
+      circle(x + 8, y - 24, 8, '#ff3d83');
+      circle(x - 3, y - 24, 5, '#ffdcf2');
+      circle(x - 17, y - 27, 2, '#ffe4ec');
+      circle(x + 11, y - 27, 2, '#ffe4ec');
+    } else if (p.slot === 2) {
+      // Cyber: visor luminoso e antena.
+      roundRect(x - 13, y - 13, 26, 13, 5, '#1a3d58');
+      roundRect(x - 10, y - 10, 20, 6, 3, '#a3fff6');
+      roundRect(x - 2, y - 34, 4, 12, 2, '#35adcb');
+      circle(x, y - 35, 4, '#ecff9c');
+    } else if (p.slot === 3) {
+      // Solar: coroa dourada de três pontas.
+      ctx.fillStyle = '#ffb73f';
+      ctx.beginPath();ctx.moveTo(x - 16, y - 18);ctx.lineTo(x - 15, y - 35);ctx.lineTo(x - 6, y - 25);ctx.lineTo(x, y - 39);ctx.lineTo(x + 6, y - 25);ctx.lineTo(x + 15, y - 35);ctx.lineTo(x + 16, y - 18);ctx.closePath();ctx.fill();
+      rectangle(x - 12, y - 20, 24, 4, '#fff1a5');
+    }
     if (p.id === meId) {
       ctx.strokeStyle = '#fffbd4';ctx.lineWidth = 2;
       ctx.beginPath();ctx.arc(x, y - 3, 23, 0, Math.PI * 2);ctx.stroke();
       ctx.fillStyle = '#fff1a6';ctx.textAlign = 'center';ctx.font = '900 11px sans-serif';
-      ctx.fillText('VOCÊ', x, y - 33);
+      ctx.fillText('VOCÊ', x, y - 46);
     }
   }
   function drawEmpty() {

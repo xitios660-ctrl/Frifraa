@@ -10,7 +10,12 @@ const WIDTH = 15;
 const HEIGHT = 13;
 const PORT = Number(process.env.PORT) || 3000;
 const TICK_MS = 50;
+const ACCESS_PIN = String(process.env.GAME_PIN || '');
+if (process.env.NODE_ENV === 'production' && !ACCESS_PIN) {
+  throw new Error('GAME_PIN precisa ser configurado para habilitar a arena privada.');
+}
 const COLORS = ['#ac82ff', '#ff6e96', '#55dcff', '#ffd36f'];
+const SKINS = ['Mística', 'Rubi', 'Cyber', 'Solar'];
 const SPAWNS = [
   { x: 1, y: 1 },
   { x: WIDTH - 2, y: 1 },
@@ -34,6 +39,17 @@ function send(ws, message) {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
 }
 function error(ws, message) { send(ws, { type: 'error', message }); }
+function authorized(ws, proposed) {
+  if (!ACCESS_PIN) return true; // apenas desenvolvimento local
+  const candidate = Buffer.from(String(proposed || '').slice(0, 64));
+  const expected = Buffer.from(ACCESS_PIN);
+  const valid = candidate.length === expected.length && crypto.timingSafeEqual(candidate, expected);
+  if (valid) return true;
+  ws.failedPins = (ws.failedPins || 0) + 1;
+  error(ws, 'Senha privada incorreta. Peça a senha à Mary.');
+  if (ws.failedPins >= 5) ws.close(1008, 'Muitas tentativas');
+  return false;
+}
 function safeName(input) {
   return String(input || 'Jogador').replace(/[<>\x00-\x1f]/g, '').trim().slice(0, 18) || 'Jogador';
 }
@@ -44,6 +60,7 @@ function newPlayer(ws, name, slot) {
     slot,
     name: safeName(name),
     color: COLORS[slot],
+    skin: SKINS[slot],
     x: SPAWNS[slot].x,
     y: SPAWNS[slot].y,
     alive: true,
@@ -53,7 +70,8 @@ function newPlayer(ws, name, slot) {
     speed: 170,
     lastMove: 0,
     motion: { x: 0, y: 0 },
-    kills: 0
+    kills: 0,
+    place: null
   };
 }
 function newRoom(code, ws, name) {
@@ -69,6 +87,7 @@ function newRoom(code, ws, name) {
     countdownUntil: 0,
     winnerId: null,
     participantsAtStart: 0,
+    eliminatedCount: 0,
     lastBroadcast: 0,
     lastActivity: now()
   };
@@ -79,9 +98,9 @@ function newRoom(code, ws, name) {
 }
 function playerView(p) {
   return {
-    id: p.id, name: p.name, slot: p.slot, color: p.color,
+    id: p.id, name: p.name, slot: p.slot, color: p.color, skin: p.skin,
     x: p.x, y: p.y, alive: p.alive, bombs: p.bombs,
-    range: p.range, speed: p.speed, kills: p.kills
+    range: p.range, speed: p.speed, kills: p.kills, place: p.place
   };
 }
 function stateFor(room) {
@@ -100,6 +119,7 @@ function stateFor(room) {
     }),
     countdown: room.phase === 'countdown' ? Math.ceil(Math.max(0, room.countdownUntil - now()) / 1000) : 0,
     winnerId: room.winnerId,
+    participantsAtStart: room.participantsAtStart,
     width: WIDTH,
     height: HEIGHT
   };
@@ -151,11 +171,12 @@ function startGame(room) {
   room.phase = 'countdown';
   room.countdownUntil = now() + 3000;
   room.participantsAtStart = room.players.size;
+  room.eliminatedCount = 0;
   for (const p of room.players.values()) {
     const pos = SPAWNS[p.slot];
     Object.assign(p, {
       x: pos.x, y: pos.y, alive: true, bombs: 1, activeBombs: 0,
-      range: 2, speed: 170, lastMove: 0, motion: { x: 0, y: 0 }, kills: 0
+      range: 2, speed: 170, lastMove: 0, motion: { x: 0, y: 0 }, kills: 0, place: null
     });
   }
   broadcast(room);
@@ -228,16 +249,22 @@ function explodeBomb(room, bomb, t) {
   }
 }
 function applyFlames(room) {
+  const eliminated = [];
   for (const p of room.players.values()) {
     if (!p.alive) continue;
-    const hit = room.flames.find(f => f.x === p.x && f.y === p.y);
-    if (hit) {
-      p.alive = false;
-      p.motion = { x: 0, y: 0 };
-      const owner = room.players.get(hit.ownerId);
-      if (owner && owner.id !== p.id) owner.kills++;
-    }
+    const flame = room.flames.find(f => f.x === p.x && f.y === p.y);
+    if (flame) eliminated.push({ player: p, flame });
   }
+  // Quem sai primeiro fica em último; eliminações no mesmo tick empatam.
+  const place = room.participantsAtStart - room.eliminatedCount;
+  for (const { player, flame } of eliminated) {
+    player.alive = false;
+    player.place = place;
+    player.motion = { x: 0, y: 0 };
+    const owner = room.players.get(flame.ownerId);
+    if (owner && owner.id !== player.id) owner.kills++;
+  }
+  room.eliminatedCount += eliminated.length;
 }
 function checkWinner(room) {
   if (room.phase !== 'playing') return;
@@ -246,6 +273,7 @@ function checkWinner(room) {
   if (alive.length <= 1) {
     room.phase = 'finished';
     room.winnerId = alive[0]?.id || null;
+    if (alive.length === 1) alive[0].place = 1;
     broadcast(room);
   }
 }
@@ -276,6 +304,8 @@ function onMessage(ws, raw) {
   try { message = JSON.parse(String(raw)); } catch { return; }
   if (!message || typeof message !== 'object') return;
   if (message.type === 'create') {
+    if (!authorized(ws, message.pin)) return;
+    if (rooms.size > (ws.roomCode ? 1 : 0)) return error(ws, 'Já existe uma sala. Entre pelo convite enviado pela Mary.');
     leaveRoom(ws);
     const code = randomCode();
     const room = newRoom(code, ws, message.name);
@@ -284,6 +314,7 @@ function onMessage(ws, raw) {
     return;
   }
   if (message.type === 'join') {
+    if (!authorized(ws, message.pin)) return;
     const code = String(message.code || '').replace(/[^a-z0-9]/gi, '').toUpperCase().slice(0, 5);
     const room = rooms.get(code);
     if (!room) return error(ws, 'Essa sala não existe mais. Peça um novo convite.');
@@ -324,7 +355,13 @@ const FILES = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/index.html': ['index.html', 'text/html; charset=utf-8'],
   '/styles.css': ['styles.css', 'text/css; charset=utf-8'],
-  '/game.js': ['game.js', 'text/javascript; charset=utf-8']
+  '/game.js': ['game.js', 'text/javascript; charset=utf-8'],
+  '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json; charset=utf-8'],
+  '/sw.js': ['sw.js', 'text/javascript; charset=utf-8'],
+  '/icon.svg': ['icon.svg', 'image/svg+xml'],
+  '/icon-192.png': ['icon-192.png', 'image/png'],
+  '/icon-512.png': ['icon-512.png', 'image/png'],
+  '/icon-180.png': ['icon-180.png', 'image/png']
 };
 const server = http.createServer((req, res) => {
   if (req.url === '/health') {
@@ -333,12 +370,13 @@ const server = http.createServer((req, res) => {
   }
   const url = new URL(req.url, 'http://localhost');
   const entry = FILES[url.pathname];
-  if (!entry || req.method !== 'GET') {
+  if (!entry || !['GET', 'HEAD'].includes(req.method)) {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
     return res.end('Não encontrado');
   }
   const [file, contentType] = entry;
-  res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': file === 'index.html' ? 'no-cache' : 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
+  res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': ['index.html', 'sw.js', 'manifest.webmanifest'].includes(file) ? 'no-cache' : 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
+  if (req.method === 'HEAD') return res.end();
   fs.createReadStream(path.join(PUBLIC, file)).on('error', () => res.destroy()).pipe(res);
 });
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 1024 });
@@ -346,6 +384,7 @@ wss.on('connection', ws => {
   ws.playerId = crypto.randomUUID();
   ws.roomCode = null;
   ws.isAlive = true;
+  ws.failedPins = 0;
   clients.add(ws);
   send(ws, { type: 'hello', playerId: ws.playerId });
   ws.on('pong', () => { ws.isAlive = true; });

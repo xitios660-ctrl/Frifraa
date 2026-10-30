@@ -4,8 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#100c25" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Bomba Party" />
   <meta name="description" content="Entre na arena de bombas, convide até três amigos e seja o último sobrevivente." />
-  <title>Bomberman · Arena Online</title>
+  <title>Bomba Party · Arena Online</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/icon-180.png" />
+  <link rel="icon" type="image/png" href="/icon-192.png" />
   <link rel="stylesheet" href="/styles.css" />
   <script src="/game.js" defer></script>
 </head>
@@ -16,9 +22,9 @@
 
   <div class="site-shell">
     <header class="topbar">
-      <a class="brand" href="/" aria-label="Bomberman, início">
+      <a class="brand" href="/" aria-label="Bomba Party, início">
         <span class="brand-bomb" aria-hidden="true"><span class="fuse"></span><span class="shine"></span></span>
-        <span><strong>BOMBER<span class="brand-highlight">MAN</span></strong><small>ONLINE ARENA</small></span>
+        <span><strong>BOMBA <span class="brand-highlight">PARTY</span></strong><small>ARENA DOS 4 AMIGOS</small></span>
       </a>
       <div class="topbar-right">
         <span class="live-pill"><span id="serverDot" class="status-dot"></span><span id="serverText">Conectando...</span></span>
@@ -45,9 +51,11 @@
         <div class="entry-card">
           <div class="card-top"><span class="card-chip">NOVO JOGO</span><span class="card-decor">● ● ●</span></div>
           <h2>Entrar na batalha</h2>
-          <p class="card-subtitle">Tudo pronto? Só falta você.</p>
+          <p class="card-subtitle">Arena privada para você e mais três amigos. Quatro skins exclusivas, uma para cada jogador.</p>
           <label class="input-label" for="nameInput">SEU APELIDO</label>
           <input id="nameInput" maxlength="18" autocomplete="nickname" placeholder="Como quer ser chamado?" value="" />
+          <label class="input-label pin-label" for="pinInput">SENHA PRIVADA DO JOGO</label>
+          <input id="pinInput" maxlength="16" autocomplete="off" autocapitalize="characters" type="password" placeholder="Senha combinada com seus amigos" />
           <button id="createBtn" class="primary-btn" type="button"><span>Criar sala</span><span class="btn-arrow">↗</span></button>
           <div class="separator"><span>OU ENTRE COM UM CÓDIGO</span></div>
           <label class="input-label" for="codeInput">CÓDIGO DA SALA</label>
@@ -55,7 +63,12 @@
             <input id="codeInput" class="code-input" maxlength="5" autocomplete="off" autocapitalize="characters" placeholder="ABCDE" />
             <button id="joinBtn" class="secondary-btn" type="button">Entrar <span>→</span></button>
           </div>
-          <div class="help-note"><span class="note-icon">i</span> Gratuito, sem cadastro e sem instalar nada.</div>
+          <div class="help-note"><span class="note-icon">i</span> Somente quem tiver a senha e o convite pode participar.</div>
+          <div id="installCard" class="install-card" hidden>
+            <span class="install-icon">📲</span>
+            <div><strong>Quer jogar como aplicativo?</strong><p id="installInstructions">Adicione o Bomberman à tela inicial para abrir sem a barra do navegador.</p></div>
+            <button id="installBtn" type="button" class="install-btn" hidden>Instalar</button>
+          </div>
         </div>
       </section>
 
@@ -63,14 +76,15 @@
         <div class="section-head"><span class="section-eyebrow">SUA SALA PRIVADA</span><h2>Monte sua equipe<span class="accent-dot">.</span></h2><p>Compartilhe seu código com até três amigos. O anfitrião decide quando a partida começa.</p></div>
         <div class="room-grid">
           <div class="room-card">
-            <div class="room-card-header"><span class="input-label">CÓDIGO DA SUA SALA</span><span class="room-open"><span class="status-dot live"></span> ABERTA</span></div>
+            <div class="room-card-header"><span class="input-label">CÓDIGO DA SUA SALA</span><span class="room-open"><span class="status-dot live"></span> PRIVADA</span></div>
             <div id="roomCode" class="room-code">-----</div>
             <button id="shareBtn" class="primary-btn" type="button"><span>Copiar link do convite</span><span>↗</span></button>
-            <p class="room-tip">Se estiver no celular, envie o link diretamente no WhatsApp dos amigos.</p>
+            <p class="room-tip">Envie o link no WhatsApp e passe a senha privada aos três amigos. A senha não acompanha o link.</p>
           </div>
           <div class="player-card">
             <div class="player-card-head"><h3>Jogadores conectados</h3><span id="playerCount" class="count-badge">0 / 4</span></div>
             <div id="lobbyPlayers" class="lobby-players"></div>
+            <p class="skin-tip">🎭 Cada posição tem sua própria skin. Seus personagens personalizados poderão entrar aqui depois!</p>
             <div class="room-buttons"><button id="startBtn" class="primary-btn" type="button">Iniciar partida <span>▶</span></button><button id="leaveBtn" class="ghost-btn" type="button">Sair da sala</button></div>
             <p id="hostHint" class="small-hint"></p>
           </div>
@@ -84,14 +98,16 @@
         </div>
         <div class="game-layout">
           <div class="board-card">
-            <div class="board-topline"><div><span class="status-dot live"></span> <span id="roundStatus">PARTIDA EM ANDAMENTO</span></div><button id="soundBtn" class="icon-btn" type="button" aria-label="Ativar ou desativar som">♫ <span id="soundLabel">SOM</span></button></div>
+            <div class="board-topline"><div><span class="status-dot live"></span> <span id="roundStatus">PARTIDA EM ANDAMENTO</span></div><div class="board-actions"><button id="fullscreenBtn" class="icon-btn" type="button" aria-label="Tela cheia">⛶ <span>TELA</span></button><button id="soundBtn" class="icon-btn" type="button" aria-label="Ativar ou desativar som">♫ <span id="soundLabel">SOM</span></button></div></div>
             <div class="canvas-wrap"><canvas id="arena" width="720" height="624" aria-label="Tabuleiro de Bomberman"></canvas><div id="roundOverlay" class="round-overlay" hidden><div id="overlayIcon" class="overlay-icon">💣</div><h3 id="overlayTitle">Prepare-se</h3><p id="overlayText">A partida vai começar!</p><button id="playAgainBtn" class="primary-btn overlay-btn" type="button" hidden>Jogar novamente <span>↻</span></button></div></div>
+            <div id="mobileHud" class="mobile-hud" aria-label="Jogadores na arena"></div>
             <div class="touch-controls" id="touchControls">
-              <div class="dpad" aria-label="Controle direcional">
-                <button class="ctrl up" data-dx="0" data-dy="-1" aria-label="Cima" type="button">▲</button>
-                <button class="ctrl left" data-dx="-1" data-dy="0" aria-label="Esquerda" type="button">◀</button>
-                <button class="ctrl right" data-dx="1" data-dy="0" aria-label="Direita" type="button">▶</button>
-                <button class="ctrl down" data-dx="0" data-dy="1" aria-label="Baixo" type="button">▼</button>
+              <div class="joystick-wrap">
+                <div id="joystick" class="joystick" role="application" aria-label="Joystick para movimentar seu personagem">
+                  <div class="joystick-ring"></div>
+                  <div id="joystickKnob" class="joystick-knob"></div>
+                </div>
+                <small>MOVER</small>
               </div>
               <button id="touchBomb" class="bomb-btn" type="button" aria-label="Soltar bomba"><span>💣</span><small>BOMBA</small></button>
             </div>
@@ -106,6 +122,13 @@
     </main>
 
     <footer><span>FEITO PARA JOGAR JUNTO. FEITO PARA SE DIVERTIR.</span><span>Jogo independente inspirado no gênero de arenas com bombas.</span></footer>
+  </div>
+  <div id="rotateOverlay" class="rotate-overlay" hidden>
+    <div class="rotate-phone" aria-hidden="true">📱 <span>↻</span></div>
+    <h2>VIRE O CELULAR</h2>
+    <p>Para jogar, deixe o celular <strong>de lado, na horizontal.</strong></p>
+    <p class="rotate-small">Se não girar, desative o bloqueio de rotação do celular.</p>
+    <button id="rotateFullscreenBtn" class="primary-btn" type="button">Ativar tela cheia <span>⛶</span></button>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </body>
