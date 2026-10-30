@@ -35,7 +35,7 @@ function message(ws, predicate) { return waitUntil(() => ws.messages.find(predic
 test.before(async () => {
   child = spawn(process.execPath, ['server.js'], {
     cwd: require('node:path').join(__dirname, '..'),
-    env: { ...process.env, PORT: String(PORT), NODE_ENV: 'test', GAME_PIN: 'PARTY123' }, stdio: 'ignore'
+    env: { ...process.env, PORT: String(PORT), NODE_ENV: 'test' }, stdio: 'ignore'
   });
   await waitUntil(async () => {
     try {
@@ -65,12 +65,8 @@ test('serve página e endpoint de saúde', async () => {
 });
 
 test('limita a sala a quatro pessoas e inicia uma partida real', async () => {
-  const intruder = await client();
-  write(intruder, { type: 'create', name: 'Intruso', pin: 'ERRADA' });
-  await message(intruder, m => m.type === 'error' && /Senha privada incorreta/.test(m.message));
-
   const p1 = await client();
-  write(p1, { type: 'create', name: 'Mary', pin: 'PARTY123' });
+  write(p1, { type: 'create', name: 'Mary' });
   const joined = await message(p1, m => m.type === 'joined');
   assert.match(joined.code, /^[A-Z2-9]{5}$/);
   const code = joined.code;
@@ -79,18 +75,18 @@ test('limita a sala a quatro pessoas e inicia uma partida real', async () => {
   for (let n = 2; n <= 4; n++) {
     const p = await client();
     others.push(p);
-    write(p, { type: 'join', code, name: `Jogador${n}`, pin: 'PARTY123' });
+    write(p, { type: 'join', code, name: `Jogador${n}` });
     await message(p, m => m.type === 'joined');
   }
   const lobby = await message(p1, m => m.type === 'state' && m.players.length === 4);
   assert.equal(lobby.players.length, 4);
 
   const p5 = await client();
-  write(p5, { type: 'join', code, name: 'Excesso', pin: 'PARTY123' });
+  write(p5, { type: 'join', code, name: 'Excesso' });
   const rejected = await message(p5, m => m.type === 'error');
   assert.match(rejected.message, /cheia/);
 
-  write(p5, { type: 'create', name: 'Outra sala', pin: 'PARTY123' });
+  write(p5, { type: 'create', name: 'Outra sala' });
   await message(p5, m => m.type === 'error' && /Já existe uma sala/.test(m.message));
 
   write(p1, { type: 'start' });

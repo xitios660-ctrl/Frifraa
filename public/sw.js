@@ -1,4 +1,4 @@
-const CACHE = 'bomba-party-v4';
+const CACHE = 'bomba-party-v5';
 const SHELL = ['/', '/styles.css', '/game.js', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/icon-180.png'];
 
 self.addEventListener('install', event => {

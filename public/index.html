@@ -51,11 +51,9 @@
         <div class="entry-card">
           <div class="card-top"><span class="card-chip">NOVO JOGO</span><span class="card-decor">● ● ●</span></div>
           <h2>Entrar na batalha</h2>
-          <p class="card-subtitle">Arena privada para você e mais três amigos. Quatro skins exclusivas, uma para cada jogador.</p>
+          <p class="card-subtitle">Arena para você e mais três amigos. Quatro skins exclusivas, uma para cada jogador.</p>
           <label class="input-label" for="nameInput">SEU APELIDO</label>
           <input id="nameInput" maxlength="18" autocomplete="nickname" placeholder="Como quer ser chamado?" value="" />
-          <label class="input-label pin-label" for="pinInput">SENHA PRIVADA DO JOGO</label>
-          <input id="pinInput" maxlength="16" autocomplete="off" autocapitalize="characters" type="password" placeholder="Senha combinada com seus amigos" />
           <button id="createBtn" class="primary-btn" type="button"><span>Criar sala</span><span class="btn-arrow">↗</span></button>
           <div class="separator"><span>OU ENTRE COM UM CÓDIGO</span></div>
           <label class="input-label" for="codeInput">CÓDIGO DA SALA</label>
@@ -63,7 +61,7 @@
             <input id="codeInput" class="code-input" maxlength="5" autocomplete="off" autocapitalize="characters" placeholder="ABCDE" />
             <button id="joinBtn" class="secondary-btn" type="button">Entrar <span>→</span></button>
           </div>
-          <div class="help-note"><span class="note-icon">i</span> Somente quem tiver a senha e o convite pode participar.</div>
+          <div class="help-note"><span class="note-icon">i</span> Sem senha: basta criar a sala e convidar seus amigos.</div>
           <div id="installCard" class="install-card" hidden>
             <span class="install-icon">📲</span>
             <div><strong>Quer jogar como aplicativo?</strong><p id="installInstructions">Adicione o Bomberman à tela inicial para abrir sem a barra do navegador.</p></div>
@@ -73,13 +71,13 @@
       </section>
 
       <section id="roomPanel" class="room-panel" hidden>
-        <div class="section-head"><span class="section-eyebrow">SUA SALA PRIVADA</span><h2>Monte sua equipe<span class="accent-dot">.</span></h2><p>Compartilhe seu código com até três amigos. O anfitrião decide quando a partida começa.</p></div>
+        <div class="section-head"><span class="section-eyebrow">SUA SALA POR CONVITE</span><h2>Monte sua equipe<span class="accent-dot">.</span></h2><p>Compartilhe seu código com até três amigos. O anfitrião decide quando a partida começa.</p></div>
         <div class="room-grid">
           <div class="room-card">
-            <div class="room-card-header"><span class="input-label">CÓDIGO DA SUA SALA</span><span class="room-open"><span class="status-dot live"></span> PRIVADA</span></div>
+            <div class="room-card-header"><span class="input-label">CÓDIGO DA SUA SALA</span><span class="room-open"><span class="status-dot live"></span> POR CONVITE</span></div>
             <div id="roomCode" class="room-code">-----</div>
             <button id="shareBtn" class="primary-btn" type="button"><span>Copiar link do convite</span><span>↗</span></button>
-            <p class="room-tip">Envie o link no WhatsApp e passe a senha privada aos três amigos. A senha não acompanha o link.</p>
+            <p class="room-tip">Envie o link no WhatsApp aos seus três amigos. Quem tiver o código pode entrar enquanto houver vaga.</p>
           </div>
           <div class="player-card">
             <div class="player-card-head"><h3>Jogadores conectados</h3><span id="playerCount" class="count-badge">0 / 4</span></div>

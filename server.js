@@ -10,10 +10,6 @@ const WIDTH = 15;
 const HEIGHT = 13;
 const PORT = Number(process.env.PORT) || 3000;
 const TICK_MS = 50;
-const ACCESS_PIN = String(process.env.GAME_PIN || '');
-if (process.env.NODE_ENV === 'production' && !ACCESS_PIN) {
-  throw new Error('GAME_PIN precisa ser configurado para habilitar a arena privada.');
-}
 const COLORS = ['#ac82ff', '#ff6e96', '#55dcff', '#ffd36f'];
 const SKINS = ['Mística', 'Rubi', 'Cyber', 'Solar'];
 const SPAWNS = [
@@ -39,17 +35,6 @@ function send(ws, message) {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
 }
 function error(ws, message) { send(ws, { type: 'error', message }); }
-function authorized(ws, proposed) {
-  if (!ACCESS_PIN) return true; // apenas desenvolvimento local
-  const candidate = Buffer.from(String(proposed || '').slice(0, 64));
-  const expected = Buffer.from(ACCESS_PIN);
-  const valid = candidate.length === expected.length && crypto.timingSafeEqual(candidate, expected);
-  if (valid) return true;
-  ws.failedPins = (ws.failedPins || 0) + 1;
-  error(ws, 'Senha privada incorreta. Peça a senha à Mary.');
-  if (ws.failedPins >= 5) ws.close(1008, 'Muitas tentativas');
-  return false;
-}
 function safeName(input) {
   return String(input || 'Jogador').replace(/[<>\x00-\x1f]/g, '').trim().slice(0, 18) || 'Jogador';
 }
@@ -304,7 +289,6 @@ function onMessage(ws, raw) {
   try { message = JSON.parse(String(raw)); } catch { return; }
   if (!message || typeof message !== 'object') return;
   if (message.type === 'create') {
-    if (!authorized(ws, message.pin)) return;
     if (rooms.size > (ws.roomCode ? 1 : 0)) return error(ws, 'Já existe uma sala. Entre pelo convite enviado pela Mary.');
     leaveRoom(ws);
     const code = randomCode();
@@ -314,7 +298,6 @@ function onMessage(ws, raw) {
     return;
   }
   if (message.type === 'join') {
-    if (!authorized(ws, message.pin)) return;
     const code = String(message.code || '').replace(/[^a-z0-9]/gi, '').toUpperCase().slice(0, 5);
     const room = rooms.get(code);
     if (!room) return error(ws, 'Essa sala não existe mais. Peça um novo convite.');
@@ -384,7 +367,6 @@ wss.on('connection', ws => {
   ws.playerId = crypto.randomUUID();
   ws.roomCode = null;
   ws.isAlive = true;
-  ws.failedPins = 0;
   clients.add(ws);
   send(ws, { type: 'hello', playerId: ws.playerId });
   ws.on('pong', () => { ws.isAlive = true; });

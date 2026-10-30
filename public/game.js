@@ -11,11 +11,10 @@
   const params = new URLSearchParams(location.search);
   const prefill = (params.get('sala') || '').replace(/[^a-z0-9]/gi, '').slice(0, 5).toUpperCase();
   const nameInput = $('nameInput');
-  const pinInput = $('pinInput');
   const codeInput = $('codeInput');
   codeInput.value = prefill;
   nameInput.value = localStorage.getItem('arena-name') || '';
-  pinInput.value = localStorage.getItem('bomba-party-pin') || '';
+  localStorage.removeItem('bomba-party-pin');
 
   let socket = null;
   let meId = null;
@@ -61,7 +60,7 @@
       $('serverDot').classList.add('live');
       $('serverText').textContent = 'Servidor online';
       if (disconnected && currentCode) {
-        safeSend({ type: 'join', code: currentCode, name: getName(), pin: getPin() });
+        safeSend({ type: 'join', code: currentCode, name: getName() });
       }
       disconnected = false;
     });
@@ -284,24 +283,12 @@
   function joinFromInput() {
     const code = codeInput.value.replace(/[^a-z0-9]/gi, '').slice(0, 5).toUpperCase();
     if (code.length !== 5) return toast('Digite o código de cinco caracteres da sala.');
-    const pin = getPin();
-    if (!pin) return toast('Digite também a senha privada do jogo.');
-    safeSend({ type: 'join', code, name: getName(), pin });
+    safeSend({ type: 'join', code, name: getName() });
   }
-  function getPin() {
-    const pin = pinInput.value.trim().toUpperCase();
-    if (pin) localStorage.setItem('bomba-party-pin', pin);
-    return pin;
-  }
-  $('createBtn').addEventListener('click', () => {
-    const pin = getPin();
-    if (!pin) return toast('Digite a senha privada da arena.');
-    safeSend({ type: 'create', name: getName(), pin });
-  });
+  $('createBtn').addEventListener('click', () => safeSend({ type: 'create', name: getName() }));
   $('joinBtn').addEventListener('click', joinFromInput);
   codeInput.addEventListener('keydown', e => { if (e.key === 'Enter') joinFromInput(); });
   nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') $('createBtn').click(); });
-  pinInput.addEventListener('keydown', e => { if (e.key === 'Enter') $('createBtn').click(); });
   $('startBtn').addEventListener('click', () => {
     requestImmersive();
     safeSend({ type: 'start' });
