@@ -11,7 +11,7 @@ const HEIGHT = 13;
 const PORT = Number(process.env.PORT) || 3000;
 const TICK_MS = 50;
 const COLORS = ['#ac82ff', '#ff6e96', '#55dcff', '#ffd36f'];
-const SKINS = ['Mística', 'Rubi', 'Cyber', 'Solar'];
+const SKINS = ['Mary', 'Kaique', 'Jheniffer', 'Solar'];
 const SPAWNS = [
   { x: 1, y: 1 },
   { x: WIDTH - 2, y: 1 },
@@ -38,14 +38,28 @@ function error(ws, message) { send(ws, { type: 'error', message }); }
 function safeName(input) {
   return String(input || 'Jogador').replace(/[<>\x00-\x1f]/g, '').trim().slice(0, 18) || 'Jogador';
 }
-function newPlayer(ws, name, slot) {
+function preferredSkin(name) {
+  const normalized = safeName(name).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (/^(mary|mariany|maryane)(\b|\s)/.test(normalized)) return 0;
+  if (/^kaique(\b|\s)/.test(normalized)) return 1;
+  if (/^(jheniffer|jhenifer|jhen|jhe)(\b|\s)/.test(normalized)) return 2;
+  return null;
+}
+function availableSkin(room, name) {
+  const occupied = new Set([...room.players.values()].map(p => p.skinIndex));
+  const desired = preferredSkin(name);
+  if (desired !== null && !occupied.has(desired)) return desired;
+  return [0, 1, 2, 3].find(index => !occupied.has(index));
+}
+function newPlayer(ws, name, slot, skinIndex) {
   return {
     id: ws.playerId,
     ws,
     slot,
     name: safeName(name),
-    color: COLORS[slot],
-    skin: SKINS[slot],
+    skinIndex,
+    color: COLORS[skinIndex],
+    skin: SKINS[skinIndex],
     x: SPAWNS[slot].x,
     y: SPAWNS[slot].y,
     alive: true,
@@ -76,14 +90,14 @@ function newRoom(code, ws, name) {
     lastBroadcast: 0,
     lastActivity: now()
   };
-  room.players.set(ws.playerId, newPlayer(ws, name, 0));
+  room.players.set(ws.playerId, newPlayer(ws, name, 0, availableSkin(room, name)));
   rooms.set(code, room);
   ws.roomCode = code;
   return room;
 }
 function playerView(p) {
   return {
-    id: p.id, name: p.name, slot: p.slot, color: p.color, skin: p.skin,
+    id: p.id, name: p.name, slot: p.slot, skinIndex: p.skinIndex, color: p.color, skin: p.skin,
     x: p.x, y: p.y, alive: p.alive, bombs: p.bombs,
     range: p.range, speed: p.speed, kills: p.kills, place: p.place
   };
@@ -116,7 +130,7 @@ function broadcast(room) {
   }
   room.lastBroadcast = now();
 }
-function leaveRoom(ws) {
+function leaveRoom(ws, allowReconnect = false) {
   if (!ws.roomCode) return;
   const room = rooms.get(ws.roomCode);
   ws.roomCode = null;
@@ -124,6 +138,14 @@ function leaveRoom(ws) {
   room.players.delete(ws.playerId);
   room.lastActivity = now();
   if (room.players.size === 0) {
+    if (allowReconnect) {
+      // Conservar a sala por um curto período permite recarregar o app sem
+      // perder o convite, inclusive se o anfitrião estava sozinho.
+      room.phase = 'lobby';
+      room.board = null;
+      room.lastEmptyAt = now();
+      return;
+    }
     rooms.delete(room.code);
     return;
   }
@@ -289,6 +311,9 @@ function onMessage(ws, raw) {
   try { message = JSON.parse(String(raw)); } catch { return; }
   if (!message || typeof message !== 'object') return;
   if (message.type === 'create') {
+    for (const [code, room] of rooms) {
+      if (room.players.size === 0) rooms.delete(code);
+    }
     if (rooms.size > (ws.roomCode ? 1 : 0)) return error(ws, 'Já existe uma sala. Entre pelo convite enviado pela Mary.');
     leaveRoom(ws);
     const code = randomCode();
@@ -305,8 +330,9 @@ function onMessage(ws, raw) {
     if (room.phase !== 'lobby') return error(ws, 'A partida já começou. Aguarde uma nova sala.');
     if (room.players.size >= 4) return error(ws, 'Sala cheia! Máximo de quatro jogadores.');
     leaveRoom(ws);
+    if (room.players.size === 0) room.hostId = ws.playerId;
     const slot = [0, 1, 2, 3].find(n => ![...room.players.values()].some(p => p.slot === n));
-    room.players.set(ws.playerId, newPlayer(ws, message.name, slot));
+    room.players.set(ws.playerId, newPlayer(ws, message.name, slot, availableSkin(room, message.name)));
     ws.roomCode = code;
     room.lastActivity = now();
     send(ws, { type: 'joined', code, playerId: ws.playerId });
@@ -320,6 +346,17 @@ function onMessage(ws, raw) {
   if (message.type === 'leave') {
     leaveRoom(ws);
     send(ws, { type: 'left' });
+  } else if (message.type === 'skin') {
+    if (room.phase !== 'lobby') return error(ws, 'Só é possível trocar de personagem antes da partida.');
+    const skinIndex = Number(message.skinIndex);
+    if (!Number.isInteger(skinIndex) || skinIndex < 0 || skinIndex >= SKINS.length) return;
+    if ([...room.players.values()].some(p => p.id !== player.id && p.skinIndex === skinIndex)) {
+      return error(ws, 'Esse personagem já foi escolhido por outro jogador.');
+    }
+    player.skinIndex = skinIndex;
+    player.skin = SKINS[skinIndex];
+    player.color = COLORS[skinIndex];
+    broadcast(room);
   } else if (message.type === 'start') {
     if (room.hostId !== ws.playerId) return error(ws, 'Apenas o anfitrião pode iniciar.');
     if (room.phase !== 'lobby' && room.phase !== 'finished') return;
@@ -344,7 +381,10 @@ const FILES = {
   '/icon.svg': ['icon.svg', 'image/svg+xml'],
   '/icon-192.png': ['icon-192.png', 'image/png'],
   '/icon-512.png': ['icon-512.png', 'image/png'],
-  '/icon-180.png': ['icon-180.png', 'image/png']
+  '/icon-180.png': ['icon-180.png', 'image/png'],
+  '/skins/mary.webp': ['skins/mary.webp', 'image/webp'],
+  '/skins/kaique.webp': ['skins/kaique.webp', 'image/webp'],
+  '/skins/jheniffer.webp': ['skins/jheniffer.webp', 'image/webp']
 };
 const server = http.createServer((req, res) => {
   if (req.url === '/health') {
@@ -371,8 +411,8 @@ wss.on('connection', ws => {
   send(ws, { type: 'hello', playerId: ws.playerId });
   ws.on('pong', () => { ws.isAlive = true; });
   ws.on('message', raw => onMessage(ws, raw));
-  ws.on('close', () => { leaveRoom(ws); clients.delete(ws); });
-  ws.on('error', () => { leaveRoom(ws); clients.delete(ws); });
+  ws.on('close', () => { leaveRoom(ws, true); clients.delete(ws); });
+  ws.on('error', () => { leaveRoom(ws, true); clients.delete(ws); });
 });
 const heartbeat = setInterval(() => {
   for (const ws of clients) {
@@ -381,12 +421,18 @@ const heartbeat = setInterval(() => {
     ws.ping();
   }
 }, 30000);
+const staleRoomCleanup = setInterval(() => {
+  for (const [code, room] of rooms) {
+    if (room.players.size === 0 && now() - (room.lastEmptyAt || room.lastActivity) > 90000) rooms.delete(code);
+  }
+}, 10000);
 const gameLoop = setInterval(tick, TICK_MS);
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Arena pronta na porta ${PORT}`);
 });
 function shutdown() {
   clearInterval(heartbeat);
+  clearInterval(staleRoomCleanup);
   clearInterval(gameLoop);
   for (const ws of clients) ws.close(1001, 'Reiniciando servidor');
   wss.close();

@@ -51,7 +51,7 @@
         <div class="entry-card">
           <div class="card-top"><span class="card-chip">NOVO JOGO</span><span class="card-decor">● ● ●</span></div>
           <h2>Entrar na batalha</h2>
-          <p class="card-subtitle">Arena para você e mais três amigos. Quatro skins exclusivas, uma para cada jogador.</p>
+          <p class="card-subtitle">Arena para você e mais três amigos. Mary, Kaique e Jheniffer já têm personagens exclusivos!</p>
           <label class="input-label" for="nameInput">SEU APELIDO</label>
           <input id="nameInput" maxlength="18" autocomplete="nickname" placeholder="Como quer ser chamado?" value="" />
           <button id="createBtn" class="primary-btn" type="button"><span>Criar sala</span><span class="btn-arrow">↗</span></button>
@@ -61,7 +61,7 @@
             <input id="codeInput" class="code-input" maxlength="5" autocomplete="off" autocapitalize="characters" placeholder="ABCDE" />
             <button id="joinBtn" class="secondary-btn" type="button">Entrar <span>→</span></button>
           </div>
-          <div class="help-note"><span class="note-icon">i</span> Sem senha: basta criar a sala e convidar seus amigos.</div>
+          <div class="help-note"><span class="note-icon">i</span> Sem senha: basta criar a sala e convidar seus amigos. O jogo abre em modo imersivo automaticamente; no iPhone, instale na tela inicial para remover as barras do Safari.</div>
           <div id="installCard" class="install-card" hidden>
             <span class="install-icon">📲</span>
             <div><strong>Quer jogar como aplicativo?</strong><p id="installInstructions">Adicione o Bomberman à tela inicial para abrir sem a barra do navegador.</p></div>
@@ -82,7 +82,9 @@
           <div class="player-card">
             <div class="player-card-head"><h3>Jogadores conectados</h3><span id="playerCount" class="count-badge">0 / 4</span></div>
             <div id="lobbyPlayers" class="lobby-players"></div>
-            <p class="skin-tip">🎭 Cada posição tem sua própria skin. Seus personagens personalizados poderão entrar aqui depois!</p>
+            <div class="picker-heading">🎭 ESCOLHA SEU PERSONAGEM <span>um por jogador</span></div>
+            <div id="skinPicker" class="skin-picker" aria-label="Escolher personagem da partida"></div>
+            <p class="skin-tip">💙 Mary · 👓 Kaique · 🌸 Jheniffer · 👑 Solar (quarta skin temporária). Cada jogador pode escolher a sua.</p>
             <div class="room-buttons"><button id="startBtn" class="primary-btn" type="button">Iniciar partida <span>▶</span></button><button id="leaveBtn" class="ghost-btn" type="button">Sair da sala</button></div>
             <p id="hostHint" class="small-hint"></p>
           </div>

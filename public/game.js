@@ -6,8 +6,19 @@
   const ctx = canvas.getContext('2d');
   const SIZE = 48;
   const COLOR = ['#ac82ff', '#ff6e96', '#55dcff', '#ffd36f'];
-  const SKIN_ICONS = ['🔮', '💗', '🤖', '👑'];
-  const SKIN_LABELS = ['MÍSTICA', 'RUBI', 'CYBER', 'SOLAR'];
+  const SKIN_ICONS = ['💙', '👓', '🌸', '👑'];
+  const SKIN_LABELS = ['MARY', 'KAIQUE', 'JHENIFFER', 'SOLAR'];
+  const SPRITE_URLS = ['/skins/mary.webp', '/skins/kaique.webp', '/skins/jheniffer.webp', null];
+  const sprites = SPRITE_URLS.map(src => {
+    if (!src) return null;
+    const picture = new Image();
+    picture.src = src;
+    return picture;
+  });
+  const storedRoomKey = 'bomba-party-active-room';
+  let savedRoom = (() => {
+    try { return JSON.parse(sessionStorage.getItem(storedRoomKey)); } catch { return null; }
+  })();
   const params = new URLSearchParams(location.search);
   const prefill = (params.get('sala') || '').replace(/[^a-z0-9]/gi, '').slice(0, 5).toUpperCase();
   const nameInput = $('nameInput');
@@ -28,6 +39,7 @@
   let lastSoundKey = '';
   let deferredInstallPrompt = null;
   let penaltyNotified = false;
+  let triedAutoFullscreen = false;
   const heldKeys = new Set();
   let touchDirection = null;
   let lastDirection = '0,0';
@@ -61,6 +73,9 @@
       $('serverText').textContent = 'Servidor online';
       if (disconnected && currentCode) {
         safeSend({ type: 'join', code: currentCode, name: getName() });
+      } else if (!currentCode && savedRoom?.code && savedRoom.code === prefill) {
+        nameInput.value = savedRoom.name || nameInput.value;
+        safeSend({ type: 'join', code: savedRoom.code, name: getName() });
       }
       disconnected = false;
     });
@@ -85,6 +100,10 @@
     }
     if (msg.type === 'error') {
       toast(msg.message || 'Não foi possível completar a ação.');
+      if (!currentCode && savedRoom?.code) {
+        sessionStorage.removeItem(storedRoomKey);
+        savedRoom = null;
+      }
       if (disconnected && currentCode) leave(false);
       return;
     }
@@ -94,7 +113,12 @@
       state = null;
       displayPositions.clear();
       lastPhase = null;
+      savedRoom = { code: currentCode, name: getName() };
+      sessionStorage.setItem(storedRoomKey, JSON.stringify(savedRoom));
       history.replaceState(null, '', `${location.pathname}?sala=${currentCode}`);
+      // Algumas plataformas permitem abrir a tela cheia sem outro toque;
+      // no iPhone a versão instalada já funciona sem barras do navegador.
+      if (!triedAutoFullscreen) requestImmersive();
       toast('Você entrou na sala!');
       return;
     }
@@ -125,10 +149,13 @@
     $('rotateOverlay').hidden = !(onPhone && !$('gamePanel').hidden && matchMedia('(orientation: portrait)').matches);
   }
   function requestImmersive() {
+    triedAutoFullscreen = true;
     if (document.fullscreenElement || !document.documentElement.requestFullscreen) return;
-    Promise.resolve(document.documentElement.requestFullscreen({ navigationUI: 'hide' }))
-      .then(() => window.screen.orientation?.lock?.('landscape'))
-      .catch(() => { /* alguns navegadores não permitem tela cheia/rotação */ });
+    try {
+      Promise.resolve(document.documentElement.requestFullscreen({ navigationUI: 'hide' }))
+        .then(() => window.screen.orientation?.lock?.('landscape'))
+        .catch(() => { /* tela cheia depende das permissões do navegador */ });
+    } catch { /* Safari no iPhone usa o modo app da tela inicial */ }
   }
   function leave(notifyServer = true) {
     if (notifyServer && currentCode) safeSend({ type: 'leave' });
@@ -140,23 +167,31 @@
     touchDirection = null;
     lastDirection = '0,0';
     penaltyNotified = false;
+    sessionStorage.removeItem(storedRoomKey);
+    savedRoom = null;
     history.replaceState(null, '', location.pathname);
     show('homePanel');
     if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
   }
-  function makeAvatar(slot) {
+  function getSkinIndex(p) { return Number.isInteger(p.skinIndex) ? p.skinIndex : p.slot; }
+  function makeAvatar(skinIndex) {
     const avatar = document.createElement('div');
-    avatar.className = `player-avatar skin-${slot}`;
-    avatar.style.background = COLOR[slot];
-    avatar.textContent = SKIN_ICONS[slot];
-    avatar.title = `Skin ${SKIN_LABELS[slot]}`;
+    avatar.className = `player-avatar skin-${skinIndex}`;
+    avatar.style.background = `${COLOR[skinIndex]}24`;
+    if (SPRITE_URLS[skinIndex]) {
+      const picture = document.createElement('img');
+      picture.src = SPRITE_URLS[skinIndex];
+      picture.alt = '';
+      avatar.append(picture);
+    } else avatar.textContent = SKIN_ICONS[skinIndex];
+    avatar.title = `Skin ${SKIN_LABELS[skinIndex]}`;
     return avatar;
   }
   function makePlayerRow(p, roomMode) {
     const row = document.createElement('div');
     row.className = roomMode === 'lobby' ? 'lobby-row' : 'game-player';
     if (!p.alive && roomMode !== 'lobby') row.classList.add('eliminated');
-    row.append(makeAvatar(p.slot));
+    row.append(makeAvatar(getSkinIndex(p)));
     const info = document.createElement('div');
     info.className = 'player-info';
     const name = document.createElement('div');
@@ -164,7 +199,7 @@
     name.textContent = p.name + (p.id === meId ? ' (você)' : '');
     const skin = document.createElement('div');
     skin.className = 'skin-label';
-    skin.textContent = `SKIN ${p.skin || SKIN_LABELS[p.slot]}`;
+    skin.textContent = `SKIN ${p.skin || SKIN_LABELS[getSkinIndex(p)]}`;
     info.append(name, skin);
     row.append(info);
     const role = document.createElement('span');
@@ -189,7 +224,7 @@
       const chip = document.createElement('div');
       chip.className = `hud-player ${p.alive ? '' : 'hud-out'}`;
       chip.style.setProperty('--skin-color', p.color);
-      chip.textContent = `${SKIN_ICONS[p.slot]} ${p.name.slice(0, 10)}`;
+      chip.textContent = `${SKIN_ICONS[getSkinIndex(p)]} ${p.name.slice(0, 10)}`;
       mobileHud.append(chip);
     }
     for (let i = ordered.length; i < 4; i++) {
@@ -203,6 +238,35 @@
       label.textContent = 'Aguardando jogador...';
       empty.append(avatar, label);
       lobby.append(empty);
+    }
+    updateSkinPicker();
+  }
+  function updateSkinPicker() {
+    const picker = $('skinPicker');
+    picker.hidden = state.phase !== 'lobby';
+    if (picker.hidden) return;
+    picker.replaceChildren();
+    const mine = state.players.find(p => p.id === meId);
+    for (let index = 0; index < 4; index++) {
+      const occupiedBy = state.players.find(p => p.id !== meId && getSkinIndex(p) === index);
+      const selected = mine && getSkinIndex(mine) === index;
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = `skin-choice${selected ? ' selected' : ''}`;
+      option.disabled = !!occupiedBy;
+      option.setAttribute('aria-pressed', String(!!selected));
+      option.title = occupiedBy ? `Escolhida por ${occupiedBy.name}` : `Escolher ${SKIN_LABELS[index]}`;
+      option.append(makeAvatar(index));
+      const label = document.createElement('span');
+      label.textContent = SKIN_LABELS[index];
+      option.append(label);
+      if (occupiedBy) {
+        const taken = document.createElement('small');
+        taken.textContent = 'EM USO';
+        option.append(taken);
+      }
+      option.addEventListener('click', () => safeSend({ type: 'skin', skinIndex: index }));
+      picker.append(option);
     }
   }
   function updateUi() {
@@ -285,9 +349,11 @@
     if (code.length !== 5) return toast('Digite o código de cinco caracteres da sala.');
     safeSend({ type: 'join', code, name: getName() });
   }
-  $('createBtn').addEventListener('click', () => safeSend({ type: 'create', name: getName() }));
-  $('joinBtn').addEventListener('click', joinFromInput);
-  codeInput.addEventListener('keydown', e => { if (e.key === 'Enter') joinFromInput(); });
+  // Pedir tela cheia no mesmo toque em que a pessoa entra: é a única janela
+  // permitida pelos navegadores que exigem uma interação do usuário.
+  $('createBtn').addEventListener('click', () => { requestImmersive(); safeSend({ type: 'create', name: getName() }); });
+  $('joinBtn').addEventListener('click', () => { requestImmersive(); joinFromInput(); });
+  codeInput.addEventListener('keydown', e => { if (e.key === 'Enter') { requestImmersive(); joinFromInput(); } });
   nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') $('createBtn').click(); });
   $('startBtn').addEventListener('click', () => {
     requestImmersive();
@@ -534,12 +600,34 @@
     const x = point.x, y = point.y + Math.sin(time / 160 + p.slot) * 1.4;
     if (!p.alive) return;
     const color = p.color;
+    const skinIndex = getSkinIndex(p);
     circle(x, y + 22, 16, '#09071688');
-    if (p.slot === 0) { // Mística: capa e chapéu mágico
+    const sprite = sprites[skinIndex];
+    if (sprite?.complete && sprite.naturalWidth > 0) {
+      // Retratos personalizados com transparência, sempre em corpo inteiro.
+      ctx.save();
+      ctx.shadowColor = `${color}99`;
+      ctx.shadowBlur = 9;
+      ctx.drawImage(sprite, x - 28, y - 41, 56, 68);
+      ctx.restore();
+      if (p.id === meId) {
+        ctx.strokeStyle = '#fff4aa';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(x, y + 23, 17, 7, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = '#fff1a6';
+        ctx.textAlign = 'center';
+        ctx.font = '900 11px sans-serif';
+        ctx.fillText('VOCÊ', x, y - 45);
+      }
+      return;
+    }
+    if (skinIndex === 0) { // Aparência alternativa enquanto a imagem carrega
       ctx.fillStyle = '#7150bd';
       ctx.beginPath();ctx.moveTo(x - 9, y + 4);ctx.lineTo(x - 22, y + 26);ctx.lineTo(x + 22, y + 26);ctx.lineTo(x + 9, y + 4);ctx.closePath();ctx.fill();
     }
-    if (p.slot === 3) { // Solar: capa de raio dourado
+    if (skinIndex === 3) { // Solar: capa de raio dourado
       ctx.fillStyle = '#ff9859';
       ctx.beginPath();ctx.moveTo(x - 10, y + 3);ctx.lineTo(x - 18, y + 26);ctx.lineTo(x + 17, y + 26);ctx.lineTo(x + 10, y + 3);ctx.closePath();ctx.fill();
     }
@@ -552,25 +640,25 @@
     circle(x + 5, y - 3, 2.5, '#2b213e');
     roundRect(x - 4, y - 25, 8, 8, 3, '#f6f3ff');
     circle(x - 7, y - 15, 4, '#ffffff8a');
-    if (p.slot === 0) {
+    if (skinIndex === 0) {
       ctx.fillStyle = '#6c45c0';
       ctx.beginPath();ctx.moveTo(x - 15, y - 17);ctx.lineTo(x + 1, y - 38);ctx.lineTo(x + 17, y - 17);ctx.closePath();ctx.fill();
       roundRect(x - 15, y - 20, 30, 5, 2, '#eac3ff');
       circle(x + 1, y - 26, 3.6, '#ffe38a');
-    } else if (p.slot === 1) {
+    } else if (skinIndex === 1) {
       // Rubi: laço e pequenas orelhas de coração.
       circle(x - 14, y - 24, 8, '#ff3d83');
       circle(x + 8, y - 24, 8, '#ff3d83');
       circle(x - 3, y - 24, 5, '#ffdcf2');
       circle(x - 17, y - 27, 2, '#ffe4ec');
       circle(x + 11, y - 27, 2, '#ffe4ec');
-    } else if (p.slot === 2) {
+    } else if (skinIndex === 2) {
       // Cyber: visor luminoso e antena.
       roundRect(x - 13, y - 13, 26, 13, 5, '#1a3d58');
       roundRect(x - 10, y - 10, 20, 6, 3, '#a3fff6');
       roundRect(x - 2, y - 34, 4, 12, 2, '#35adcb');
       circle(x, y - 35, 4, '#ecff9c');
-    } else if (p.slot === 3) {
+    } else if (skinIndex === 3) {
       // Solar: coroa dourada de três pontas.
       ctx.fillStyle = '#ffb73f';
       ctx.beginPath();ctx.moveTo(x - 16, y - 18);ctx.lineTo(x - 15, y - 35);ctx.lineTo(x - 6, y - 25);ctx.lineTo(x, y - 39);ctx.lineTo(x + 6, y - 25);ctx.lineTo(x + 15, y - 35);ctx.lineTo(x + 16, y - 18);ctx.closePath();ctx.fill();

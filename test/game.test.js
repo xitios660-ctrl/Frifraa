@@ -49,10 +49,11 @@ test.after(async () => {
   child?.kill('SIGTERM');
 });
 
-test('serve página e endpoint de saúde', async () => {
-  const [page, health, manifest, icon, sw] = await Promise.all([
+test('serve página, skins personalizadas e endpoint de saúde', async () => {
+  const [page, health, manifest, icon, sw, mary, kaique, jheniffer] = await Promise.all([
     fetch(BASE), fetch(`${BASE}/health`), fetch(`${BASE}/manifest.webmanifest`),
-    fetch(`${BASE}/icon-192.png`), fetch(`${BASE}/sw.js`)
+    fetch(`${BASE}/icon-192.png`), fetch(`${BASE}/sw.js`), fetch(`${BASE}/skins/mary.webp`),
+    fetch(`${BASE}/skins/kaique.webp`), fetch(`${BASE}/skins/jheniffer.webp`)
   ]);
   assert.equal(page.status, 200);
   assert.match(await page.text(), /Bomba Party · Arena Online/);
@@ -62,6 +63,11 @@ test('serve página e endpoint de saúde', async () => {
   assert.equal(icon.status, 200);
   assert.match(icon.headers.get('content-type'), /image\/png/);
   assert.equal(sw.status, 200);
+  for (const skin of [mary, kaique, jheniffer]) {
+    assert.equal(skin.status, 200);
+    assert.match(skin.headers.get('content-type'), /image\/webp/);
+    assert.ok((await skin.arrayBuffer()).byteLength > 1000);
+  }
 });
 
 test('limita a sala a quatro pessoas e inicia uma partida real', async () => {
@@ -72,14 +78,23 @@ test('limita a sala a quatro pessoas e inicia uma partida real', async () => {
   const code = joined.code;
 
   const others = [];
+  const names = ['Jheniffer', 'Kaique', 'Gustavo'];
   for (let n = 2; n <= 4; n++) {
     const p = await client();
     others.push(p);
-    write(p, { type: 'join', code, name: `Jogador${n}` });
+    write(p, { type: 'join', code, name: names[n - 2] });
     await message(p, m => m.type === 'joined');
   }
   const lobby = await message(p1, m => m.type === 'state' && m.players.length === 4);
   assert.equal(lobby.players.length, 4);
+  assert.equal(lobby.players.find(p => p.name === 'Mary').skinIndex, 0);
+  assert.equal(lobby.players.find(p => p.name === 'Jheniffer').skinIndex, 2);
+  assert.equal(lobby.players.find(p => p.name === 'Kaique').skinIndex, 1);
+  assert.equal(lobby.players.find(p => p.name === 'Gustavo').skinIndex, 3);
+
+  write(others[0], { type: 'skin', skinIndex: 0 });
+  const deniedSkin = await message(others[0], m => m.type === 'error' && /já foi escolhido/.test(m.message));
+  assert.match(deniedSkin.message, /outro jogador/);
 
   const p5 = await client();
   write(p5, { type: 'join', code, name: 'Excesso' });
@@ -97,9 +112,22 @@ test('limita a sala a quatro pessoas e inicia uma partida real', async () => {
   assert.equal(withBomb.bombs.length, 1);
   assert.equal(withBomb.board.length, 13);
   assert.equal(withBomb.board[0].length, 15);
-  assert.deepEqual(withBomb.players.map(p => p.skin).sort(), ['Cyber', 'Mística', 'Rubi', 'Solar']);
+  assert.deepEqual(withBomb.players.map(p => p.skin).sort(), ['Jheniffer', 'Kaique', 'Mary', 'Solar']);
   const firstOut = await message(p1, m => m.type === 'state' && m.players.find(p => p.name === 'Mary')?.place === 4);
   assert.equal(firstOut.players.find(p => p.name === 'Mary').alive, false);
   assert.equal(firstOut.participantsAtStart, 4);
   assert.equal((await (await fetch(`${BASE}/health`)).json()).rooms, 1);
+
+  // Simula a página recarregando: desconexões não podem apagar a sala na hora.
+  for (const p of [p1, ...others]) p.close();
+  await waitUntil(async () => (await (await fetch(`${BASE}/health`)).json()).players === 1);
+  const returning = await client();
+  write(returning, { type: 'join', code, name: 'Mary' });
+  await message(returning, m => m.type === 'joined' && m.code === code);
+  const restored = await message(returning, m => m.type === 'state' && m.phase === 'lobby');
+  assert.equal(restored.hostId, restored.players[0].id);
+  assert.equal(restored.players[0].skin, 'Mary');
+  write(returning, { type: 'leave' });
+  await message(returning, m => m.type === 'left');
+  assert.equal((await (await fetch(`${BASE}/health`)).json()).rooms, 0);
 });

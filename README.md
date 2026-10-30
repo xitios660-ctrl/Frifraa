@@ -4,9 +4,9 @@ Jogo **original inspirado no estilo de batalhas com bombas**, feito para jogar e
 
 ## Como jogar
 
-1. Abra o site, escolha seu apelido e crie uma sala — sem senha.
+1. Abra o site, escolha seu apelido e crie uma sala — sem senha. Se você digitar **Mary**, **Kaique** ou **Jheniffer**, o jogo já sugere a sua skin.
 2. Compartilhe o link ou o código de cinco letras com até três amigos.
-3. O anfitrião inicia quando todos entrarem (ou sozinho para treinar).
+3. Na sala, cada pessoa pode escolher uma das quatro skins (nenhuma pode ser repetida). O anfitrião inicia quando todos entrarem (ou sozinho para treinar).
 4. Vire o celular na horizontal para ver apenas a arena. Use o joystick à esquerda e o botão de bomba à direita. No computador, use setas/WASD e espaço.
 5. O primeiro eliminado fica em último e recebe a mensagem brincalhona de bebida na própria tela.
 
@@ -15,11 +15,17 @@ Jogo **original inspirado no estilo de batalhas com bombas**, feito para jogar e
 - **Android/Chrome:** toque em **Instalar** quando o convite aparecer.
 - **iPhone/Safari:** abra o menu **Compartilhar** e escolha **Adicionar à Tela de Início**.
 - O atalho abre o site em modo aplicativo, sem a barra normal do navegador. As partidas ainda exigem internet.
-- Em navegadores que permitem, o início da partida solicita tela cheia e rotação horizontal; caso contrário, aparece um aviso para virar manualmente o aparelho.
+- O site solicita tela cheia automaticamente **quando você toca em Criar sala ou Entrar** e novamente ao iniciar a partida. O jogo ocupa o viewport horizontal sem exigir o botão de tela cheia.
+- **Limitação do iPhone:** o Safari não oferece a API de tela cheia para páginas normais; para abrir sem barras, instale o app pela Tela de Início. A rotação da tela pode exigir que a pessoa vire o aparelho e desative o bloqueio de rotação.
+- Se a página recarregar, tentará voltar à sala anterior automaticamente; o servidor reserva a sala vazia por até 90 segundos para permitir a reconexão.
 
 ## Skins
 
-Existem quatro skins originais: **Mística, Rubi, Cyber e Solar**, uma por posição na arena. Para criar versões personalizadas futuramente, envie uma foto nítida de cada pessoa, preferencialmente de corpo inteiro, em pé, de frente, com rosto bem visível, iluminação uniforme e fundo simples. Fotos em **JPG, PNG ou HEIC** servem como referência; o resultado para o jogo será exportado em **PNG com transparência**, sem usar imagens de outros jogos.
+Há três skins personalizadas baseadas em fotos enviadas pela usuária: **Mary, Kaique e Jheniffer**. A quarta skin **Solar** permanece como personagem provisório. A seleção é independente da ordem em que os amigos entram na sala.
+
+Para personalizar o quarto personagem, envie uma foto nítida, preferencialmente de corpo inteiro, em pé, de frente, com rosto visível e boa iluminação. Fotos em **JPG, PNG ou HEIC** servem como referência. O personagem será criado como ilustração original com **fundo transparente**, sem reproduzir personagens de outros jogos.
+
+Os originais gerados foram exportados em PNG RGBA, e a cópia para o site foi otimizada em WebP transparente (320 × 320 px). O script `python scripts/prepare_skins.py nome=imagem.png` permite otimizar novas imagens.
 
 ## Instalar e executar
 
