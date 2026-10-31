@@ -203,10 +203,15 @@ function startGame(room) {
 function movePlayers(room, t) {
   const dt = Math.min(.05, Math.max(0, (t - (room.lastTick || t)) / 1000));
   room.lastTick = t;
+  const liveFlames=room.flames.filter(f=>f.expiresAt>t);
+  const tiles=new Set(liveFlames.map(f=>tileKey(f.x,f.y)));
+  const hazards=liveFlames.map(flame=>({flame,shapes:physics.flameShapes(flame,tiles)}));
   for (const p of room.players.values()) {
     if (!p.alive) continue;
+    p.flameContact=null;
+    const contact=hazards.length?(x,y)=>{if(!p.flameContact)p.flameContact=hazards.find(h=>physics.touchesFlame({x,y},h.flame,tiles,h.shapes))?.flame;}:undefined;
     if(p.bot) {
-      bots.update(room,p,t,dt,putBomb);
+      bots.update(room,p,t,dt,putBomb,contact);
     } else if(p.usingInputs) {
       p.inputBudget=Math.min(.1,p.inputBudget+dt);
       while(p.inputQueue.length) {
@@ -214,11 +219,11 @@ function movePlayers(room, t) {
         if(command.type==='bomb') {p.inputQueue.shift();putBomb(room,p);continue;}
         if(p.inputBudget+1e-9<STEP) break;
         p.inputQueue.shift();p.inputBudget-=STEP;p.motion={x:command.x,y:command.y};
-        physics.move(p,p.motion,STEP,room.board,room.bombs);p.ack=command.seq;
+        physics.move(p,p.motion,STEP,room.board,room.bombs,contact);p.ack=command.seq;
       }
     } else {
       if (t - (p.lastInput || 0) > 1200) p.motion = { x: 0, y: 0 };
-      physics.move(p, p.motion, dt, room.board, room.bombs);
+      physics.move(p, p.motion, dt, room.board, room.bombs,contact);
     }
     const key = tileKey(Math.round(p.x), Math.round(p.y));
     const bonus = room.powerups.get(key);
@@ -283,9 +288,11 @@ function explodeBomb(room, bomb, t) {
 }
 function applyFlames(room) {
   const eliminated = [];
+  const tiles=new Set(room.flames.map(f=>tileKey(f.x,f.y)));
+  const hazards=room.flames.map(flame=>({flame,shapes:physics.flameShapes(flame,tiles)}));
   for (const p of room.players.values()) {
     if (!p.alive) continue;
-    const flame = room.flames.find(f => Math.abs(f.x - p.x) < .72 && Math.abs(f.y - p.y) < .72);
+    const flame=(p.flameContact&&p.flameContact.expiresAt>now()?p.flameContact:null)||hazards.find(h=>physics.touchesFlame(p,h.flame,tiles,h.shapes))?.flame;
     if(flame && (p.invulnerableUntil||0)<=now()){
       if(p.shield){p.shield=0;p.invulnerableUntil=now()+1400;room.effects.push({kind:'pickup',x:Math.round(p.x),y:Math.round(p.y),startedAt:now(),expiresAt:now()+600});send(p.ws,{type:'shield'});}
       else eliminated.push({player:p,flame});

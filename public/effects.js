@@ -1,5 +1,6 @@
 /* Decorative animation follows authoritative world timestamps. Collision tiles never move. */
 (function(root){
+  const physics=typeof module!=='undefined'?require('./physics'):root.BombaPhysics;
   const SIZE=48,TAU=Math.PI*2;
   const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
   function progress(effect,time){return clamp((time-effect.startedAt)/(effect.expiresAt-effect.startedAt));}
@@ -37,15 +38,9 @@
     const age=time-f.startedAt,alpha=clamp((f.expiresAt-time)/100);
     const x=f.x*SIZE+24,y=f.y*SIZE+24;
     ctx.save();ctx.translate(x,y);ctx.globalAlpha=alpha;
-    const spread=17+Math.sin(age/35+f.x+f.y)*2;
     circle(ctx,0,0,25,'#ff6a3430');
-    round(ctx,-spread,-spread,spread*2,spread*2,11,'#fa5d39');
-    for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
-      if(tiles.has(`${f.x+dx},${f.y+dy}`)) {
-        round(ctx,dx?Math.min(0,dx*25):-13,dy?Math.min(0,dy*25):-13,dx?25:26,dy?25:26,5,'#fa5d39');
-        round(ctx,dx?Math.min(0,dx*25):-7,dy?Math.min(0,dy*25):-7,dx?25:14,dy?25:14,3,'#ffcd5d');
-      }
-    }
+    for(const s of physics.flameShapes(f,tiles))round(ctx,(s.x-f.x-s.hx)*SIZE,(s.y-f.y-s.hy)*SIZE,s.hx*2*SIZE,s.hy*2*SIZE,s.r*SIZE,'#fa5d39');
+    for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]])if(tiles.has(`${f.x+dx},${f.y+dy}`))round(ctx,dx?Math.min(0,dx*24):-7,dy?Math.min(0,dy*24):-7,dx?24:14,dy?24:14,3,'#ffcd5d');
     round(ctx,-12,-12,24,24,8,'#ffcd5d');
     round(ctx,-6,-6,12,12,4,'#fff5bf');
     for(let i=0;i<4;i++) {

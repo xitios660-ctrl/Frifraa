@@ -28,6 +28,7 @@ test('four directions select different atlas rows; missing artwork has a fallbac
     assert.ok(drawAtlas(ctx,atlas,0,{frame:2,facing},0,0));
   }
   assert.deepEqual(calls.map(args=>args[2]),[0,256,512,768]);
+  assert.ok(calls.every(args=>args[7]<=48&&args[8]<=48&&args[5]+24>=0&&args[6]+21>=0&&args[5]+24+args[7]<=48&&args[6]+21+args[8]<=48),'sprite must fit wholly inside one tile');
   assert.ok(calls.every(args=>args[1]===512 && args[3]===256 && args[4]===256));
   assert.equal(drawAtlas(ctx,{complete:false},0,{frame:1,facing:'down'},0,0),false);
 });

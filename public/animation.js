@@ -52,7 +52,7 @@
       if(right<left) return; // Incomplete atlas: retain the regular-grid fallback.
       frames.push({x:left,y:top,w:right-left+1,h:bottom-top+1});
     }
-    layouts.set(atlas,{frames,scale:60/Math.max(...frames.map(f=>f.h))});
+    layouts.set(atlas,{frames,scale:44/Math.max(...frames.map(f=>Math.max(f.w,f.h)))});
   }
   function drawAtlas(ctx, atlas, skin, pose, x, y) {
     if (!atlas?.complete || !atlas.naturalWidth) return false;
@@ -66,7 +66,7 @@
     if(frame) {
       const width=frame.w*layout.scale,height=frame.h*layout.scale;
       ctx.drawImage(atlas,frame.x,frame.y,frame.w,frame.h,-width/2,26-height,width,height);
-    } else ctx.drawImage(atlas,pose.frame*w,row*h,w,h,-27,-40,54,66);
+    } else ctx.drawImage(atlas,pose.frame*w,row*h,w,h,-22,-18,44,44);
     ctx.restore();
     return true;
   }

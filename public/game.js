@@ -706,21 +706,21 @@
     const skinIndex = getSkinIndex(p);
     ctx.save();
     if((p.invulnerableUntil||0)>worldTime)ctx.globalAlpha=.55+.35*Math.sin(worldTime/65);
-    if(p.shield){ctx.strokeStyle='#9cddff';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(x,y-4,25,34,0,0,Math.PI*2);ctx.stroke();}
+    if(p.shield){ctx.strokeStyle='#9cddff';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(x,y+3,23,23,0,0,Math.PI*2);ctx.stroke();}
     ctx.fillStyle = '#09071688';ctx.beginPath();ctx.ellipse(x,y+22,14,5,0,0,Math.PI*2);ctx.fill();
     if (!BombaAnimation.drawAtlas(ctx,walkAtlases[skinIndex],skinIndex,point.pose,x,y)) {
       // Keep the existing personal image visible while the atlas loads or if it fails.
       const sprite=sprites[skinIndex];
       if(sprite?.complete && sprite.naturalWidth) {
         if(skinIndex===3) BombaAnimation.drawAtlas(ctx,sprite,skinIndex,point.pose,x,y);
-        else ctx.drawImage(sprite,x-28,y-41,56,68);
+        else ctx.drawImage(sprite,x-22,y-18,44,44);
       }
       else { ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(x,y,14,0,Math.PI*2);ctx.fill(); }
     }
     ctx.restore();
     if(p.id===meId) {
       ctx.strokeStyle='#fff4aa';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(x,y+23,17,7,0,0,Math.PI*2);ctx.stroke();
-      ctx.fillStyle='#fff1a6';ctx.textAlign='center';ctx.font='900 11px sans-serif';ctx.fillText('VOCÊ',x,y-45);
+      ctx.fillStyle='#fff1a6';ctx.textAlign='center';ctx.font='900 11px sans-serif';ctx.fillText('VOCÊ',x,y-24);
     }
   }
   function drawMapHud(view,me){

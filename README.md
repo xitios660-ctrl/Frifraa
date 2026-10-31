@@ -192,3 +192,17 @@ morrer, a câmera acompanha outro sobrevivente automaticamente. Controles de jog
 ficam desativados para quem morreu. A revanche restaura a câmera e os controles.
 `node scripts/spectator-smoke.cjs` testa espera, bloqueio de início por convidados,
 eliminação em 4º e 3º lugares, mensagem, alternância de câmera e troca automática.
+
+
+### Personagem de uma casa e contato com a chama
+
+A colisão de movimento mede exatamente uma casa (48 × 48 px). Os sprites cabem
+inteiros nessa casa, com até 44 px de altura, mantendo as proporções originais.
+As viradas continuam graduais e o movimento encosta no limite do obstáculo sem
+sobrar um espaço fracionário que prenda o personagem ao lado de bombas.
+
+O dano usa a área do corpo dentro do desenho, sem incluir nome, sombra ou brilho.
+A chama sólida é definida pelas mesmas formas arredondadas no servidor e no
+renderizador: proximidade, brilho e cantos vazios não causam dano. O trajeto de
+cada movimento também é verificado para não atravessar fogo entre dois estados.
+O escudo continua absorvendo uma explosão conforme a regra do poder.

@@ -65,7 +65,7 @@ function decide(room,p,t){
  }
  return {path:route(room,p,t)||[],bomb:false};
 }
-function update(room,p,t,dt,putBomb){
+function update(room,p,t,dt,putBomb,onStep){
  const centred=Math.abs(p.x-Math.round(p.x))<.005&&Math.abs(p.y-Math.round(p.y))<.005;
  if(centred&&(!p.botTarget||t>=(p.botThinkAt||0))){
   const action=decide(room,p,t);p.botTarget=action.path[0]||null;p.botThinkAt=t+120;
@@ -78,7 +78,7 @@ function update(room,p,t,dt,putBomb){
  const remaining=Math.abs(direction.x?dx:dy);
  const before={x:p.x,y:p.y};
  p.motion=direction;
- physics.move(p,direction,Math.min(dt,remaining*p.speed/1000),room.board,room.bombs);
+ physics.move(p,direction,Math.min(dt,remaining*p.speed/1000),room.board,room.bombs,onStep);
  if(Math.hypot(p.x-target.x,p.y-target.y)<.005)p.botTarget=null;
  if(Math.hypot(p.x-before.x,p.y-before.y)<.00001){
   p.botStall=(p.botStall||0)+dt;
