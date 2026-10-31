@@ -260,10 +260,16 @@ itens, e mantém a classificação e o modo espectador. O servidor controla o te
 e envia as quedas aos quatro clientes. Bots antecipam essas casas como perigo
 permanente. A revanche restaura mapa e temporizador.
 
-Os sete poderes têm arte vetorial original em `public/items.js`: chama, bomba
-extra, bota, escudo, fantasma, broca e chama coroada. Eles flutuam com sombra,
-brilho e movimentos próprios de cada símbolo, sincronizados pelo relógio da
-partida. Fogo destrói imediatamente itens expostos, com partículas; itens
+Os sete poderes usam nove skins 3D pré-renderizadas, baseadas na referência
+do usuário, no atlas transparente `public/items/powerups-3d-v1.png`. A animação
+em `public/items.js` combina perspectiva suave, flutuação, sombras, reflexos
+mascarados pelo contorno e movimentos próprios de cada skin, sincronizados
+pelo relógio da partida. O coração pulsa, a luva golpeia, o patins oscila com
+rastro, as chamas soltam brasas, a bomba acende o visor e a caveira pulsa os olhos.
+A bomba colorida e a caveira são skins de atravessar bombas; os tanques e a luva
+são skins de bomba perfurante. As demais correspondem a bomba extra, alcance,
+velocidade, alcance máximo e escudo. A escolha visual é determinística por casa
+e rodada e vem no estado do servidor; os efeitos dos poderes permanecem iguais. Fogo destrói imediatamente itens expostos, com partículas; itens
 revelados por caixas aparecem depois que a chama daquela casa termina.
 
 `node scripts/collapse-smoke.cjs` inicia um servidor local e quatro navegadores
@@ -273,3 +279,7 @@ Não existe comando de acelerar tempo exposto no servidor publicado. Capturas
 de tela são salvas em `/tmp/bomba-items-mobile.png` e
 `/tmp/bomba-collapse-mobile.png`. Os testes de regras ficam em
 `test/collapse.test.js` e `test/item-fire.test.js`.
+
+`node scripts/item-art-smoke.cjs` verifica as nove skins com transparência,
+quadros animados distintos e reprodução idêntica no mesmo instante; salva a
+prévia em `/tmp/bomba-3d-items-preview.png`. O teste não modifica a partida.

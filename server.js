@@ -14,6 +14,7 @@ const physics = require('./public/physics');
 const {STEP} = require('./public/netcode');
 const bots=require('./bots');
 const collapse=require('./collapse');
+const itemArt=require('./public/items');
 const COLORS = ['#ac82ff', '#ff6e96', '#55dcff', '#ffd36f'];
 const SKINS = ['Mary', 'Kaique', 'Jheniffer', 'Gustavo'];
 const rooms = new Map();
@@ -118,7 +119,7 @@ function stateFor(room) {
     flames: room.flames.map(f => ({ x: f.x, y: f.y, startedAt:f.startedAt, expiresAt:f.expiresAt })),
     powerups: [...room.powerups.entries()].map(([key, type]) => {
       const [x, y] = key.split(',').map(Number);
-      return { x, y, type };
+      return { x, y, type, skin:itemArt.selectSkin(type,x,y,room.roundIndex) };
     }),
     countdown: room.phase === 'countdown' ? Math.ceil(Math.max(0, room.countdownUntil - now()) / 1000) : 0,
     winnerId: room.winnerId,
@@ -453,6 +454,7 @@ const FILES = {
   '/maps.js': ['maps.js', 'text/javascript; charset=utf-8'],
   '/camera.js': ['camera.js', 'text/javascript; charset=utf-8'],
   '/items.js': ['items.js', 'text/javascript; charset=utf-8'],
+  '/items/powerups-3d-v1.png': ['items/powerups-3d-v1.png', 'image/png'],
   '/effects.js': ['effects.js', 'text/javascript; charset=utf-8'],
   '/animation.js': ['animation.js', 'text/javascript; charset=utf-8'],
   '/skins/gustavo-walk-v1.png': ['skins/gustavo-walk-v1.png', 'image/png'],

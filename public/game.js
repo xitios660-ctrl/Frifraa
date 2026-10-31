@@ -2,6 +2,7 @@
   'use strict';
 
   const $ = id => document.getElementById(id);
+  const itemLegend=[...document.querySelectorAll('[data-item-skin]')].map(canvas=>({canvas,ctx:canvas.getContext('2d'),skin:canvas.dataset.itemSkin}));
   const canvas = $('arena');
   const ctx = canvas.getContext('2d');
   const SIZE = 48;
@@ -755,6 +756,7 @@
       }
       localPlayer=prediction.player;
     }
+    for(const entry of itemLegend)if(entry.canvas.offsetParent){entry.ctx.clearRect(0,0,80,80);entry.ctx.save();entry.ctx.translate(40,40);BombaItems.drawSkin(entry.ctx,entry.skin,time,74);entry.ctx.restore();}
     if (!state?.board || $('gamePanel').hidden) return;
     const worldTime=(state.serverTime||Date.now())+(performance.now()-stateReceivedAt);
     arenaPalette=BombaMaps.DEFS[state.mapId]||BombaMaps.DEFS.classic;
