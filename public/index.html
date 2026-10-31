@@ -71,7 +71,7 @@
       </section>
 
       <section id="roomPanel" class="room-panel" hidden>
-        <div class="section-head"><span class="section-eyebrow">A SALA DA TURMA</span><h2>Monte sua equipe<span class="accent-dot">.</span></h2><p>Todos entram neste mesmo endereço. O anfitrião inicia quando a turma estiver pronta. Bots completam as vagas livres.</p></div>
+        <div class="section-head"><span class="section-eyebrow">A SALA DA TURMA</span><h2>Monte sua equipe<span class="accent-dot">.</span></h2><p>Todos entram neste mesmo endereço. A partida só começa quando o anfitrião tocar em Iniciar. Até lá, todos podem entrar. Os bots ocupam apenas as vagas restantes.</p></div>
         <div class="room-grid">
           <div class="room-card">
             <div class="room-card-header"><span class="input-label">TODOS NO MESMO LUGAR</span><span class="room-open"><span class="status-dot live"></span> SALA ÚNICA</span></div>
@@ -100,8 +100,8 @@
         </div>
         <div class="game-layout">
           <div class="board-card">
-            <div class="board-topline"><div><span class="status-dot live"></span> <span id="roundStatus">PARTIDA EM ANDAMENTO</span></div><div class="board-actions"><button id="fullscreenBtn" class="icon-btn" type="button" aria-label="Tela cheia">⛶ <span>TELA</span></button><button id="soundBtn" class="icon-btn" type="button" aria-label="Ativar ou desativar som">♫ <span id="soundLabel">SOM</span></button></div></div>
-            <div class="canvas-wrap"><canvas id="arena" width="720" height="624" aria-label="Tabuleiro de Bomberman"></canvas><div id="roundOverlay" class="round-overlay" hidden><div id="overlayIcon" class="overlay-icon">💣</div><h3 id="overlayTitle">Prepare-se</h3><p id="overlayText">A partida vai começar!</p><button id="playAgainBtn" class="primary-btn overlay-btn" type="button" hidden>Jogar novamente <span>↻</span></button></div></div>
+            <div class="board-topline"><div><span class="status-dot live"></span> <span id="roundStatus">PARTIDA EM ANDAMENTO</span></div><div class="board-actions"><button id="spectateBtn" class="icon-btn" type="button" title="Toque para acompanhar o próximo sobrevivente" hidden>👁 TELAR</button><button id="fullscreenBtn" class="icon-btn" type="button" aria-label="Tela cheia">⛶ <span>TELA</span></button><button id="soundBtn" class="icon-btn" type="button" aria-label="Ativar ou desativar som">♫ <span id="soundLabel">SOM</span></button></div></div>
+            <div class="canvas-wrap"><canvas id="arena" width="720" height="624" aria-label="Tabuleiro de Bomberman"></canvas><div id="roundOverlay" class="round-overlay" hidden><div id="overlayIcon" class="overlay-icon">💣</div><h3 id="overlayTitle">Prepare-se</h3><p id="overlayText">A partida vai começar!</p><button id="watchBtn" class="primary-btn overlay-btn" type="button" hidden>👁 Telar jogadores</button><button id="playAgainBtn" class="primary-btn overlay-btn" type="button" hidden>Jogar novamente <span>↻</span></button></div></div>
             <div id="mobileHud" class="mobile-hud" aria-label="Jogadores na arena"></div>
             <div class="touch-controls" id="touchControls">
               <div class="joystick-wrap">

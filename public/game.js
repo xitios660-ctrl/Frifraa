@@ -57,6 +57,8 @@
   let flameSoundActive = false;
   let deferredInstallPrompt = null;
   let penaltyNotified = false;
+  let watching=false;
+  let spectatingId=null;
   let triedAutoFullscreen = false;
   const heldKeys = new Set();
   let touchDirection = null;
@@ -199,7 +201,7 @@
     heldKeys.clear();
     touchDirection = null;
     lastDirection = '0,0';
-    penaltyNotified = false;
+    penaltyNotified = false;watching=false;spectatingId=null;document.body.classList.remove('spectating','eliminated');
     sessionStorage.removeItem(storedRoomKey);
     savedRoom = null;
     history.replaceState(null, '', location.pathname);
@@ -318,10 +320,21 @@
     $('playerCount').textContent = `${state.players.length} / 4`;
     const isHost = state.hostId === meId;
     const me = state.players.find(p => p.id === meId);
-    const isLast = state.participantsAtStart > 1 && me?.place === state.participantsAtStart;
+    const survivors=state.players.filter(p=>p.alive&&p.id!==meId);
+    const canWatch=!!me&&!me.alive&&state.phase==='playing'&&survivors.length>0;
+    if(!canWatch){watching=false;spectatingId=null;}
+    else if(!survivors.some(p=>p.id===spectatingId)){spectatingId=survivors[0].id;if(watching)camera=null;}
+    const observed=survivors.find(p=>p.id===spectatingId);
+    $('spectateBtn').hidden=!canWatch;
+    $('spectateBtn').textContent=watching?`👁 ${observed?.name||'Jogador'} ↻`:'👁 TELAR';
+    $('watchBtn').hidden=!canWatch;
+    document.body.classList.toggle('spectating',watching);
+    document.body.classList.toggle('eliminated',!!me&&!me.alive);
+
     $('startBtn').disabled = !isHost;
-    $('startBtn').textContent = 'Iniciar partida ▶';
-    $('hostHint').textContent = isHost ? 'Você é o anfitrião. Inicie quando quiser: bots completam as vagas até quatro jogadores.' : 'Aguardando o anfitrião iniciar a partida.';
+    const missingBots=Math.max(0,4-state.players.filter(p=>!p.bot).length);
+    $('startBtn').textContent=isHost?`Iniciar partida${missingBots?` · +${missingBots} ${missingBots===1?'bot':'bots'}`:''} ▶`:'Aguardando anfitrião';
+    $('hostHint').textContent = isHost ? 'A sala aguarda você tocar em Iniciar. Convide seus amigos; só então os bots completam as vagas.' : 'Aguardando o anfitrião iniciar a partida.';
     updatePlayers();
 
     if (state.phase === 'lobby') {
@@ -332,7 +345,7 @@
       const repeat = $('playAgainBtn');
       repeat.hidden = true;
       if (state.phase === 'countdown') {
-        penaltyNotified = false;
+        penaltyNotified = false;watching=false;spectatingId=null;
         overlay.hidden = false;
         $('overlayIcon').textContent = '⚡';
         $('overlayTitle').textContent = String(state.countdown || 'JÁ!');
@@ -340,22 +353,15 @@
         $('roundStatus').textContent = 'PREPARANDO ARENA';
       } else if (state.phase === 'playing') {
         overlay.hidden = false;
-        if (me && !me.alive) {
-          if (isLast) {
-            showLastPlace();
-          } else {
-            $('overlayIcon').textContent = '💥';
-            $('overlayTitle').textContent = 'VOCÊ EXPLODIU!';
-            $('overlayText').textContent = me.place ? `Você ficou em ${me.place}º lugar. Acompanhe a partida!` : 'Acompanhe os sobreviventes até o fim.';
-          }
-        } else {
-          overlay.hidden = true;
-        }
-        $('roundStatus').textContent = 'PARTIDA EM ANDAMENTO';
+        if(me&&!me.alive){
+          showDeathMessage(me);
+          overlay.hidden=watching;
+        }else overlay.hidden=true;
+        $('roundStatus').textContent=watching?`TELANDO: ${observed?.name||'Jogador'}`:'PARTIDA EM ANDAMENTO';
       } else if (state.phase === 'finished') {
         overlay.hidden = false;
         const winner = state.players.find(p => p.id === state.winnerId);
-        if (isLast) showLastPlace();
+        if (me&&!me.alive) showDeathMessage(me);
         else {
           $('overlayIcon').textContent = winner ? '🏆' : '💥';
           $('overlayTitle').textContent = winner?.id === meId ? 'VOCÊ VENCEU!' : (winner ? `${winner.name} VENCEU!` : 'EMPATE!');
@@ -379,12 +385,14 @@
       lastSoundKey = key;
     }
   }
-  function showLastPlace() {
+  function showDeathMessage(me) {
     $('overlayIcon').textContent = '🍻';
     $('overlayTitle').textContent = 'VISH, SE FODEU!';
-    $('overlayText').textContent = 'Vai ter que beber! Você ficou em último lugar. 😂';
+    const place=me?.place?` Você ficou em ${me.place}º lugar.`:'';
+    const winner=state.phase==='finished'?state.players.find(p=>p.id===state.winnerId):null;
+    $('overlayText').textContent=`VAI TER QUE BEBER! 😂${place}${winner?` ${winner.name} venceu.`:''}`;
     if (!penaltyNotified) {
-      penaltyNotified = true;
+      penaltyNotified = true;heldKeys.clear();touchDirection=null;lastDirection='0,0';
       if (soundOn) beep(165, .35, 'sawtooth');
       if (navigator.vibrate) navigator.vibrate([100, 60, 100]);
     }
@@ -392,6 +400,18 @@
   // Enter the one shared room on the same gesture that unlocks audio/fullscreen.
   $('createBtn').addEventListener('click', () => {requestImmersive();entering=safeSend({type:'enter',name:getName()});});
   nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') $('createBtn').click(); });
+  function watchNext(){
+    if(!state||state.phase!=='playing'||state.players.find(p=>p.id===meId)?.alive)return;
+    const alive=state.players.filter(p=>p.alive&&p.id!==meId);
+    if(!alive.length)return;
+    const index=alive.findIndex(p=>p.id===spectatingId);
+    spectatingId=alive[watching?(index+1)%alive.length:Math.max(0,index)].id;
+    watching=true;camera=null;
+    heldKeys.clear();touchDirection=null;lastDirection='0,0';
+    updateUi();
+  }
+  $('watchBtn').addEventListener('click',watchNext);
+  $('spectateBtn').addEventListener('click',watchNext);
   $('mapSelect').addEventListener('change',()=>safeSend({type:'map',mapId:$('mapSelect').value}));
   $('startBtn').addEventListener('click', () => {
     requestImmersive();
@@ -531,7 +551,7 @@
     ArrowLeft: [-1, 0], KeyA: [-1, 0],
     ArrowRight: [1, 0], KeyD: [1, 0]
   };
-  function isPlaying() { return state && state.phase === 'playing' && currentCode; }
+  function isPlaying() { return state && state.phase === 'playing' && currentCode && state.players.some(p=>p.id===meId&&p.alive); }
   function syncDirection() {
     let dir = touchDirection;
     if (!dir) {
@@ -713,12 +733,12 @@
       }
     }
     const x=canvas.width-minimap.width-12;
-    const local=displayPositions.get(meId)||me;
-    const y=local&&local.y*SIZE+24-view.y>canvas.height/2?10:canvas.height-minimap.height-28;
+    const local=displayPositions.get(me?.id)||me;
+    const y=local&&local.y*SIZE+24-view.y>canvas.height/2?(watching?64:10):canvas.height-minimap.height-28;
     roundRect(x-5,y-5,minimap.width+10,minimap.height+26,5,'#090719d9');
     ctx.drawImage(minimap,x,y);
     ctx.strokeStyle='#ffffffa0';ctx.lineWidth=1;ctx.strokeRect(x+view.x/SIZE*4,y+view.y/SIZE*4,canvas.width/SIZE*4,canvas.height/SIZE*4);
-    for(const p of state.players)if(p.alive)circle(x+(p.x+.5)*4,y+(p.y+.5)*4,p.id===meId?2.7:2,p.id===meId?'#fff':p.color);
+    for(const p of state.players)if(p.alive)circle(x+(p.x+.5)*4,y+(p.y+.5)*4,p.id===me?.id?2.7:2,p.id===me?.id?'#fff':p.color);
     ctx.textAlign='left';ctx.textBaseline='middle';ctx.font='bold 10px system-ui';ctx.fillStyle='#eaddff';ctx.fillText(state.mapName||'Arena',x+2,y+minimap.height+10);
     if(me){
       const powers=[`🔥 ${me.range}`,`💣 ${me.bombs}`,`⚡ ${Math.round(170/me.speed*100)}%`];
@@ -747,7 +767,8 @@
     const worldTime=(state.serverTime||Date.now())+(performance.now()-stateReceivedAt);
     arenaPalette=BombaMaps.DEFS[state.mapId]||BombaMaps.DEFS.classic;
     const me=state.players.find(p=>p.id===meId);
-    const focus=me?.alive?(displayPositions.get(meId)||localPlayer||me):state.players.find(p=>p.alive)||me;
+    const target=state.players.find(p=>p.id===spectatingId&&p.alive)||state.players.find(p=>p.alive);
+    const focus=me?.alive?(displayPositions.get(meId)||localPlayer||me):(target&&(displayPositions.get(target.id)||target))||me;
     if(focus)camera=BombaCamera.follow(camera,{x:focus.x*SIZE+24,y:focus.y*SIZE+24},{width:canvas.width,height:canvas.height},{width:state.width*SIZE,height:state.height*SIZE},frameDt);
     const view=camera||{x:0,y:0};
     ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -768,7 +789,7 @@
     for(const effect of state.effects||[])BombaEffects.debris(ctx,effect,worldTime);
     for(const p of [...(state.players||[])].sort((a,b)=>a.y-b.y||a.slot-b.slot))drawPlayer(p,time,worldTime);
     ctx.restore();
-    drawMapHud(view,me);
+    drawMapHud(view,watching?target||me:me);
 
   }
 

@@ -10,6 +10,9 @@ test('1–4 humans get exactly four participants; rematches free bot slots and t
   const sockets=Array.from({length:humans},(_,i)=>ws(humans+'-'+i));
   const room=newRoom('TESTA',sockets[0],'Mary');
   for(const socket of sockets.slice(1))onMessage(socket,JSON.stringify({type:'enter',name:'Amigo'}));
+  for(const socket of sockets.slice(1))onMessage(socket,JSON.stringify({type:'start'}));
+  assert.equal(room.phase,'lobby');assert.equal(room.players.size,humans);
+  assert.ok([...room.players.values()].every(p=>!p.bot));
   onMessage(sockets[0],JSON.stringify({type:'start'}));
   assert.equal(room.players.size,4);
   assert.equal([...room.players.values()].filter(p=>p.bot).length,4-humans);

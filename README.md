@@ -8,7 +8,7 @@ Jogo **original inspirado no estilo de batalhas com bombas**, feito para jogar e
 2. Todos abrem o mesmo endereço e tocam em Entrar na sala; não é preciso código.
 3. Na sala, cada pessoa pode escolher uma das quatro skins (nenhuma pode ser repetida). O anfitrião inicia quando todos entrarem (ou sozinho para enfrentar três bots).
 4. Vire o celular na horizontal para ver apenas a arena. Use o joystick à esquerda e o botão de bomba à direita. No computador, use setas/WASD e espaço.
-5. O primeiro eliminado fica em último e recebe a mensagem brincalhona de bebida na própria tela.
+5. Assim que seu personagem morrer, aparece a mensagem de beber, em qualquer colocação. Toque em Telar jogadores para acompanhar os sobreviventes; o botão com o nome permite alternar entre eles.
 
 ## Instalar como aplicativo (PWA)
 
@@ -177,3 +177,18 @@ A IA considera o alcance e a perfuração ao calcular áreas perigosas. Poderes 
 reiniciados na revanche. As viradas nas quinas procuram as duas faixas adjacentes
 livres e deslocam o personagem gradualmente, sem alterar sua velocidade nem
 teletransportá-lo; testes cobrem voltas repetidas ao redor de um bloco.
+
+
+### Espera pelo anfitrião e espectador
+
+Entrar na sala não inicia a partida. A sala permanece no lobby sem bots até o
+anfitrião tocar em Iniciar; apenas nesse momento o servidor preenche as vagas e
+começa a contagem. A revanche também depende do anfitrião.
+
+Toda eliminação de um humano mostra imediatamente “VISH, SE FODEU! VAI TER QUE
+BEBER!”, com sua colocação. Telar jogadores fecha o aviso e libera a visão da arena;
+o botão no topo alterna entre os sobreviventes (incluindo bots). Se o observado
+morrer, a câmera acompanha outro sobrevivente automaticamente. Controles de jogo
+ficam desativados para quem morreu. A revanche restaura a câmera e os controles.
+`node scripts/spectator-smoke.cjs` testa espera, bloqueio de início por convidados,
+eliminação em 4º e 3º lugares, mensagem, alternância de câmera e troca automática.

@@ -60,3 +60,7 @@ footer{display:flex;align-items:center;justify-content:space-between;gap:16px;bo
 @media(pointer:coarse) and (orientation:portrait){body.play-mode{overflow:hidden}body.play-mode .site-shell{width:100%;max-width:none}body.play-mode .game-panel{padding:0;min-height:100dvh}body.play-mode .board-card{border:0;border-radius:0}body.play-mode .topbar,body.play-mode .game-header,body.play-mode .game-sidebar,body.play-mode footer{display:none!important}}
 
 .map-select{width:100%;padding:13px;border:1px solid #695282;background:#161126;color:#f7f2ff;border-radius:10px;font:inherit}.map-select:disabled{opacity:.65}
+
+#spectateBtn{max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}body.spectating .mobile-hud{display:none!important}body.spectating .touch-controls{display:none!important}
+
+body.eliminated .touch-controls{display:none!important}
