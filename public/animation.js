@@ -24,12 +24,30 @@
     const {data} = context.getImageData(0,0,canvas.width,canvas.height);
     const frames=[];
     for(let row=0;row<4;row++) for(let col=0;col<4;col++) {
-      let left=canvas.width,top=canvas.height,right=-1,bottom=-1;
-      for(let y=Math.round(row*canvas.height/4);y<Math.round((row+1)*canvas.height/4);y++) {
-        for(let x=Math.round(col*canvas.width/4);x<Math.round((col+1)*canvas.width/4);x++) {
-          if(data[(y*canvas.width+x)*4+3]<100) continue;
-          left=Math.min(left,x);right=Math.max(right,x);top=Math.min(top,y);bottom=Math.max(bottom,y);
+      const x0=Math.round(col*canvas.width/4),x1=Math.round((col+1)*canvas.width/4);
+      const y0=Math.round(row*canvas.height/4),y1=Math.round((row+1)*canvas.height/4);
+      const width=x1-x0,height=y1-y0;
+      const visited=new Uint8Array(width*height),queue=new Int32Array(width*height);
+      let largest=0,left=canvas.width,top=canvas.height,right=-1,bottom=-1;
+      // Ignore tiny fragments from a neighbouring drawing at the grid boundary.
+      for(let seed=0;seed<visited.length;seed++) {
+        if(visited[seed]) continue;
+        const sx=seed%width,sy=Math.floor(seed/width);
+        if(data[((y0+sy)*canvas.width+x0+sx)*4+3]<100) continue;
+        let head=0,tail=1,l=x1,r=x0,t=y1,b=y0;
+        queue[0]=seed;visited[seed]=1;
+        while(head<tail) {
+          const pixel=queue[head++],px=pixel%width,py=Math.floor(pixel/width);
+          l=Math.min(l,x0+px);r=Math.max(r,x0+px);t=Math.min(t,y0+py);b=Math.max(b,y0+py);
+          for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++) {
+            const nx=px+dx,ny=py+dy;
+            if(nx<0||ny<0||nx>=width||ny>=height) continue;
+            const next=ny*width+nx;
+            if(visited[next]||data[((y0+ny)*canvas.width+x0+nx)*4+3]<100) continue;
+            visited[next]=1;queue[tail++]=next;
+          }
         }
+        if(tail>largest) { largest=tail;left=l;right=r;top=t;bottom=b; }
       }
       if(right<left) return; // Incomplete atlas: retain the regular-grid fallback.
       frames.push({x:left,y:top,w:right-left+1,h:bottom-top+1});
