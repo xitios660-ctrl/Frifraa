@@ -1,0 +1,16 @@
+{
+  "name": "Cofrinho Party — Desafio dos 200 Depósitos",
+  "short_name": "Cofrinho Party",
+  "description": "Os quatro cofrinhos da turma do Bomba Party",
+  "start_url": "/?person=mary",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#100d24",
+  "theme_color": "#100d24",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

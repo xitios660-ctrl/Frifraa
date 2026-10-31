@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#100d24" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Cofrinho Party" />
+  <meta name="description" content="Desafio dos 200 depósitos: quatro cofrinhos individuais, cada valor salvo com segurança." />
+  <title>🐷 Cofrinho Party — Desafio dos 200 Depósitos</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icon-180.png" />
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="stars" aria-hidden="true"></div>
+  <header class="site-header">
+    <a class="back-link" href="https://bomberman-i7lu.onrender.com/" aria-label="Voltar ao Bomba Party"><span>←</span> <span>VOLTAR AO JOGO</span></a>
+    <div class="header-brand"><span class="tiny-pig">🐽</span><span>COFRINHO <b>PARTY</b></span></div>
+    <span class="header-label">DESAFIO DOS 200</span>
+  </header>
+
+  <main>
+    <section class="intro">
+      <div class="intro-text">
+        <p class="eyebrow">✦ QUATRO AMIGOS. QUATRO COFRINHOS. UMA META.</p>
+        <h1>O DESAFIO<br/>DOS <span>200</span><br/>DEPÓSITOS<span class="dot">.</span></h1>
+        <p class="intro-subtitle">Escolha seu personagem e vá enchendo seu cofrinho de verdade. Cada quadradinho corresponde ao valor em reais que você guardou.</p>
+        <div class="intro-tags"><span>💰 R$ 1 a R$ 200</span><span>🔒 Progresso individual</span><span>✨ Cada valor vale uma vez</span></div>
+      </div>
+      <div class="pig-scene" aria-hidden="true">
+        <div class="pig-halo"></div><div class="pig-glow"></div>
+        <div class="floating-coin coin-one">R$</div><div class="floating-coin coin-two">★</div><div class="floating-coin coin-three">R$</div>
+        <div class="pig-emoji">🐷</div>
+        <div class="scene-floor"></div>
+        <div class="floating-label">R$ 20.100 <small>POR PESSOA</small></div>
+      </div>
+    </section>
+
+    <section class="dashboard" aria-labelledby="choose-title">
+      <div class="section-title-row"><div><p class="section-kicker">ESCOLHA O SEU COFRINHO</p><h2 id="choose-title">Nossa turma <span>✦</span></h2></div><div class="live-indicator"><span class="live-dot"></span> DADOS SALVOS ONLINE</div></div>
+      <div class="character-grid" id="characters" aria-label="Selecionar personagem">
+        <button type="button" class="character-card selected" data-person="mary" aria-pressed="true"><span class="avatar-halo purple"><img src="https://bomberman-i7lu.onrender.com/skins/mary.webp" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"/><span class="emoji-fallback" hidden>💜</span></span><strong>Mary</strong><small data-character-count="mary">0 / 200 depósitos</small><span class="character-bar"><i data-character-bar="mary"></i></span></button>
+        <button type="button" class="character-card" data-person="kaique" aria-pressed="false"><span class="avatar-halo blue"><img src="https://bomberman-i7lu.onrender.com/skins/kaique.webp" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"/><span class="emoji-fallback" hidden>👓</span></span><strong>Kaique</strong><small data-character-count="kaique">0 / 200 depósitos</small><span class="character-bar"><i data-character-bar="kaique"></i></span></button>
+        <button type="button" class="character-card" data-person="jheniffer" aria-pressed="false"><span class="avatar-halo pink"><img src="https://bomberman-i7lu.onrender.com/skins/jheniffer.webp" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"/><span class="emoji-fallback" hidden>🌸</span></span><strong>Jheniffer</strong><small data-character-count="jheniffer">0 / 200 depósitos</small><span class="character-bar"><i data-character-bar="jheniffer"></i></span></button>
+        <button type="button" class="character-card" data-person="gustavo" aria-pressed="false"><span class="avatar-halo amber"><img src="https://bomberman-i7lu.onrender.com/skins/gustavo.webp" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"/><span class="emoji-fallback" hidden>😎</span></span><strong>Gustavo</strong><small data-character-count="gustavo">0 / 200 depósitos</small><span class="character-bar"><i data-character-bar="gustavo"></i></span></button>
+      </div>
+    </section>
+
+    <section class="saving-card" aria-labelledby="cofrinho-title">
+      <div class="saving-top">
+        <div class="saving-person"><div class="small-orb" id="personIcon">💜</div><div><div class="section-kicker">COFRINHO DE</div><h2 id="cofrinho-title">Mary</h2></div></div>
+        <span class="goal-pill">🎯 META: R$ 20.100</span>
+      </div>
+
+      <div class="numbers">
+        <div class="number-card"><span>JÁ GUARDADO</span><strong id="savedAmount" aria-live="polite">R$ 0,00</strong><small>Valor registrado</small></div>
+        <div class="number-card"><span>FALTA GUARDAR</span><strong id="missingAmount">R$ 20.100,00</strong><small>Até completar o desafio</small></div>
+        <div class="number-card green"><span>DEPÓSITOS FEITOS</span><strong id="depositCount">0 <em>/ 200</em></strong><small id="percentageText">0% do desafio</small></div>
+      </div>
+      <div class="progress-wrapper"><div class="progress-head"><span>PROGRESSO DO DESAFIO</span><strong id="percentProgress">0%</strong></div><div class="progress-rail"><div id="progressFill" class="progress-fill"></div></div></div>
+
+      <div class="deposits-heading"><div><p class="section-kicker">CADA BOTÃO É UM DEPÓSITO</p><h3>Marque o que você guardou 💸</h3><p>Guardou R$ 25? Aperte o <b>25</b>. O botão fica verde e o valor é salvo no seu cofrinho. Toque novamente para desmarcar.</p></div><span class="count-chip"><span id="remainingCount">200</span> FALTANDO</span></div>
+      <div id="status" class="status-banner" role="status" aria-live="polite">Conectando seu cofrinho ao MongoDB...</div>
+      <div id="depositGrid" class="deposit-grid" aria-label="Valores dos 200 depósitos"></div>
+      <div class="grid-legend"><span><i class="legend-circle untouched"></i> Ainda não guardado</span><span><i class="legend-circle completed"></i> Já guardado ✓</span></div>
+    </section>
+
+    <section class="footer-cta"><div class="footer-pig">🐽</div><div><strong>200 depósitos. Um objetivo incrível.</strong><p>Marque apenas valores realmente guardados. O cofrinho registra seu progresso, mas não movimenta dinheiro de verdade.</p></div><a href="https://bomberman-i7lu.onrender.com/">Voltar ao Bomba Party ↗</a></section>
+  </main>
+  <footer class="page-footer">FEITO PARA A TURMA DO BOMBA PARTY <span>💜</span> MARY · KAIQUE · JHENIFFER · GUSTAVO</footer>
+</body>
+</html>
