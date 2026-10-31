@@ -356,3 +356,31 @@ simuladas: não comprovam autenticação, créditos ou disponibilidade do Grok r
 inválidos e falhas do provedor. `node scripts/social-bots-smoke.cjs` testa um
 humano com três bots autônomos, balões, amizade e espectador no navegador móvel.
 A captura fica em `/tmp/bomba-bot-balloons-mobile.png`.
+
+
+### Gemini para os bots
+
+O mesmo controlador aceita `BOT_AI_PROVIDER=gemini`, `GEMINI_API_KEY` e
+`GEMINI_MODEL=gemini-3.1-flash-lite`. A chave fica somente no servidor e segue
+no cabeçalho `x-goog-api-key`, nunca na URL, no cliente ou no repositório.
+O modelo tem uma faixa gratuita documentada pelo Google, sujeita às cotas e
+ao plano da conta; o projeto não ativa faturamento ou migra automaticamente
+para modelos pagos.
+
+Cada bot envia seu próprio contexto e recebe uma intenção/fala estruturada em
+JSON. O motor local continua responsável pelo movimento e pela segurança.
+Para Gemini, o aplicativo limita o conjunto dos bots a 4 consultas por minuto
+e 60 por dia UTC por processo, com até 4 por bot em cada rodada e um intervalo
+de 60 segundos entre consultas daquele bot. Esses contadores sobrevivem a
+revanche e troca de sala no mesmo processo; reiniciar o serviço reinicia os
+contadores locais. As cotas do Google continuam valendo independentemente deles.
+Timeout de 6 segundos, erros e cota esgotada preservam as decisões locais.
+Não há troca automática para Grok.
+
+`bot-providers.js` implementa os protocolos Gemini/Grok e o limite compartilhado.
+`test/gemini.test.js` valida isolamento de contextos, formato das respostas,
+limites e fallback. `/health` informa também a quantidade de respostas aceitas
+e a data da última resposta, sem credenciais. `scripts/live-gemini-smoke.cjs`
+é uma verificação opcional contra a API real: inicia uma partida, confirma
+respostas Gemini de três bots e uma fala desenhada na tela móvel. Ela consome
+consultas da conta configurada. Captura em `/tmp/bomba-gemini-live-mobile.png`.
