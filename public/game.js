@@ -31,12 +31,17 @@
   let meId = null;
   let currentCode = null;
   let state = null;
-  let soundOn = false;
+  let soundOn = true;
+  let musicStep = 0;
+  let lastFrame = 0;
+  let frameDt = 1 / 60;
+  let localPlayer = null;
   let audioCtx = null;
   let disconnected = false;
   let toastTimer;
   let lastPhase = null;
   let lastSoundKey = '';
+  let flameSoundActive = false;
   let deferredInstallPrompt = null;
   let penaltyNotified = false;
   let triedAutoFullscreen = false;
@@ -136,6 +141,15 @@
       if (currentCode && msg.code !== currentCode) return;
       currentCode = msg.code;
       state = msg;
+      const authoritative = msg.players.find(p => p.id === meId);
+      if (authoritative) {
+        if (!localPlayer || msg.phase !== 'playing' || Math.hypot(localPlayer.x-authoritative.x,localPlayer.y-authoritative.y) > .8) localPlayer = {...authoritative};
+        else {
+          localPlayer.x += (authoritative.x-localPlayer.x)*.25;
+          localPlayer.y += (authoritative.y-localPlayer.y)*.25;
+          localPlayer.speed = authoritative.speed;
+        }
+      }
       updateUi();
     }
   }
@@ -149,6 +163,7 @@
     $('rotateOverlay').hidden = !(onPhone && !$('gamePanel').hidden && matchMedia('(orientation: portrait)').matches);
   }
   function requestImmersive() {
+    if (soundOn) beep(440, .04);
     triedAutoFullscreen = true;
     if (document.fullscreenElement || !document.documentElement.requestFullscreen) return;
     try {
@@ -170,7 +185,8 @@
     sessionStorage.removeItem(storedRoomKey);
     savedRoom = null;
     history.replaceState(null, '', location.pathname);
-    show('homePanel');
+    $('soundLabel').textContent = soundOn ? 'LIGADO' : 'SOM';
+  show('homePanel');
     if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
   }
   function getSkinIndex(p) { return Number.isInteger(p.skinIndex) ? p.skinIndex : p.slot; }
@@ -326,11 +342,14 @@
     if (lastPhase !== state.phase) {
       if (lastPhase === 'countdown' && state.phase === 'playing') syncDirection();
       if (soundOn && state.phase === 'playing') beep(520, .12, 'triangle');
+      if (soundOn && state.phase === 'finished') fanfare(state.winnerId === meId);
       lastPhase = state.phase;
     }
     if (soundOn && state.phase === 'playing') {
       const key = state.bombs.map(b => `${b.x},${b.y}`).join('|');
-      if (lastSoundKey && key.length < lastSoundKey.length && state.flames.length > 0) beep(120, .16, 'sawtooth');
+      if (state.flames.length && !flameSoundActive) beep(90, .28, 'sawtooth');
+      flameSoundActive = state.flames.length > 0;
+      if (key.length > lastSoundKey.length) beep(220,.06,'square');
       lastSoundKey = key;
     }
   }
@@ -424,8 +443,30 @@
     soundOn = !soundOn;
     $('soundLabel').textContent = soundOn ? 'LIGADO' : 'SOM';
     if (soundOn) beep(660, .12);
+    else audioCtx?.suspend();
   });
 
+  function fanfare(won) {
+    (won ? [523,659,784,1047] : [392,349,294,196]).forEach((f,i) => setTimeout(() => { if(soundOn) beep(f,.23,'square'); },i*180));
+  }
+  // Original arpeggiated chiptune, scheduled only after a browser audio gesture.
+  setInterval(() => {
+    if (!soundOn || audioCtx?.state !== 'running' || state?.phase !== 'playing') return;
+    const melody = [64,67,71,76,71,67,62,67,65,69,72,77,72,69,62,69];
+    const note = melody[musicStep++ % melody.length];
+    beep(440 * 2 ** ((note-69)/12), .10, 'square');
+    if (musicStep % 4 === 0) beep(110 * (musicStep % 8 ? 1 : 1.5), .16, 'triangle');
+  }, 150);
+  setInterval(() => {
+    if (isPlaying()) {
+      const [x,y] = lastDirection.split(',').map(Number);
+      safeSend({type:'move',x,y});
+    }
+  }, 250);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { heldKeys.clear(); touchDirection = null; lastDirection = '0,0'; if (isPlaying()) safeSend({type:'move',x:0,y:0}); audioCtx?.suspend(); }
+    else if (soundOn) audioCtx?.resume();
+  });
   const keyToDirection = {
     ArrowUp: [0, -1], KeyW: [0, -1],
     ArrowDown: [0, 1], KeyS: [0, 1],
@@ -509,6 +550,7 @@
   $('touchBomb').addEventListener('pointerdown', event => {
     event.preventDefault();
     if (isPlaying()) {
+      if (soundOn) beep(240,.06,'square');
       safeSend({ type: 'bomb' });
       if (navigator.vibrate) navigator.vibrate(20);
     }
@@ -585,19 +627,22 @@
     const wobble = 1 + Math.sin(time / 90 + f.x * 7) * .075;
     ctx.save();ctx.translate(x, y);ctx.scale(wobble, wobble);
     ctx.shadowBlur = 24;ctx.shadowColor = '#ff8653';
-    roundRect(-20, -20, 40, 40, 12, '#ff684f');
+    roundRect(-20, -12, 40, 24, 8, '#ff684f');
+    roundRect(-12, -20, 24, 40, 8, '#ff684f');
     ctx.shadowBlur = 0;
     roundRect(-14, -14, 28, 28, 8, '#ffd071');
     roundRect(-6, -6, 12, 12, 4, '#fff2c4');
     ctx.restore();
   }
   function drawPlayer(p, time) {
-    const targetX = p.x * SIZE + 24, targetY = p.y * SIZE + 21;
+    const moving = p.id === meId ? lastDirection !== '0,0' : !!(p.motion?.x || p.motion?.y);
+    const position = p.id === meId && localPlayer && state.phase === 'playing' ? localPlayer : p;
+    const targetX = position.x * SIZE + 24, targetY = position.y * SIZE + 21;
     let point = displayPositions.get(p.id);
     if (!point) { point = { x: targetX, y: targetY }; displayPositions.set(p.id, point); }
-    point.x += (targetX - point.x) * .32;
-    point.y += (targetY - point.y) * .32;
-    const x = point.x, y = point.y + Math.sin(time / 160 + p.slot) * 1.4;
+    point.x += (targetX - point.x) * (p.id === meId ? 1 : 1-Math.exp(-frameDt*35));
+    point.y += (targetY - point.y) * (p.id === meId ? 1 : 1-Math.exp(-frameDt*35));
+    const x = point.x, y = point.y + (moving ? Math.sin(time / 55) * 2 : 0);
     if (!p.alive) return;
     const color = p.color;
     const skinIndex = getSkinIndex(p);
@@ -608,7 +653,16 @@
       ctx.save();
       ctx.shadowColor = `${color}99`;
       ctx.shadowBlur = 9;
-      ctx.drawImage(sprite, x - 28, y - 41, 56, 68);
+      ctx.translate(x, y);
+      const facing = position.facing || p.facing || 'down';
+      const stride = moving ? Math.sin(time / 65) : 0;
+      ctx.rotate(stride * .035);
+      ctx.scale(facing === 'left' ? -1 : 1, 1);
+      // Preserve the portrait; animate its gait with alternating foot/body slices.
+      ctx.drawImage(sprite, 0, 0, sprite.naturalWidth, sprite.naturalHeight*.72, -28,-41,56,49);
+      const half = sprite.naturalWidth/2;
+      for(let foot=0;foot<2;foot++) ctx.drawImage(sprite,foot*half,sprite.naturalHeight*.72,half,sprite.naturalHeight*.28,-28+foot*28,8+(foot?stride:-stride)*2,28,19);
+      if (facing === 'up') { ctx.fillStyle = '#20183322'; ctx.fillRect(-20,-35,40,35); }
       ctx.restore();
       if (p.id === meId) {
         ctx.strokeStyle = '#fff4aa';
@@ -678,6 +732,12 @@
   }
   function draw(time) {
     requestAnimationFrame(draw);
+    frameDt = Math.min(.05, (time - (lastFrame || time)) / 1000);
+    lastFrame = time;
+    if (localPlayer && isPlaying() && state.players.find(p=>p.id===meId)?.alive) {
+      const [x,y] = lastDirection.split(',').map(Number);
+      BombaPhysics.move(localPlayer,{x,y},frameDt,state.board,state.bombs);
+    }
     if (!state?.board || $('gamePanel').hidden) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     for (let y = 0; y < state.height; y++) {
@@ -694,6 +754,7 @@
     for (const p of state.players || []) drawPlayer(p, time);
   }
 
+  $('soundLabel').textContent = soundOn ? 'LIGADO' : 'SOM';
   show('homePanel');
   drawEmpty();
   connect();

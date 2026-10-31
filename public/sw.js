@@ -1,5 +1,5 @@
-const CACHE = 'bomba-party-v6-skins';
-const SHELL = ['/', '/styles.css', '/game.js', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/icon-180.png', '/skins/mary.webp', '/skins/kaique.webp', '/skins/jheniffer.webp'];
+const CACHE = 'bomba-party-v7-continuous';
+const SHELL = ['/', '/physics.js', '/styles.css', '/game.js', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/icon-180.png', '/skins/mary.webp', '/skins/kaique.webp', '/skins/jheniffer.webp'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -18,7 +18,7 @@ self.addEventListener('fetch', event => {
     event.respondWith(fetch(event.request).catch(() => caches.match('/')));
     return;
   }
-  if (new URL(event.request.url).pathname === '/game.js' || new URL(event.request.url).pathname === '/styles.css') {
+  if (new URL(event.request.url).pathname === '/physics.js' || new URL(event.request.url).pathname === '/game.js' || new URL(event.request.url).pathname === '/styles.css') {
     event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
     return;
   }

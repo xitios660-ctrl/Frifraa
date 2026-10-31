@@ -9,7 +9,8 @@ const { WebSocketServer, WebSocket } = require('ws');
 const WIDTH = 15;
 const HEIGHT = 13;
 const PORT = Number(process.env.PORT) || 3000;
-const TICK_MS = 50;
+const TICK_MS = 1000 / 60;
+const physics = require('./public/physics');
 const COLORS = ['#ac82ff', '#ff6e96', '#55dcff', '#ffd36f'];
 const SKINS = ['Mary', 'Kaique', 'Jheniffer', 'Solar'];
 const SPAWNS = [
@@ -98,7 +99,7 @@ function newRoom(code, ws, name) {
 function playerView(p) {
   return {
     id: p.id, name: p.name, slot: p.slot, skinIndex: p.skinIndex, color: p.color, skin: p.skin,
-    x: p.x, y: p.y, alive: p.alive, bombs: p.bombs,
+    x: p.x, y: p.y, motion: p.motion, facing: p.facing, alive: p.alive, bombs: p.bombs,
     range: p.range, speed: p.speed, kills: p.kills, place: p.place
   };
 }
@@ -170,6 +171,7 @@ function makeBoard() {
   return board;
 }
 function startGame(room) {
+  room.lastTick = now();
   room.board = makeBoard();
   room.bombs = [];
   room.flames = [];
@@ -188,22 +190,14 @@ function startGame(room) {
   }
   broadcast(room);
 }
-function isBlocked(room, x, y) {
-  if (room.board[y]?.[x] !== 0) return true;
-  if (room.bombs.some(b => b.x === x && b.y === y)) return true;
-  return room.players.size > 1 && [...room.players.values()].some(p => p.alive && p.x === x && p.y === y);
-}
 function movePlayers(room, t) {
+  const dt = Math.min(.05, Math.max(0, (t - (room.lastTick || t)) / 1000));
+  room.lastTick = t;
   for (const p of room.players.values()) {
-    if (!p.alive || !p.motion || (!p.motion.x && !p.motion.y)) continue;
-    if (t - p.lastMove < p.speed) continue;
-    p.lastMove = t;
-    const nx = p.x + p.motion.x;
-    const ny = p.y + p.motion.y;
-    if (isBlocked(room, nx, ny)) continue;
-    p.x = nx;
-    p.y = ny;
-    const key = tileKey(nx, ny);
+    if (!p.alive) continue;
+    if (t - (p.lastInput || 0) > 1200) p.motion = { x: 0, y: 0 };
+    physics.move(p, p.motion, dt, room.board, room.bombs);
+    const key = tileKey(Math.round(p.x), Math.round(p.y));
     const bonus = room.powerups.get(key);
     if (bonus) {
       if (bonus === 'range') p.range = Math.min(6, p.range + 1);
@@ -216,9 +210,9 @@ function movePlayers(room, t) {
 }
 function putBomb(room, player) {
   if (room.phase !== 'playing' || !player.alive || player.activeBombs >= player.bombs) return;
-  if (room.bombs.some(b => b.x === player.x && b.y === player.y)) return;
+  if (room.bombs.some(b => b.x === Math.round(player.x) && b.y === Math.round(player.y))) return;
   room.bombs.push({
-    x: player.x, y: player.y, ownerId: player.id,
+    x: Math.round(player.x), y: Math.round(player.y), ownerId: player.id,
     range: player.range, explodeAt: now() + 2250
   });
   player.activeBombs++;
@@ -259,7 +253,7 @@ function applyFlames(room) {
   const eliminated = [];
   for (const p of room.players.values()) {
     if (!p.alive) continue;
-    const flame = room.flames.find(f => f.x === p.x && f.y === p.y);
+    const flame = room.flames.find(f => Math.abs(f.x - p.x) < .72 && Math.abs(f.y - p.y) < .72);
     if (flame) eliminated.push({ player: p, flame });
   }
   // Quem sai primeiro fica em último; eliminações no mesmo tick empatam.
@@ -302,7 +296,7 @@ function tick() {
       applyFlames(room);
       checkWinner(room);
     }
-    if (t - room.lastBroadcast >= 100 && (room.phase === 'playing' || room.phase === 'countdown')) broadcast(room);
+    if (t - room.lastBroadcast >= 33 && (room.phase === 'playing' || room.phase === 'countdown')) broadcast(room);
   }
 }
 function onMessage(ws, raw) {
@@ -366,6 +360,7 @@ function onMessage(ws, raw) {
     if (room.phase !== 'playing' || !player.alive) return;
     if (![ -1, 0, 1 ].includes(x) || ![ -1, 0, 1 ].includes(y) || Math.abs(x) + Math.abs(y) > 1) return;
     player.motion = { x, y };
+    player.lastInput = now();
   } else if (message.type === 'bomb') {
     putBomb(room, player);
   }
@@ -375,6 +370,7 @@ const FILES = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/index.html': ['index.html', 'text/html; charset=utf-8'],
   '/styles.css': ['styles.css', 'text/css; charset=utf-8'],
+  '/physics.js': ['physics.js', 'text/javascript; charset=utf-8'],
   '/game.js': ['game.js', 'text/javascript; charset=utf-8'],
   '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json; charset=utf-8'],
   '/sw.js': ['sw.js', 'text/javascript; charset=utf-8'],

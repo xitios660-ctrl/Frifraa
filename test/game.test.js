@@ -118,6 +118,22 @@ test('limita a sala a quatro pessoas e inicia uma partida real', async () => {
   assert.equal(firstOut.participantsAtStart, 4);
   assert.equal((await (await fetch(`${BASE}/health`)).json()).rooms, 1);
 
+  // The remaining clients see the same authoritative positions and explosions.
+  write(others[0], { type: 'move', x: -1, y: 0 });
+  const moving = await message(others[0], m => m.type === 'state' && m.phase === 'playing' && m.players.some(p => p.name === 'Jheniffer' && !Number.isInteger(p.x)));
+  const moved = moving.players.find(p => p.name === 'Jheniffer');
+  assert.ok(moved.x < 13 && moved.x > 12);
+  write(others[0], { type: 'move', x: 0, y: 0 });
+  for (const p of others.slice(0, 2)) write(p, { type: 'bomb' });
+  const finished = await message(p1, m => m.type === 'state' && m.phase === 'finished');
+  assert.equal(finished.players.filter(p => p.alive).length, 1);
+  assert.equal(finished.players.find(p => p.alive).place, 1);
+  for (const p of others) await message(p, m => m.type === 'state' && m.phase === 'finished' && m.winnerId === finished.winnerId);
+  write(p1, { type: 'start' });
+  await waitUntil(() => p1.messages.filter(m => m.type === 'state' && m.phase === 'countdown').length > 1);
+  const restart = p1.messages.filter(m => m.type === 'state' && m.phase === 'countdown').at(-1);
+  assert.ok(restart.players.every(p => p.alive && p.place === null));
+
   // Simula a página recarregando: desconexões não podem apagar a sala na hora.
   for (const p of [p1, ...others]) p.close();
   await waitUntil(async () => (await (await fetch(`${BASE}/health`)).json()).players === 1);
