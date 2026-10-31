@@ -11,7 +11,7 @@ const assert=require('node:assert/strict');
   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(process.env.BOMBA_BASE||'https://bomberman-i7lu.onrender.com');await page.waitForFunction(()=>document.querySelector('#serverDot').classList.contains('live'));
   await page.locator('#entryCharacters [data-skin-index="3"]').click();await page.click('#createBtn');await page.locator('#roomPanel').waitFor({state:'visible'});await page.click('#startBtn');
-  await page.waitForFunction(()=>window.latestState?.phase==='playing');assert.equal(await page.evaluate(()=>window.latestState.botAI.provider),'gemini');
+  await page.waitForFunction(()=>window.latestState?.phase==='playing');const baseline=await page.evaluate(()=>window.latestState.botAI.requestsToday);assert.equal(await page.evaluate(()=>window.latestState.botAI.provider),'gemini');
   await page.locator('#touchBomb').dispatchEvent('pointerdown',{pointerId:63,pointerType:'touch'});
   await page.waitForFunction(()=>Object.keys(window.geminiBots).length===3,null,{timeout:25000});
   await page.waitForFunction(()=>document.querySelector('#watchBtn').hidden===false);await page.click('#watchBtn');
@@ -22,8 +22,8 @@ const assert=require('node:assert/strict');
   }
   assert.ok(visible,'a real Gemini message must be drawn in a speech bubble');
   const result=await page.evaluate(()=>({bots:Object.keys(window.geminiBots).length,api:window.latestState.botAI}));
-  assert.ok(result.api.successfulReplies>=3);assert.equal(result.api.model,'gemini-3.1-flash-lite');assert.ok(result.api.requestsToday<=4);assert.deepEqual(errors,[]);
+  assert.ok(result.api.successfulReplies>=3);assert.equal(result.api.model,'gemini-3.1-flash-lite');assert.ok(result.api.requestsToday-baseline<=4);assert.deepEqual(errors,[]);
   await page.screenshot({path:'/tmp/bomba-gemini-live-mobile.png'});
   console.log('PASS: three independent bots received real Gemini replies; messages drawn on mobile; spectator and game remain responsive; server request limits enforced; no JS errors');
- }finally{await browser.close();}
+ }catch(error){console.log('GEMINI DIAGNOSTICS',JSON.stringify(await browser.contexts()[0]?.pages()[0]?.evaluate(()=>({bots:window.geminiBots,api:window.latestState?.botAI,players:window.latestState?.players.map(p=>({id:p.id,name:p.name,alive:p.alive,source:p.botSpeech?.source}))}))).catch(()=>({})));throw error;}finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1)});

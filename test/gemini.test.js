@@ -25,7 +25,7 @@ test('three Gemini bots send independent memories and apply their own successful
  ai.reset(r,1000);r.players.get('p1').botMind.memory.push('only-bot-one');ai.tick(r,3000);await flush();
  assert.equal(requests.length,3);assert.equal(new Set(requests.map(p=>p.you.id)).size,3);assert.equal(requests.filter(p=>p.memory.includes('only-bot-one')).length,1);
  for(const p of r.players.values())if(p.bot){assert.equal(p.botSpeech.source,'gemini');assert.equal(p.botMind.targetId,'p0');assert.ok(p.botSpeech.text.includes(p.id));}
- assert.equal(ai.status().successfulReplies,3);assert.equal(ai.status().provider,'gemini');assert.equal(ai.status().model,'gemini-3.1-flash-lite');assert.equal(ai.status().requestsToday,3);
+ assert.equal(ai.status().successfulReplies,3);assert.equal(ai.status().outcomes.httpErrors,0);assert.equal(ai.status().provider,'gemini');assert.equal(ai.status().model,'gemini-3.1-flash-lite');assert.equal(ai.status().requestsToday,3);
 });
 test('a new round does not reset the shared API allowance, and exhausted allowance leaves local play running',async()=>{
  const r=room();let requests=0;const ai=createController({provider:'gemini',apiKey:'test-secret',fetchImpl:async()=>{requests++;return{ok:true,json:async()=>({candidates:[{content:{parts:[{text:JSON.stringify(plan('p1'))}]}}]})};}});
@@ -34,6 +34,6 @@ test('a new round does not reset the shared API allowance, and exhausted allowan
 });
 test('Gemini quota errors keep the local controller active without trying another provider or paid model',async()=>{
  const r=room();const requests=[];const ai=createController({provider:'gemini',apiKey:'test-secret',fetchImpl:async url=>{requests.push(url);return{ok:false,status:429};}});
- ai.reset(r,1000);ai.tick(r,3000);await flush();assert.equal(ai.status().state,'rate-limited');assert.equal(ai.status().successfulReplies,0);
+ ai.reset(r,1000);ai.tick(r,3000);await flush();assert.equal(ai.status().state,'rate-limited');assert.equal(ai.status().successfulReplies,0);assert.equal(ai.status().outcomes.httpErrors,3);assert.equal(ai.status().lastHttpStatus,429);
  assert.ok(requests.every(url=>url.includes('generativelanguage.googleapis.com')&&url.includes('gemini-3.1-flash-lite')));assert.ok([...r.players.values()].filter(p=>p.bot).every(p=>p.botSpeech.source==='local'));
 });

@@ -14,7 +14,8 @@ function createController(options={}){
  const timeoutMs=options.timeoutMs||(provider==='gemini'?6000:2500),intervalMs=options.intervalMs||(provider==='gemini'?60000:10000),maxCalls=options.maxCalls||(provider==='gemini'?4:12);
  const budget=providers.createBudget({perMinute:provider==='gemini'?4:12,perDay:provider==='gemini'?60:200});
  let remoteState=enabled&&apiKey?'ready':'local',pauseUntil=0,successfulReplies=0,lastSuccessAt=null;
- function status(){return{provider:enabled&&apiKey?provider:'local',configured:!!apiKey,enabled:!!enabled,state:remoteState,model:enabled&&apiKey?model:null,successfulReplies,lastSuccessAt,...budget.status()};}
+ const outcomes={httpErrors:0,requestErrors:0,timeouts:0,discardedReplies:0,cancelled:0};let lastHttpStatus=null;
+ function status(){return{provider:enabled&&apiKey?provider:'local',configured:!!apiKey,enabled:!!enabled,state:remoteState,model:enabled&&apiKey?model:null,successfulReplies,lastSuccessAt,outcomes:{...outcomes},lastHttpStatus,...budget.status()};}
  function remember(mind,event){mind.memory.push(clean(event));if(mind.memory.length>6)mind.memory.shift();}
  function say(room,p,text,t,kind='think',toId=null,source='local',force=false){
   text=clean(text);if(!text)return;
@@ -97,11 +98,11 @@ function createController(options={}){
   try{
    const spec=providers.buildRequest(provider,apiKey,model,snapshot(room,p,t));
    const response=await fetchImpl(spec.url,{method:'POST',signal:abort.signal,headers:spec.headers,body:JSON.stringify(spec.body)});
-   if(!response.ok){remoteState=response.status===401||response.status===403?'auth-error':response.status===402?'credits-required':response.status===429?'rate-limited':response.status===404?'model-unavailable':'unavailable';pauseUntil=Date.now()+(response.status===429?60000:30000);return;}
+   if(!response.ok){outcomes.httpErrors++;lastHttpStatus=response.status;remoteState=response.status===401||response.status===403?'auth-error':response.status===402?'credits-required':response.status===429?'rate-limited':response.status===404?'model-unavailable':'unavailable';pauseUntil=Date.now()+(response.status===429?60000:30000);return;}
    const plan=providers.parseResponse(provider,await response.json());
-   if(room.phase!=='playing'||room.botRoundToken!==token||room.players.get(p.id)!==p||!p.alive||p.botMind!==m)return;
+   if(room.phase!=='playing'||room.botRoundToken!==token||room.players.get(p.id)!==p||!p.alive||p.botMind!==m){outcomes.discardedReplies++;return;}
    if(applyPlan(room,p,plan,Date.now())){m.remoteUntil=Date.now()+intervalMs+3000;remoteState='ready';successfulReplies++;lastSuccessAt=Date.now();}
-  }catch{if(!abort.cancelled&&(!abort.signal.aborted||room.phase==='playing')){remoteState=abort.signal.aborted?'timeout':'unavailable';pauseUntil=Date.now()+30000;}}
+  }catch{if(abort.cancelled)outcomes.cancelled++;else if(abort.signal.aborted)outcomes.timeouts++;else outcomes.requestErrors++;if(!abort.cancelled&&(!abort.signal.aborted||room.phase==='playing')){remoteState=abort.signal.aborted?'timeout':'unavailable';pauseUntil=Date.now()+30000;}}
   finally{clearTimeout(timer);if(p.botMind===m)m.pending=null;}
  }
  function tick(room,t){
