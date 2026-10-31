@@ -74,7 +74,7 @@
       </section>
 
       <section id="roomPanel" class="room-panel" hidden>
-        <div class="section-head"><span class="section-eyebrow">A SALA DA TURMA</span><h2>Monte sua equipe<span class="accent-dot">.</span></h2><p>Todos entram neste mesmo endereço. A partida só começa quando o anfitrião tocar em Iniciar. Até lá, todos podem entrar. Os bots ocupam apenas as vagas restantes.</p></div>
+        <div class="section-head"><span class="section-eyebrow">A SALA DA TURMA</span><h2>Monte sua equipe<span class="accent-dot">.</span></h2><p>Todos entram neste mesmo endereço. A partida só começa quando o anfitrião tocar em Iniciar. Até lá, todos podem entrar. Bots só entram se o anfitrião ativar a opção abaixo.</p></div>
         <div class="room-grid">
           <div class="room-card">
             <div class="room-card-header"><span class="input-label">TODOS NO MESMO LUGAR</span><span class="room-open"><span class="status-dot live"></span> SALA ÚNICA</span></div>
@@ -82,6 +82,7 @@
             <button id="shareBtn" class="primary-btn" type="button"><span>Copiar link do jogo</span><span>↗</span></button>
             <label class="input-label" for="mapSelect" style="margin-top:22px">TIPO DE MAPA</label>
             <select id="mapSelect" class="map-select"><option value="rotation">Rodízio a cada partida</option><option value="classic">Arena Clássica</option><option value="jungle">Ruínas da Selva</option><option value="ice">Palácio de Gelo</option><option value="factory">Fábrica Neon</option></select>
+            <label class="bot-option" for="botsToggle"><input id="botsToggle" type="checkbox"><span><strong>Completar vagas com bots de IA</strong><small>Desativado por padrão. Só o anfitrião pode escolher.</small></span></label>
             <p class="room-tip">Abra este mesmo site nos quatro celulares. Ninguém precisa digitar código. Após 1min30s, paredes caem em espiral e fecham a arena.</p>
           </div>
           <div class="player-card">
@@ -89,7 +90,7 @@
             <div id="lobbyPlayers" class="lobby-players"></div>
             <div class="picker-heading">🎭 ESCOLHA SEU PERSONAGEM <span>um por jogador</span></div>
             <div id="skinPicker" class="skin-picker" aria-label="Escolher personagem da partida"></div>
-            <p class="skin-tip">💙 Mary · 👓 Kaique · 🌸 Jheniffer · 😎 Gustavo. Cada jogador pode escolher a sua. Bots completam a partida ao iniciar.</p>
+            <p class="skin-tip">💙 Mary · 👓 Kaique · 🌸 Jheniffer · 😎 Gustavo. Cada jogador pode escolher a sua. Bots são opcionais e só entram com autorização do anfitrião.</p>
             <div class="room-buttons"><button id="startBtn" class="primary-btn" type="button">Iniciar partida <span>▶</span></button><button id="leaveBtn" class="ghost-btn" type="button">Sair da sala</button></div>
             <p id="hostHint" class="small-hint"></p>
           </div>
@@ -104,7 +105,7 @@
         <div class="game-layout">
           <div class="board-card">
             <div class="board-topline"><div><span class="status-dot live"></span> <span id="roundStatus">PARTIDA EM ANDAMENTO</span></div><span id="collapseTimer" class="collapse-timer" role="timer" aria-label="Tempo até o fechamento da arena">ARENA FECHA EM 1:30</span><div class="board-actions"><button id="spectateBtn" class="icon-btn" type="button" title="Toque para acompanhar o próximo sobrevivente" hidden>👁 TELAR</button><button id="fullscreenBtn" class="icon-btn" type="button" aria-label="Tela cheia">⛶ <span>TELA</span></button><button id="soundBtn" class="icon-btn" type="button" aria-label="Ativar ou desativar som">♫ <span id="soundLabel">SOM</span></button></div></div>
-            <div class="canvas-wrap"><canvas id="arena" width="720" height="624" aria-label="Tabuleiro de Bomberman"></canvas><div id="roundOverlay" class="round-overlay" hidden><div id="overlayIcon" class="overlay-icon">💣</div><h3 id="overlayTitle">Prepare-se</h3><p id="overlayText">A partida vai começar!</p><button id="watchBtn" class="primary-btn overlay-btn" type="button" hidden>👁 Telar jogadores</button><button id="playAgainBtn" class="primary-btn overlay-btn" type="button" hidden>Jogar novamente <span>↻</span></button></div></div>
+            <div class="canvas-wrap"><canvas id="arena" width="720" height="624" aria-label="Tabuleiro de Bomberman"></canvas><div id="roundOverlay" class="round-overlay" hidden><div id="overlayIcon" class="overlay-icon">💣</div><h3 id="overlayTitle">Prepare-se</h3><p id="overlayText">A partida vai começar!</p><button id="watchBtn" class="primary-btn overlay-btn" type="button" hidden>👁 Telar jogadores</button><label id="rematchBotsOption" class="bot-option rematch-bots" for="rematchBotsToggle" hidden><input id="rematchBotsToggle" type="checkbox"><span><strong>Usar bots na próxima partida</strong></span></label><button id="playAgainBtn" class="primary-btn overlay-btn" type="button" hidden>Jogar novamente <span>↻</span></button></div></div>
             <div id="mobileHud" class="mobile-hud" aria-label="Jogadores na arena"></div>
             <div class="touch-controls" id="touchControls">
               <div class="joystick-wrap">

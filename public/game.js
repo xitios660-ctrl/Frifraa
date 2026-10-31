@@ -361,10 +361,14 @@
     document.body.classList.toggle('spectating',watching);
     document.body.classList.toggle('eliminated',!!me&&!me.alive);
 
-    $('startBtn').disabled = !isHost;
-    const missingBots=Math.max(0,4-state.players.filter(p=>!p.bot).length);
-    $('startBtn').textContent=isHost?`Iniciar partida${missingBots?` · +${missingBots} ${missingBots===1?'bot':'bots'}`:''} ▶`:'Aguardando anfitrião';
-    $('hostHint').textContent = isHost ? 'A sala aguarda você tocar em Iniciar. Convide seus amigos; só então os bots completam as vagas.' : 'Aguardando o anfitrião iniciar a partida.';
+    const humans=state.players.filter(p=>!p.bot).length;
+    const canChoose=isHost&&['lobby','finished'].includes(state.phase);
+    for(const id of ['botsToggle','rematchBotsToggle']){$(id).checked=!!state.botsEnabled;$(id).disabled=!canChoose;}
+    $('rematchBotsOption').hidden=!(isHost&&state.phase==='finished');
+    $('startBtn').disabled = !isHost||state.phase!=='lobby';
+    const missingBots=state.botsEnabled?Math.max(0,4-humans):0;
+    $('startBtn').textContent=isHost?`${!state.botsEnabled&&humans===1?'Iniciar treino':'Iniciar partida'}${missingBots?` · +${missingBots} ${missingBots===1?'bot':'bots'}`:''} ▶`:'Aguardando anfitrião';
+    $('hostHint').textContent = isHost ? (state.botsEnabled?'Bots ativados. As vagas só serão completadas depois que você tocar em Iniciar.':'Sem bots. Aguarde seus amigos ou inicie um treino sozinho. A partida só começa quando você tocar em Iniciar.') : 'Aguardando o anfitrião iniciar. Só ele escolhe se haverá bots.';
     updatePlayers();
 
     if (state.phase === 'lobby') {
@@ -442,6 +446,7 @@
   }
   $('watchBtn').addEventListener('click',watchNext);
   $('spectateBtn').addEventListener('click',watchNext);
+  for(const id of ['botsToggle','rematchBotsToggle'])$(id).addEventListener('change',event=>safeSend({type:'bot-settings',enabled:event.target.checked}));
   $('mapSelect').addEventListener('change',()=>safeSend({type:'map',mapId:$('mapSelect').value}));
   $('startBtn').addEventListener('click', () => {
     requestImmersive();

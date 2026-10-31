@@ -1,7 +1,7 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const {spawnSync}=require('node:child_process');
-test('1–4 humans get exactly four participants; rematches free bot slots and the last human cleans up',()=>{
+test('explicit host opt-in gives 1–4 humans exactly four participants; rematches free bot slots and the last human cleans up',()=>{
  const script=`
  const assert=require('node:assert/strict');
  const {newRoom,onMessage,rooms}=require('./server');
@@ -13,6 +13,8 @@ test('1–4 humans get exactly four participants; rematches free bot slots and t
   for(const socket of sockets.slice(1))onMessage(socket,JSON.stringify({type:'start'}));
   assert.equal(room.phase,'lobby');assert.equal(room.players.size,humans);
   assert.ok([...room.players.values()].every(p=>!p.bot));
+  onMessage(sockets[0],JSON.stringify({type:'bot-settings',enabled:true}));
+  assert.equal(room.phase,'lobby');
   onMessage(sockets[0],JSON.stringify({type:'start'}));
   assert.equal(room.players.size,4);
   assert.equal([...room.players.values()].filter(p=>p.bot).length,4-humans);

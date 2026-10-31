@@ -12,7 +12,7 @@ async function until(fn,timeout=10000){const start=Date.now();while(Date.now()-s
   await page.goto(base);await page.waitForFunction(()=>document.querySelector('#serverDot').classList.contains('live'));
   await page.locator('#entryCharacters [data-skin-index="3"]').click();await page.click('#createBtn');
   await page.locator('#roomPanel').waitFor({state:'visible'});
-  await page.click('#startBtn');
+  await page.locator('#botsToggle').check();await page.click('#startBtn');
   await until(()=>states.some(s=>s.phase==='countdown'));
   const start=states.find(s=>s.phase==='countdown');
   assert.equal(start.players.length,4);assert.equal(start.players.filter(p=>p.bot).length,3);

@@ -6,7 +6,7 @@ Jogo **original inspirado no estilo de batalhas com bombas**, feito para jogar e
 
 1. Abra o site, escolha **Mary**, **Kaique**, **Jheniffer** ou **Gustavo** e entre na sala — sem nome, código ou senha. Personagens ocupados ficam marcados como em uso.
 2. Todos abrem o mesmo endereço e tocam em Entrar na sala; não é preciso código.
-3. Na sala, cada pessoa pode escolher uma das quatro skins (nenhuma pode ser repetida). O anfitrião inicia quando todos entrarem (ou sozinho para enfrentar três bots).
+3. Na sala, cada pessoa pode escolher uma das quatro skins (nenhuma pode ser repetida). O anfitrião escolhe se quer completar vagas com bots (opção desativada por padrão) e toca em Iniciar quando quiser.
 4. Vire o celular na horizontal para ver apenas a arena. Use o joystick à esquerda e o botão de bomba à direita. No computador, use setas/WASD e espaço.
 5. Assim que seu personagem morrer, aparece a mensagem de beber, em qualquer colocação. Toque em Telar jogadores para acompanhar os sobreviventes; o botão com o nome permite alternar entre eles.
 
@@ -139,10 +139,12 @@ Os eventos de efeito são compartilhados e expiram no servidor; a renderização
 respeita a validade mesmo quando a rodada já terminou.
 
 
-### Bots automáticos
+### Bots opcionais
 
-Ao iniciar, as vagas livres são preenchidas até quatro participantes: um humano
-recebe três bots, dois recebem dois, três recebem um e quatro jogam sem bots.
+Somente se o anfitrião ativar “Completar vagas com bots de IA”, as vagas livres
+são preenchidas ao tocar em Iniciar: um humano recebe três bots, dois recebem
+dois e três recebem um. A opção começa desativada. Sem ela, jogam somente os
+humanos conectados; uma pessoa pode iniciar um treino sozinha.
 Os bots usam as skins livres, aparecem com nome “Bot …” e ícone de robô, e são
 simulados somente no servidor. Todos veem seus movimentos, bombas e eliminações.
 
@@ -181,8 +183,8 @@ teletransportá-lo; testes cobrem voltas repetidas ao redor de um bloco.
 ### Espera pelo anfitrião e espectador
 
 Entrar na sala não inicia a partida. A sala permanece no lobby sem bots até o
-anfitrião tocar em Iniciar; apenas nesse momento o servidor preenche as vagas e
-começa a contagem. A revanche também depende do anfitrião.
+anfitrião tocar em Iniciar; apenas nesse momento o servidor preenche vagas se
+a opção de bots estiver ativada e começa a contagem. A revanche também depende do anfitrião.
 
 Toda eliminação de um humano mostra imediatamente “VISH, SE FODEU! VAI TER QUE
 BEBER!”, com sua colocação. Telar jogadores fecha o aviso e libera a visão da arena;
@@ -415,3 +417,26 @@ de bombas da IA e quatro bots escolhendo um único destino.
 uma casa com atraso de rede; as posições e o mapa controlados existem apenas
 no processo de teste. O smoke Gemini real também verifica as ordens recebidas
 e a ausência de sobreposição nos estados da partida.
+
+
+### Escolha de bots e início manual
+
+`botsEnabled` começa falso em cada sala. Apenas o anfitrião pode alterar essa
+opção, no lobby ou no resultado antes da revanche. Alterar a opção não cria
+bots nem dispara a contagem. Apenas um pedido de Iniciar do anfitrião começa
+a rodada. Sem bots, a quantidade de participantes é a de humanos conectados;
+com bots, o servidor completa até quatro. Não há reposição automática durante
+a partida. A opção também aparece no resultado para o anfitrião escolher a
+próxima rodada, que sempre exige tocar em Jogar novamente.
+
+Ao trocar de anfitrião ou esvaziar a sala, a autorização de bots volta a falso.
+Uma rodada já autorizada continua até terminar; o novo anfitrião escolhe os
+bots da próxima. A configuração é validada no servidor mesmo se um convidado
+tentar enviar mensagens diretas. Sem bots, não são feitas consultas de IA.
+
+`test/host-start.test.js` testa padrão desativado, lobby sem início automático,
+permissões, revanche, troca de anfitrião e treino solo.
+`node scripts/host-options-smoke.cjs` verifica as mesmas escolhas na interface
+móvel com dois jogadores reais: partida sem bots e revanche manual com bots.
+A captura é salva em `/tmp/bomba-host-options-mobile.png`. Os smokes específicos
+de bots agora ativam a opção explicitamente antes de iniciar.

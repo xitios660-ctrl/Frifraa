@@ -10,7 +10,7 @@ const assert=require('node:assert/strict');
   });
   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(process.env.BOMBA_BASE||'https://bomberman-i7lu.onrender.com');await page.waitForFunction(()=>document.querySelector('#serverDot').classList.contains('live'));
-  await page.locator('#entryCharacters [data-skin-index="3"]').click();await page.click('#createBtn');await page.locator('#roomPanel').waitFor({state:'visible'});await page.click('#startBtn');
+  await page.locator('#entryCharacters [data-skin-index="3"]').click();await page.click('#createBtn');await page.locator('#roomPanel').waitFor({state:'visible'});await page.locator('#botsToggle').check();await page.click('#startBtn');
   await page.waitForFunction(()=>window.latestState?.phase==='playing');const baseline=await page.evaluate(()=>window.latestState.botAI.requestsToday);assert.equal(await page.evaluate(()=>window.latestState.botAI.provider),'gemini');
   await page.waitForFunction(()=>Object.keys(window.geminiBots).length===3,null,{timeout:25000});
   await page.locator('#touchBomb').dispatchEvent('pointerdown',{pointerId:63,pointerType:'touch'});

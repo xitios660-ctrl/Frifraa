@@ -72,3 +72,5 @@ body.eliminated .touch-controls{display:none!important}
 .collapse-timer{font-size:10px;font-weight:800;letter-spacing:.5px;color:#e4d8ff}.collapse-timer.urgent{color:#ffc285}@media(pointer:coarse) and (orientation:landscape){body.play-mode .collapse-timer{display:none}}
 
 .power-guide span{display:flex;align-items:center;gap:8px;min-height:36px}.power-guide canvas{width:36px;height:36px;flex:0 0 36px}
+
+.bot-option{display:flex;align-items:center;gap:12px;margin-top:18px;padding:14px;border:1px solid #79629c;border-radius:12px;background:#ffffff09;cursor:pointer}.bot-option input{width:22px;height:22px;flex:0 0 22px;accent-color:#b595ff}.bot-option strong{display:block;font-size:13px}.bot-option small{display:block;margin-top:4px;font-size:11px;color:#c6b5df}.bot-option:has(input:disabled){cursor:default;opacity:.7}.rematch-bots{margin:10px auto 0;padding:10px 12px}.rematch-bots strong{font-size:12px}

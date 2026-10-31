@@ -10,7 +10,7 @@ const assert=require('node:assert/strict');
   });
   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(process.env.BOMBA_BASE||'http://127.0.0.1:3280');await page.waitForFunction(()=>document.querySelector('#serverDot').classList.contains('live'));
-  await page.locator('#entryCharacters [data-skin-index="3"]').click();await page.click('#createBtn');await page.locator('#roomPanel').waitFor({state:'visible'});await page.click('#startBtn');
+  await page.locator('#entryCharacters [data-skin-index="3"]').click();await page.click('#createBtn');await page.locator('#roomPanel').waitFor({state:'visible'});await page.locator('#botsToggle').check();await page.click('#startBtn');
   await page.waitForFunction(()=>window.latestState?.phase==='playing');await page.waitForFunction(()=>window.latestState.players.filter(p=>p.bot&&p.botSpeech?.text).length===3);
   const first=await page.evaluate(()=>window.latestState);assert.equal(first.botAI.provider,'local');assert.equal(first.players.filter(p=>p.bot).length,3);
   assert.ok(first.powerups.some(p=>p.type==='push'));assert.ok(!first.powerups.some(p=>p.type==='maxrange'));

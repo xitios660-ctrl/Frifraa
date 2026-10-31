@@ -84,7 +84,7 @@ function newRoom(code, ws, name) {
     phase: 'lobby',
     players: new Map(),
     board: null,
-    mapChoice:'rotation', mapId:'classic', roundIndex:0,
+    mapChoice:'rotation', mapId:'classic', roundIndex:0, botsEnabled:false,
     bombs: [],
     flames: [],
     effects: [],
@@ -115,6 +115,7 @@ function stateFor(room) {
     effects: room.effects, collapse:collapse.view(room.collapse,now()),
     code: room.code,
     hostId: room.hostId,
+    botsEnabled:!!room.botsEnabled,
     phase: room.phase,
     players: [...room.players.values()].map(playerView),
     board: room.board,
@@ -161,6 +162,7 @@ function leaveRoom(ws, allowReconnect = false) {
       // Conservar a sala por um curto período permite recarregar o app sem
       // perder o convite, inclusive se o anfitrião estava sozinho.
       room.phase = 'lobby';
+      room.botsEnabled=false;
       room.board = null;
       room.lastEmptyAt = now();
       broadcastAvailability();
@@ -170,7 +172,7 @@ function leaveRoom(ws, allowReconnect = false) {
     broadcastAvailability();
     return;
   }
-  if (!room.players.has(room.hostId)) room.hostId = [...room.players.values()].find(p=>!p.bot)?.id;
+  if (!room.players.has(room.hostId)){room.hostId = [...room.players.values()].find(p=>!p.bot)?.id;room.botsEnabled=false;}
   if (room.phase === 'countdown' && room.players.size === 0) room.phase = 'lobby';
   if (room.phase === 'playing') checkWinner(room);
   broadcast(room);
@@ -191,7 +193,7 @@ function fillBots(room) {
   }
 }
 function startGame(room) {
-  fillBots(room);
+  if(room.botsEnabled)fillBots(room);else removeBots(room);
   room.lastTick = now();
   const ids=Object.keys(maps.DEFS);
   room.mapId=room.mapChoice==='rotation'?ids[room.roundIndex%ids.length]:room.mapChoice;
@@ -428,6 +430,11 @@ function onMessage(ws, raw) {
     player.skin = SKINS[skinIndex];
     player.color = COLORS[skinIndex];
     broadcast(room);
+  } else if(message.type==='bot-settings'){
+    if(room.hostId!==ws.playerId)return error(ws,'Só o anfitrião escolhe se a partida terá bots.');
+    if(!['lobby','finished'].includes(room.phase))return error(ws,'Escolha os bots antes de iniciar a próxima partida.');
+    if(typeof message.enabled!=='boolean')return;
+    room.botsEnabled=message.enabled;broadcast(room);
   } else if(message.type==='map'){
     if(room.hostId!==ws.playerId)return error(ws,'Só o anfitrião escolhe o mapa.');
     if(!['lobby','finished'].includes(room.phase))return;

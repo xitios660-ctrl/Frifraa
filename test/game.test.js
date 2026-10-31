@@ -194,6 +194,7 @@ test('one shared room waits for an active round and releases bots when humans le
  const host=await client(),second=await client(),late=await client();
  write(host,{type:'enter',name:'Mary'});const joined=await message(host,m=>m.type==='joined');
  write(second,{type:'enter',name:'Gustavo'});await message(second,m=>m.type==='joined'&&m.code===joined.code);
+ write(host,{type:'bot-settings',enabled:true});
  write(host,{type:'start'});await message(host,m=>m.type==='state'&&m.phase==='playing');
  write(late,{type:'enter',name:'Kaique'});
  await message(late,m=>m.type==='error'&&/andamento/.test(m.message));
