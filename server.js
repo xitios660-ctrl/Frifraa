@@ -399,7 +399,7 @@ const server = http.createServer((req, res) => {
     return res.end('Não encontrado');
   }
   const [file, contentType] = entry;
-  res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': ['index.html', 'sw.js', 'manifest.webmanifest'].includes(file) ? 'no-cache' : 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
+  res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': ['index.html', 'sw.js', 'manifest.webmanifest', 'game.js', 'physics.js', 'animation.js', 'styles.css'].includes(file) ? 'no-cache' : 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
   if (req.method === 'HEAD') return res.end();
   fs.createReadStream(path.join(PUBLIC, file)).on('error', () => res.destroy()).pipe(res);
 });
