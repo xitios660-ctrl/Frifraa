@@ -69,10 +69,10 @@ test('a character can circle a solid block repeatedly without clipping, snapping
   assert.ok(steps<100,'character got stuck circling a block');
  }
 });
-test('bomb-pass crosses bombs while preserving wall collision',()=>{
+test('no character crosses a bomb, even with a legacy pass-through power flag',()=>{
  const p={id:'p',x:1,y:2,speed:170,bombPass:true},bombs=[{x:2,y:2,passThrough:[]}];
  for(let i=0;i<25;i++)move(p,{x:1,y:0},1/60,board,bombs);
- assert.ok(p.x>3);
+ assert.equal(p.x,1);bombs.length=0;
  for(let i=0;i<60;i++)move(p,{x:1,y:0},1/60,board,bombs);
  assert.ok(p.x<=5.00001);
 });

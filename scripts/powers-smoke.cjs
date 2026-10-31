@@ -26,7 +26,7 @@ const {rooms,tick}=require('../server');
   for(const page of pages)await page.waitForFunction(()=>window.latestState.bombs.some(b=>b.id==='kick-fixture'&&b.rolling));
   for(const page of pages)await page.waitForFunction(id=>window.latestState.players.find(p=>p.id===id).slowedUntil>window.latestState.serverTime,host.id);
   await pages[0].keyboard.up('ArrowRight');
-  assert.equal(host.kick,true);assert.equal(host.speed,272);assert.equal(host.bombPass,false);assert.equal(host.piercing,false);
+  assert.equal(host.kick,true);assert.equal(host.speed,272);assert.equal(host.push,false);assert.equal(host.piercing,false);
   for(const page of pages){const samples=await page.evaluate(()=>window.states.flatMap(s=>s.bombs.filter(b=>b.id==='kick-fixture')));assert.ok(samples.some(b=>b.rolling));assert.ok(samples.every(b=>b.explodeAt===fuse&&b.ownerId===other.id&&b.x<=8));}
   await pages[0].screenshot({path:'/tmp/bomba-skull-glove-mobile.png'});
   for(const page of pages)await page.waitForFunction(()=>window.bombFrames.length>5);
@@ -34,7 +34,15 @@ const {rooms,tick}=require('../server');
   for(const page of pages)await page.waitForFunction(()=>!window.latestState.bombs.some(b=>b.id==='kick-fixture'));
   assert.equal(other.activeBombs,0);assert.equal(r.board[1][9],0);assert.ok(host.alive);
   for(const page of pages)await page.waitForFunction(id=>{const p=window.latestState.players.find(p=>p.id===id);return p.speed===170&&p.slowedUntil<=window.latestState.serverTime;},host.id,{timeout:12000});
+  // Independently collect rainbow and push once into a blocked corridor, without kick or pass-through.
+  host.x=2;host.y=3;host.kick=false;host.push=false;host.motion={x:0,y:0};r.bombs=[];r.flames=[];
+  for(let x=1;x<=8;x++)r.board[3][x]=0;r.board[3][5]=2;r.powerups.set('2,3','push');tick();
+  for(const page of pages)await page.waitForFunction(id=>window.latestState.players.find(p=>p.id===id).push,host.id);
+  const pushFuse=Date.now()+2250;r.bombs.push({id:'push-fixture',x:3,y:3,ownerId:other.id,placedAt:Date.now(),explodeAt:pushFuse,range:1,passThrough:[]});tick();
+  await pages[0].keyboard.down('ArrowRight');await pages[0].waitForFunction(()=>window.latestState.bombs.some(b=>b.id==='push-fixture'&&b.x===4));await pages[0].keyboard.up('ArrowRight');
+  for(const page of pages)await page.waitForFunction(()=>window.latestState.bombs.some(b=>b.id==='push-fixture'&&b.x===4&&!b.rolling));
+  assert.ok(host.x<=3);assert.equal(r.bombs.find(b=>b.id==='push-fixture').explodeAt,pushFuse);assert.equal(host.kick,false);
   assert.deepEqual(errors,[]);
-  console.log('PASS: four real mobile clients share glove pickup, kick/rolling animation, obstacle stop, unchanged fuse/owner, explosion, skull slowdown and six-second recovery; no JS errors');
+  console.log('PASS: four real mobile clients share glove pickup, kick/rolling animation, obstacle stop, unchanged fuse/owner, explosion, skull slowdown and six-second recovery; rainbow push stops before the next crate without crossing; no JS errors');
  }finally{await browser.close();}
 })().then(()=>process.kill(process.pid,'SIGTERM')).catch(e=>{console.error(e);process.exit(1)});

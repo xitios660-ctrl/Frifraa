@@ -37,7 +37,7 @@ function dangerMap(room,bombs=room.bombs,t=Date.now()){
 function route(room,p,t,bombs=room.bombs,escape=false){
  const danger=dangerMap(room,bombs,t),start={x:Math.round(p.x),y:Math.round(p.y),path:[]};
  const queue=[start],visited=new Set([key(start.x,start.y)]);
- const blocked=new Set((p.bombPass?[]:bombs).map(b=>key(b.x,b.y)));
+ const blocked=new Set(bombs.flatMap(b=>[key(b.x,b.y),...(b.slide?[key(b.slide.fromX,b.slide.fromY)]:[])]));
  let best=null,bestScore=-Infinity;
  const unsafe=(x,y,from,to)=>(danger.get(key(x,y))||[]).some(d=>d.start<=to&&d.end>=from);
  for(let index=0;index<queue.length;index++) {
@@ -45,10 +45,13 @@ function route(room,p,t,bombs=room.bombs,escape=false){
   if(!unsafe(node.x,node.y,arrival,Math.max(arrival+600,t+2850))) {
    if(escape)return node.path;
    let score=-node.path.length*.25;
-   if(room.powerups.has(key(node.x,node.y)))score+=room.powerups.get(key(node.x,node.y))==='curse'?-24:16;
-   for(const [dx,dy] of DIRECTIONS)if(room.board[node.y+dy]?.[node.x+dx]===2)score+=5;
-   const opponents=[...room.players.values()].filter(other=>other.alive&&other.id!==p.id);
-   if(opponents.length)score-=Math.min(...opponents.map(other=>Math.abs(other.x-node.x)+Math.abs(other.y-node.y)))*.4;
+   if(room.powerups.has(key(node.x,node.y)))score+=room.powerups.get(key(node.x,node.y))==='curse'?-40:p.botMind?.goal==='collect'?26:16;
+   for(const [dx,dy] of DIRECTIONS)if(room.board[node.y+dy]?.[node.x+dx]===2)score+=p.botMind?.goal==='break'?9:5;
+   let opponents=[...room.players.values()].filter(other=>other.alive&&other.id!==p.id&&other.id!==p.botMind?.allyId);
+   const target=opponents.find(o=>o.id===p.botMind?.targetId);if(target)opponents=[target];
+   const ally=room.players.get(p.botMind?.allyId);
+   if(p.botMind?.goal==='protect'&&ally?.alive)score-=Math.abs(ally.x-node.x)*.7+Math.abs(ally.y-node.y)*.7;
+   if(opponents.length)score-=Math.min(...opponents.map(other=>Math.abs(other.x-node.x)+Math.abs(other.y-node.y)))*(p.botMind?.goal==='attack'?1.1:.4);
    if(score>bestScore){bestScore=score;best=node.path;}
   }
   for(const [dx,dy] of DIRECTIONS){
@@ -64,20 +67,21 @@ function route(room,p,t,bombs=room.bombs,escape=false){
 function decide(room,p,t){
  const danger=dangerMap(room,room.bombs,t),x=Math.round(p.x),y=Math.round(p.y);
  const threatened=(danger.get(key(x,y))||[]).some(d=>d.end>t&&d.start<t+2850);
- if(threatened)return {path:route(room,p,t,room.bombs,true)||[],bomb:false};
+ if(threatened)return {path:route(room,p,t,room.bombs,true)||[],bomb:false,intent:'escape'};
  const hypothetical={x,y,range:p.range,piercing:p.piercing,explodeAt:t+2250};
  const hits=blast(room.board,hypothetical);
- const useful=hits.some(c=>room.board[c.y]?.[c.x]===2||[...room.players.values()].some(other=>other.id!==p.id&&other.alive&&Math.round(other.x)===c.x&&Math.round(other.y)===c.y));
- if(useful&&p.activeBombs<p.bombs&&t>=(p.botCooldown||0)&&!room.bombs.some(b=>b.x===x&&b.y===y)) {
+ const useful=hits.some(c=>room.board[c.y]?.[c.x]===2||[...room.players.values()].some(other=>other.id!==p.id&&other.id!==p.botMind?.allyId&&other.alive&&Math.round(other.x)===c.x&&Math.round(other.y)===c.y));
+ const ally=room.players.get(p.botMind?.allyId),friendlyFire=ally?.alive&&hits.some(c=>physics.overlaps(ally,c));
+ if(useful&&!friendlyFire&&p.activeBombs<p.bombs&&t>=(p.botCooldown||0)&&!room.bombs.some(b=>b.x===x&&b.y===y)) {
   const escape=route(room,p,t,[...room.bombs,hypothetical],true);
-  if(escape?.length)return {path:escape,bomb:true};
+  if(escape?.length)return {path:escape,bomb:true,intent:'bomb'};
  }
- return {path:route(room,p,t)||[],bomb:false};
+ return {path:route(room,p,t)||[],bomb:false,intent:p.botMind?.goal||'attack'};
 }
 function update(room,p,t,dt,putBomb,onStep,beforeMove){
  const centred=Math.abs(p.x-Math.round(p.x))<.005&&Math.abs(p.y-Math.round(p.y))<.005;
  if(centred&&(!p.botTarget||t>=(p.botThinkAt||0))){
-  const action=decide(room,p,t);p.botTarget=action.path[0]||null;p.botThinkAt=t+120;
+  const action=decide(room,p,t);p.botIntent=action.intent;p.botTarget=action.path[0]||null;p.botThinkAt=t+120;
   if(action.bomb){putBomb(room,p);p.botCooldown=t+1000;}
  }
  const target=p.botTarget;

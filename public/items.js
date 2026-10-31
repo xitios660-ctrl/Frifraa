@@ -3,7 +3,7 @@
  const TAU=Math.PI*2;
  const SKINS={rainbow:{cell:0,color:'#db7bff'},techbomb:{cell:1,color:'#5cdbff'},flame:{cell:2,color:'#ffb346'},skate:{cell:3,color:'#68e9ff'},skull:{cell:4,color:'#ffcd60'},tanks:{cell:5,color:'#ffb950'},glove:{cell:6,color:'#ff8655'},goldflame:{cell:7,color:'#ffe46d'},heart:{cell:8,color:'#ff6481'}};
  const variants={};
- const defaults={range:'flame',bomb:'techbomb',speed:'skate',shield:'heart',bombpass:'rainbow',pierce:'tanks',maxrange:'goldflame',curse:'skull',kick:'glove'};
+ const defaults={range:'flame',bomb:'techbomb',speed:'skate',shield:'heart',push:'rainbow',pierce:'tanks',maxrange:'goldflame',curse:'skull',kick:'glove'};
  function selectSkin(type,x,y,round=0){const choices=variants[type];return choices?choices[Math.abs(x+y+round)%choices.length]:defaults[type];}
  const tiles={},shine={};let loaded=false;
  function prepare(image){
@@ -18,7 +18,7 @@
   loaded=true;
  }
  const ready=typeof root.Image==='function'?new Promise(resolve=>{const image=new root.Image();image.onload=()=>{prepare(image);resolve(true);};image.onerror=()=>resolve(false);image.src='/items/powerups-3d-v1.png';}):Promise.resolve(false);
- const DEFS={range:{color:'#ff9558',name:'Alcance'},bomb:{color:'#bb9aff',name:'Bomba extra'},speed:{color:'#65ebd2',name:'Velocidade'},shield:{color:'#79caff',name:'Escudo'},bombpass:{color:'#d1b5ff',name:'Passa-bomba'},pierce:{color:'#ff7ca6',name:'Perfurante'},maxrange:{color:'#ffe275',name:'Chama máxima'},curse:{color:'#c48aff',name:'Caveira · lentidão por 6s'},kick:{color:'#ff8655',name:'Luva · chutar bombas'}};
+ const DEFS={range:{color:'#ff9558',name:'Alcance'},bomb:{color:'#bb9aff',name:'Bomba extra'},speed:{color:'#65ebd2',name:'Velocidade'},shield:{color:'#79caff',name:'Escudo'},push:{color:'#d1b5ff',name:'Empurrar bomba'},pierce:{color:'#ff7ca6',name:'Perfurante'},maxrange:{color:'#ffe275',name:'Fogo +5 · raro'},curse:{color:'#c48aff',name:'Caveira · lentidão por 6s'},kick:{color:'#ff8655',name:'Luva · chutar bombas'}};
  function circle(c,x,y,r,color){c.fillStyle=color;c.beginPath();c.arc(x,y,r,0,TAU);c.fill();}
  function shape(c,points,fill,stroke){c.beginPath();points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.closePath();c.fillStyle=fill;c.fill();if(stroke){c.strokeStyle=stroke;c.lineWidth=1.4;c.stroke();}}
  function rect(c,x,y,w,h,r,color){c.fillStyle=color;c.beginPath();c.roundRect(x,y,w,h,r);c.fill();}
@@ -55,7 +55,7 @@
    shape(c,[[0,-15],[13,-10],[11,5],[6,12],[0,16],[-6,12],[-11,5],[-13,-10]],'#408ae0','#c7f4ff');
    shape(c,[[0,-11],[9,-7],[7,4],[0,11],[-7,4],[-9,-7]],'#83dcfa');
    c.save();c.rotate(Math.sin(t*3)*.1);shape(c,[[0,-7],[2,-1],[7,0],[2,2],[0,8],[-2,2],[-7,0],[-2,-1]],'#f3ffff');c.restore();
-  }else if(type==='bombpass'){
+  }else if(type==='push'){
    c.save();c.translate(0,Math.sin(t*5));c.globalAlpha=.85+.15*Math.sin(t*4);
    c.fillStyle='#eee3ff';c.strokeStyle='#b393ee';c.lineWidth=1.5;c.beginPath();c.moveTo(-12,14);c.lineTo(-12,-2);c.bezierCurveTo(-12,-19,12,-19,12,-2);c.lineTo(12,14);c.lineTo(6,10);c.lineTo(0,14);c.lineTo(-6,10);c.closePath();c.fill();c.stroke();
    circle(c,-4,-2,2.5,'#533b7b');circle(c,5,-2,2.5,'#533b7b');circle(c,1,5,1.8,'#9e78c1');c.restore();

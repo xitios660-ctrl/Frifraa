@@ -170,9 +170,8 @@ caixas e cores próprias. Gelo é o tema visual; os controles mantêm a mesma ad
 Os quatro cantos têm corredores iniciais livres e itens próximos.
 
 Além de alcance, bombas extras e velocidade, há escudo (absorve uma explosão e dá
-1,4 s de proteção para sair das chamas), passa-bomba (atravessa bombas, sem atravessar
-paredes), chama máxima (alcance 8) e bomba perfurante (atravessa caixas, para nas
-paredes). Esses poderes duram a rodada, exceto o escudo consumido no impacto.
+1,4 s de proteção para sair das chamas), empurrar bomba uma casa, fogo dourado
+raro (+5 de alcance) e bomba perfurante (atravessa caixas, para nas paredes). Esses poderes duram a rodada, exceto o escudo consumido no impacto.
 A IA considera o alcance e a perfuração ao calcular áreas perigosas. Poderes são
 reiniciados na revanche. As viradas nas quinas procuram as duas faixas adjacentes
 livres e deslocam o personagem gradualmente, sem alterar sua velocidade nem
@@ -266,9 +265,9 @@ em `public/items.js` combina perspectiva suave, flutuação, sombras, reflexos
 mascarados pelo contorno e movimentos próprios de cada skin, sincronizados
 pelo relógio da partida. O coração pulsa, a luva golpeia, o patins oscila com
 rastro, as chamas soltam brasas, a bomba acende o visor e a caveira pulsa os olhos.
-Cada arte agora corresponde a um efeito: bomba colorida para atravessar bombas,
+Cada arte agora corresponde a um efeito: bomba colorida para empurrar bombas,
 tanques para perfuração, caveira para lentidão temporária, luva para chute, além
-de bomba extra, alcance, velocidade, alcance máximo e escudo. A identidade
+de bomba extra, alcance, velocidade, fogo dourado +5 e escudo. A identidade
 do item vem no estado do servidor. Fogo destrói imediatamente itens expostos, com partículas; itens
 revelados por caixas aparecem depois que a chama daquela casa termina.
 
@@ -301,7 +300,9 @@ encontrar parede, caixa, outra bomba ou jogador. A origem e o destino de cada
 passo ficam reservados para impedir cruzamentos durante o movimento. Não é
 possível chutar uma bomba ocupada por um jogador. O pavio, o dono e a regra de
 eliminações permanecem os originais. Reações em cadeia e paredes caindo também
-afetam bombas em movimento. Passa-bomba tem prioridade sobre o chute.
+afetam bombas em movimento. Se possuir empurrão e luva, prevalece o chute contínuo. Nenhum poder permite
+atravessar bombas. O dono só conserva a saída inicial da bomba recém-colocada;
+a permissão é revogada assim que ele sai.
 
 O servidor controla os chutes em `bomb-motion.js`; os clientes recebem a direção
 e os horários do deslocamento. Bots consideram o trajeto e as futuras explosões.
@@ -310,3 +311,48 @@ A revanche limpa luva e lentidão. `test/kick.test.js` e
 reinício. `node scripts/powers-smoke.cjs` testa coleta, chute, animação, parada,
 pavio, explosão, lentidão e recuperação com quatro navegadores móveis reais
 contra um servidor local. Não há comando de teste exposto na versão publicada.
+
+
+### Balanceamento e bots com falas
+
+Bombas extras e alcance não têm teto de coleta. Cada chama comum soma 1 e a
+chama dourada soma 5, inclusive acima do alcance antigo. Ouro tem peso 1/100
+entre os itens revelados, contra 24/100 da chama comum, e não nasce nos pontos
+iniciais. Uma caixa ainda tem 25% de chance de revelar algum item: ouro equivale
+a 0,25% das caixas. O bônus de velocidade reduz 5 ms do tempo por casa, de
+170 até 150 ms (cerca de 13,3% de ganho máximo). A caveira só causa lentidão
+temporária. A skin colorida agora empurra a bomba uma casa, com a mesma regra
+de colisão e de pavio da luva. Colisões ignoram até a antiga flag passa-bomba.
+
+`bot-minds.js` mantém intenção, personalidade, memória, alvo, parceiro e
+relações separadas para cada bot. A navegação local continua desviando do fogo
+e de paredes caindo; a intenção influencia busca de itens, ataque e abertura de
+caixas. Amigos não são alvos intencionais e bombas não são plantadas
+deliberadamente sobre seu parceiro. Ameaças com bombas podem romper tréguas.
+Quando só restam aliados vivos, a trégua termina para a disputa continuar.
+Balões exibem falas ficcionais ou resumos de intenção, nunca raciocínio interno
+de modelos. As mensagens e alianças são sincronizadas pelo servidor.
+
+**Estado padrão: IA local, sem chamadas externas.** A API do Grok exige chave
+e acesso/créditos de acordo com a xAI; o aplicativo não promete API gratuita.
+Para habilitar conscientemente o provedor, configure no mesmo serviço Render:
+
+- `XAI_API_KEY`: chave da sua conta xAI (nunca no repositório ou no cliente).
+- `BOT_AI_PROVIDER=grok`: ativa as consultas; `local` desativa.
+- `XAI_MODEL=grok-4.7`: opcional, substitua por um modelo disponível na conta.
+
+Cada bot envia uma solicitação própria, com seu contexto, sua memória e as falas
+públicas recentes da partida. Não há sessão de modelo compartilhada entre bots.
+Planos aceitos alteram apenas intenção, alvos, relações e fala; movimento e
+segurança continuam sob as regras do jogo. As consultas não bloqueiam os ticks:
+timeout de 2,5 segundos, intervalo mínimo de 10 segundos e no máximo 12 por bot
+por rodada. Falhas, falta de créditos e limites mantêm a IA local. Revanche,
+saída e fim de partida cancelam respostas antigas. `/health` informa o provedor
+e o estado da integração sem expor a chave. Os testes do conector usam respostas
+simuladas: não comprovam autenticação, créditos ou disponibilidade do Grok real.
+
+`test/balance.test.js` cobre raridade, crescimento sem teto, empurrão e velocidade.
+`test/bot-minds.test.js` cobre contextos independentes, alianças, traição, planos
+inválidos e falhas do provedor. `node scripts/social-bots-smoke.cjs` testa um
+humano com três bots autônomos, balões, amizade e espectador no navegador móvel.
+A captura fica em `/tmp/bomba-bot-balloons-mobile.png`.

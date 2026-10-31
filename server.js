@@ -16,6 +16,8 @@ const bots=require('./bots');
 const collapse=require('./collapse');
 const itemArt=require('./public/items');
 const bombMotion=require('./bomb-motion');
+const rules=require('./game-rules');
+const botMinds=require('./bot-minds').createController();
 const COLORS = ['#ac82ff', '#ff6e96', '#55dcff', '#ffd36f'];
 const SKINS = ['Mary', 'Kaique', 'Jheniffer', 'Gustavo'];
 const rooms = new Map();
@@ -67,7 +69,7 @@ function newPlayer(ws, name, slot, skinIndex) {
     bombs: 1,
     activeBombs: 0,
     range: 2,
-    speed: 170, baseSpeed:170, slowedUntil:0, kick:false, shield:0, invulnerableUntil:0, bombPass:false, piercing:false,
+    speed: 170, baseSpeed:170, slowedUntil:0, kick:false, shield:0, invulnerableUntil:0, push:false, piercing:false,
     lastMove: 0,
     inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false,
     motion: { x: 0, y: 0 },
@@ -101,15 +103,15 @@ function newRoom(code, ws, name) {
 }
 function playerView(p) {
   return {
-    id: p.id, name: p.name, bot:!!p.bot, slot: p.slot, skinIndex: p.skinIndex, color: p.color, skin: p.skin,
+    id: p.id, name: p.name, bot:!!p.bot, botSpeech:p.botSpeech?.until>now()?p.botSpeech:null, botAllyId:p.botMind?.allyId||null, slot: p.slot, skinIndex: p.skinIndex, color: p.color, skin: p.skin,
     x: p.x, y: p.y, ack: p.ack, motion: p.motion, facing: p.facing, alive: p.alive, bombs: p.bombs,
-    range: p.range, speed: p.speed, slowedUntil:p.slowedUntil, kick:p.kick, shield:p.shield, invulnerableUntil:p.invulnerableUntil, bombPass:p.bombPass, piercing:p.piercing, kills: p.kills, place: p.place
+    range: p.range, speed: p.speed, slowedUntil:p.slowedUntil, kick:p.kick, shield:p.shield, invulnerableUntil:p.invulnerableUntil, push:p.push, piercing:p.piercing, kills: p.kills, place: p.place
   };
 }
 function stateFor(room) {
   return {
     type: 'state',
-    serverTime: now(), mapChoice:room.mapChoice, mapId:room.mapId, mapName:maps.DEFS[room.mapId].name,
+    serverTime: now(), botAI:botMinds.status(), mapChoice:room.mapChoice, mapId:room.mapId, mapName:maps.DEFS[room.mapId].name,
     effects: room.effects, collapse:collapse.view(room.collapse,now()),
     code: room.code,
     hostId: room.hostId,
@@ -176,7 +178,7 @@ function leaveRoom(ws, allowReconnect = false) {
 function getRoom(ws) { return ws.roomCode && rooms.get(ws.roomCode); }
 function makeBoard(id='classic'){return maps.create(id);}
 function removeBots(room) {
-  for(const [id,p] of room.players) if(p.bot) room.players.delete(id);
+  for(const [id,p] of room.players) if(p.bot){botMinds.cancelPlayer(p);room.players.delete(id);}
 }
 function fillBots(room) {
   removeBots(room);
@@ -200,8 +202,8 @@ function startGame(room) {
   room.effects = [];
   room.powerups.clear();
   room.pendingPowerups=[];
-  const special=['shield','bombpass','pierce','maxrange'];
-  for(let slot=0;slot<4;slot++){const p=SPAWNS[slot],dx=p.x===1?2:-2,dy=p.y===1?2:-2;room.powerups.set(tileKey(p.x+dx,p.y),slot===room.roundIndex%4?'kick':special[(slot+room.roundIndex-1)%special.length]);room.powerups.set(tileKey(p.x,p.y+dy),'speed');}
+  const special=['shield','push','pierce','range'];
+  for(let slot=0;slot<4;slot++){const p=SPAWNS[slot],dx=p.x===1?2:-2,dy=p.y===1?2:-2;room.powerups.set(tileKey(p.x+dx,p.y),slot===room.roundIndex%4?'kick':special[(slot+room.roundIndex-1)%special.length]);room.powerups.set(tileKey(p.x,p.y+dy),slot===(room.roundIndex+1)%4?'push':'speed');}
   const centre={x:Math.floor(WIDTH/2),y:Math.floor(HEIGHT/2)};
   const curseCell=room.board.flatMap((row,y)=>row.flatMap((cell,x)=>cell===0?[{x,y}]:[])).sort((a,b)=>(Math.abs(a.x-centre.x)+Math.abs(a.y-centre.y))-(Math.abs(b.x-centre.x)+Math.abs(b.y-centre.y)))[0];
   if(curseCell)room.powerups.set(tileKey(curseCell.x,curseCell.y),'curse');
@@ -215,9 +217,10 @@ function startGame(room) {
     const pos = SPAWNS[p.slot];
     Object.assign(p, {
       x: pos.x, y: pos.y, facing: 'down', alive: true, bombs: 1, activeBombs: 0,
-      range: 2, speed: 170, baseSpeed:170, slowedUntil:0, kick:false, shield:0, invulnerableUntil:0, bombPass:false, piercing:false, lastMove: 0, inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false, motion: { x: 0, y: 0 }, kills: 0, place: null, botTarget:null, botThinkAt:0, botCooldown:0, botStall:0
+      range: 2, speed: 170, baseSpeed:170, slowedUntil:0, kick:false, shield:0, invulnerableUntil:0, push:false, piercing:false, lastMove: 0, inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false, motion: { x: 0, y: 0 }, kills: 0, place: null, botTarget:null, botThinkAt:0, botCooldown:0, botStall:0
     });
   }
+  botMinds.reset(room,now());
   broadcast(room);
 }
 function movePlayers(room, t) {
@@ -250,19 +253,19 @@ function movePlayers(room, t) {
     const key = tileKey(Math.round(p.x), Math.round(p.y));
     const bonus = room.powerups.get(key);
     if (bonus) {
-      if (bonus === 'range') p.range = Math.min(8, p.range + 1);
-      if (bonus === 'maxrange') p.range=8;
+      if (bonus === 'range') p.range += 1;
+      if (bonus === 'maxrange') p.range+=5;
       if (bonus === 'shield') p.shield=1;
-      if (bonus === 'bombpass') p.bombPass=true;
+      if (bonus === 'push'||bonus==='bombpass') p.push=true;
       if (bonus === 'pierce') p.piercing=true;
-      if (bonus === 'bomb') p.bombs = Math.min(5, p.bombs + 1);
-      if (bonus === 'speed') p.baseSpeed = Math.max(100, p.baseSpeed - 20);
+      if (bonus === 'bomb') p.bombs += 1;
+      if (bonus === 'speed') p.baseSpeed = Math.max(rules.MIN_SPEED,p.baseSpeed-rules.SPEED_GAIN);
       if (bonus === 'curse') p.slowedUntil=t+6000;
       if (bonus === 'kick') p.kick=true;
       p.speed=p.baseSpeed*(p.slowedUntil>t?1.6:1);
       room.effects.push({kind:'pickup',x:Math.round(p.x),y:Math.round(p.y),startedAt:t,expiresAt:t+600});
       room.powerups.delete(key);
-      send(p.ws, { type: 'pickup', bonus });
+      send(p.ws, { type: 'pickup', bonus, atSpeedLimit:bonus==='speed'&&p.baseSpeed<=rules.MIN_SPEED });
     }
   }
 }
@@ -297,8 +300,7 @@ function explodeBomb(room, bomb, t) {
         room.board[y][x] = 0;
         room.effects.push({kind:'crate',x,y,startedAt:t,expiresAt:t+650});
         if (Math.random() < 0.25) {
-          const types = ['range', 'range', 'bomb', 'bomb', 'speed','shield','bombpass','pierce','maxrange','kick','curse'];
-          room.pendingPowerups.push({x,y,type:types[crypto.randomInt(types.length)],readyAt:t+500});
+          room.pendingPowerups.push({x,y,type:rules.drop(),readyAt:t+500});
         }
         if(!bomb.piercing)break;
       }
@@ -349,6 +351,7 @@ function checkWinner(room) {
   if (room.participantsAtStart === 1 && alive.length > 0) return; // treino solo
   if (alive.length <= 1) {
     room.phase = 'finished';
+    botMinds.cancelRoom(room);
     room.winnerId = alive[0]?.id || null;
     if (alive.length === 1) alive[0].place = 1;
     broadcast(room);
@@ -366,6 +369,7 @@ function tick() {
       collapse.update(room,t);
       bombMotion.update(room,t);
       updatePowerups(room,t);
+      botMinds.tick(room,t);
       movePlayers(room, t);
       room.flames = room.flames.filter(f => f.expiresAt > t);
       for(const b of room.bombs)if(room.flames.some(f=>bombMotion.occupies(b,f.x,f.y)))b.explodeAt=t;
@@ -493,7 +497,7 @@ const FILES = {
 const server = http.createServer((req, res) => {
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-    return res.end(JSON.stringify({ ok: true, rooms: rooms.size, players: clients.size }));
+    return res.end(JSON.stringify({ ok: true, rooms: rooms.size, players: clients.size, botAI:botMinds.status() }));
   }
   const url = new URL(req.url, 'http://localhost');
   const entry = FILES[url.pathname];

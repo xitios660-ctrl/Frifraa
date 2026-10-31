@@ -68,7 +68,7 @@
     } else if(e.kind==='wall') {
       ctx.strokeStyle='#ffe4a8';ctx.lineWidth=3*(1-p);ctx.strokeRect(e.x*SIZE+3,e.y*SIZE+3,42,41);
       for(let i=0;i<4;i++) circle(ctx,x+Math.cos(i*TAU/4)*18,y+Math.sin(i*TAU/4)*18,3*(1-p),'#ffd995');
-    } else if(e.kind==='kick'){
+    } else if(e.kind==='kick'||e.kind==='push'){
       ctx.strokeStyle='#ffe2a0';ctx.lineWidth=2*(1-p);ctx.beginPath();ctx.arc(x,y,8+p*16,0,TAU);ctx.stroke();
     } else if(e.kind==='itemBurn') {
       circle(ctx,x,y-14*p,18*(1-p),'#ff983f');circle(ctx,x,y-14*p,9*(1-p),'#fff0af');

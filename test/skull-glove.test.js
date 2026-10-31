@@ -7,11 +7,11 @@ test('skull lasts six seconds, refreshes, preserves speed upgrades and resets wi
  const {newRoom,tick,onMessage}=require('./server');const packets=[];const ws={playerId:'p',readyState:1,send(data){packets.push(JSON.parse(data));}};
  const r=newRoom('TESTA',ws,'Mary'),p=r.players.get('p');r.board=Array.from({length:9},(_,y)=>Array.from({length:11},(_,x)=>!x||!y||x===10||y===8?1:0));r.phase='playing';r.participantsAtStart=1;r.lastTick=time;
  const pickup=type=>{r.powerups.set('1,1',type);time+=17;tick();};
- pickup('speed');assert.equal(p.speed,150);pickup('curse');assert.equal(p.speed,240);assert.equal(p.slowedUntil,time+6000);
- time+=3000;tick();assert.equal(p.speed,240);pickup('speed');assert.equal(p.baseSpeed,130);assert.equal(p.speed,208);
- pickup('curse');const end=p.slowedUntil;time=end-1;tick();assert.equal(p.speed,208);time=end;tick();assert.equal(p.speed,130);
- pickup('kick');assert.equal(p.kick,true);assert.equal(p.bombPass,false);assert.equal(p.piercing,false);
- time+=34;tick();const state=packets.filter(p=>p.type==='state').at(-1);assert.equal(state.players[0].kick,true);assert.equal(state.players[0].speed,130);
+ pickup('speed');assert.equal(p.speed,165);pickup('curse');assert.equal(p.speed,264);assert.equal(p.slowedUntil,time+6000);
+ time+=3000;tick();assert.equal(p.speed,264);pickup('speed');assert.equal(p.baseSpeed,160);assert.equal(p.speed,256);
+ pickup('curse');const end=p.slowedUntil;time=end-1;tick();assert.equal(p.speed,256);time=end;tick();assert.equal(p.speed,160);
+ pickup('kick');assert.equal(p.kick,true);assert.equal(p.push,false);assert.equal(p.piercing,false);
+ time+=34;tick();const state=packets.filter(p=>p.type==='state').at(-1);assert.equal(state.players[0].kick,true);assert.equal(state.players[0].speed,160);
  r.phase='finished';onMessage(ws,JSON.stringify({type:'start'}));assert.equal(p.kick,false);assert.equal(p.slowedUntil,0);assert.equal(p.speed,170);
  assert.ok([...r.powerups.values()].includes('curse'));assert.ok([...r.powerups.values()].includes('kick'));
  console.log('PASS');process.kill(process.pid,'SIGTERM');`;

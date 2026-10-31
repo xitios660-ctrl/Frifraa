@@ -13,11 +13,11 @@ test('powers change gameplay, shield absorbs one hit, piercing stops at walls, a
  assert.equal(room.mapId,'ice');const p=room.players.get('human');
  for(const [id,other] of room.players)if(id!==p.id)room.players.delete(id);
  room.participantsAtStart=1;room.phase='playing';room.lastTick=time;
- for(const bonus of ['range','bomb','speed','maxrange','shield','bombpass','pierce']){
+ for(const bonus of ['range','bomb','speed','maxrange','shield','push','pierce']){
   room.powerups.set('1,1',bonus);time+=17;tick();
  }
- assert.equal(p.range,8);assert.equal(p.bombs,2);assert.equal(p.speed,150);
- assert.equal(p.shield,1);assert.equal(p.bombPass,true);assert.equal(p.piercing,true);
+ assert.equal(p.range,8);assert.equal(p.bombs,2);assert.equal(p.speed,165);
+ assert.equal(p.shield,1);assert.equal(p.push,true);assert.equal(p.piercing,true);
  room.board=Array.from({length:7},(_,y)=>Array.from({length:9},(_,x)=>!x||!y||x===8||y===6?1:0));
  room.board[3][3]=2;room.board[3][5]=2;room.board[3][6]=1;
  room.bombs=[{x:2,y:3,range:5,piercing:true,ownerId:p.id,explodeAt:time}];time+=17;tick();
@@ -27,7 +27,7 @@ test('powers change gameplay, shield absorbs one hit, piercing stops at walls, a
  assert.ok(p.alive);assert.equal(p.shield,0);time+=500;tick();assert.ok(p.alive);
  time+=1500;tick();assert.equal(p.alive,false);
  room.phase='finished';onMessage(ws,JSON.stringify({type:'start'}));
- assert.equal(p.alive,true);assert.equal(p.range,2);assert.equal(p.bombPass,false);assert.equal(p.piercing,false);assert.equal(p.shield,0);
+ assert.equal(p.alive,true);assert.equal(p.range,2);assert.equal(p.push,false);assert.equal(p.piercing,false);assert.equal(p.shield,0);
  const selected=new Set();
  onMessage(ws,JSON.stringify({type:'map',mapId:'rotation'}));
  for(let i=0;i<4;i++){room.phase='finished';onMessage(ws,JSON.stringify({type:'map',mapId:'rotation'}));onMessage(ws,JSON.stringify({type:'start'}));selected.add(room.mapId);}

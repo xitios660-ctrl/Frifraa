@@ -34,9 +34,9 @@ test('kick respects walls, crates, other bombs, sliding reservations and player 
  }
 });
 test('players without the glove, off-centre turns, pass-through and expiring bombs cannot initiate kicks',()=>{
- for(const mode of ['no-glove','off-centre','bombpass','fuse','standing-on-bomb']){
+ for(const mode of ['no-glove','off-centre','fuse','standing-on-bomb']){
   const {p,bomb,room}=fixture();
-  if(mode==='no-glove')p.kick=false;if(mode==='off-centre')p.x=2.1;if(mode==='bombpass')p.bombPass=true;
+  if(mode==='no-glove')p.kick=false;if(mode==='off-centre')p.x=2.1;
   if(mode==='fuse')bomb.explodeAt=1099;if(mode==='standing-on-bomb')bomb.passThrough=['p'];
   assert.equal(motion.tryKick(room,p,{x:1,y:0},1000),false,mode);assert.equal(bomb.x,3);
  }

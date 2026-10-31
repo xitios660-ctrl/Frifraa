@@ -178,8 +178,8 @@
     if(msg.type==='shield'){if(soundOn)beep(880,.18,'triangle');toast('🛡 Seu escudo absorveu a explosão!');return;}
     if (msg.type === 'pickup') {
       if (soundOn) beep(msg.bonus==='curse'?145:670,.12,msg.bonus==='curse'?'sawtooth':'triangle');
-      const labels = { range: '🔥 Alcance aumentado!', bomb: '💣 Bomba extra!', speed: '⚡ Mais velocidade!', shield:'🛡 Escudo: protege de uma explosão!', bombpass:'👻 Você pode atravessar bombas!', pierce:'◆ Suas bombas atravessam caixas!', maxrange:'✹ Chamas com alcance máximo!',curse:'💀 Caveira! Lentidão por 6 segundos.',kick:'🥊 Luva! Encoste andando para chutar bombas.' };
-      toast(labels[msg.bonus] || 'Poder recebido!');
+      const labels = { range: '🔥 Alcance aumentado!', bomb: '💣 Bomba extra!', speed: '⚡ Mais velocidade!', shield:'🛡 Escudo: protege de uma explosão!', push:'🌈 Encoste para empurrar a bomba uma casa!', pierce:'◆ Suas bombas atravessam caixas!', maxrange:'✹ Fogo dourado! +5 de alcance!',curse:'💀 Caveira! Lentidão por 6 segundos.',kick:'🥊 Luva! Encoste andando para chutar bombas.' };
+      toast(msg.bonus==='speed'&&msg.atSpeedLimit?'⚡ Velocidade no limite!':labels[msg.bonus]||'Poder recebido!');
       return;
     }
     if (msg.type === 'state') {
@@ -408,7 +408,7 @@
       lastPhase = state.phase;
     }
     if (soundOn && state.phase === 'playing') {
-      const kick=state.effects?.filter(e=>e.kind==='kick').at(-1);
+      const kick=state.effects?.filter(e=>e.kind==='kick'||e.kind==='push').at(-1);
       if(kick&&kick.startedAt>lastKickTime){beep(160,.08,'square');lastKickTime=kick.startedAt;}
       if (state.flames.length && !flameSoundActive) beep(90, .28, 'sawtooth');
       flameSoundActive = state.flames.length > 0;
@@ -708,6 +708,20 @@
       ctx.fillStyle='#fff1a6';ctx.textAlign='center';ctx.font='900 11px sans-serif';ctx.fillText('VOCÊ',x,y-24);
     }
   }
+  function drawBotSpeech(p,view,worldTime){
+    const speech=p.botSpeech;if(!p.bot||!p.alive||!speech||speech.until<=worldTime)return;
+    const point=displayPositions.get(p.id)||p,px=point.x*SIZE+24,py=point.y*SIZE;
+    if(px<view.x-40||px>view.x+canvas.width+40||py<view.y-40||py>view.y+canvas.height+40)return;
+    ctx.save();ctx.font='600 14px system-ui';ctx.textBaseline='middle';ctx.textAlign='left';
+    const words=(speech.kind==='say'?'💬 ':'💭 ')+speech.text,lines=[''];
+    for(const word of words.split(' ')){const i=lines.length-1,next=lines[i]?lines[i]+' '+word:word;if(ctx.measureText(next).width>172&&lines[i]&&lines.length<3)lines.push(word);else lines[i]=next;}
+    const visible=lines.slice(0,3),width=Math.min(188,Math.max(70,...visible.map(line=>ctx.measureText(line).width+16))),height=visible.length*17+14;
+    const x=Math.max(view.x+8,Math.min(view.x+canvas.width-width-8,px-width/2));
+    const above=py-height-8>=view.y+90,y=above?py-height-8:py+55;
+    ctx.globalAlpha=Math.min(1,(speech.until-worldTime)/300);roundRect(x,y,width,height,9,p.botAllyId===meId?'#dffbeaee':'#fff3dfee');
+    ctx.fillStyle=p.botAllyId===meId?'#dffbea':'#fff3df';ctx.beginPath();const tail=Math.max(x+12,Math.min(x+width-12,px));ctx.moveTo(tail-5,above?y+height:y);ctx.lineTo(tail,above?y+height+6:y-6);ctx.lineTo(tail+5,above?y+height:y);ctx.fill();
+    ctx.fillStyle='#302039';for(let i=0;i<visible.length;i++)ctx.fillText(visible[i],x+8,y+14+i*17,width-16);ctx.restore();
+  }
   function drawMapHud(view,me,worldTime){
     const key=state.mapId+state.board.map(row=>row.join('')).join('');
     if(key!==minimapKey){
@@ -729,7 +743,7 @@
     if(me){
       const powers=[`🔥 ${me.range}`,`💣 ${me.bombs}`,`⚡ ${Math.round(170/me.speed*100)}%`];
       if(me.kick)powers.push('🥊 Chute');if(me.slowedUntil>worldTime)powers.push(`💀 ${Math.ceil((me.slowedUntil-worldTime)/1000)}s`);
-      if(me.shield)powers.push('🛡 Escudo');if(me.bombPass)powers.push('👻 Passa-bomba');if(me.piercing)powers.push('◆ Perfurante');
+      if(me.shield)powers.push('🛡 Escudo');if(me.push)powers.push('🌈 Empurrar');if(me.piercing)powers.push('◆ Perfurante');
       roundRect(8,canvas.height-34,Math.min(x-18,450),26,6,'#100c25d9');ctx.fillStyle='#fff0b1';ctx.font='bold 12px system-ui';ctx.fillText(powers.join('  '),16,canvas.height-20);
     }
   }
@@ -786,6 +800,7 @@
     for(const f of state.flames||[])BombaEffects.flame(ctx,f,worldTime,flameTiles);
     for(const effect of state.effects||[])BombaEffects.debris(ctx,effect,worldTime);
     for(const p of [...(state.players||[])].sort((a,b)=>a.y-b.y||a.slot-b.slot))drawPlayer(p,time,worldTime);
+    for(const p of state.players||[])drawBotSpeech(p,view,worldTime);
     for(const tile of state.collapse?.falling||[])BombaEffects.fallingWall(ctx,tile,worldTime,arenaPalette);
     ctx.restore();
     drawMapHud(view,watching?target||me:me,worldTime);

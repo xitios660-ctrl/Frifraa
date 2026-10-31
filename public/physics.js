@@ -10,7 +10,7 @@
       for (const oy of [-RADIUS+EPSILON,RADIUS-EPSILON]) {
         const tx=Math.floor(x+ox+.5),ty=Math.floor(y+oy+.5);
         if(board[ty]?.[tx]!==0) return false;
-        if(bombs.some(b=>(b.x===tx&&b.y===ty||b.slide?.fromX===tx&&b.slide?.fromY===ty)&&!p.bombPass&&!b.passThrough?.includes(p.id))) return false;
+        if(bombs.some(b=>(b.x===tx&&b.y===ty||b.slide?.fromX===tx&&b.slide?.fromY===ty)&&!b.passThrough?.includes(p.id))) return false;
       }
     }
     return true;
