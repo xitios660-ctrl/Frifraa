@@ -27,7 +27,7 @@ await pages[0].locator('#touchBomb').dispatchEvent('pointerdown',{pointerId:2});
 await pages[0].waitForTimeout(2600);
 await pages[0].screenshot({path:'/tmp/bomba-party-mobile.png'});
 await pages[0].setViewportSize({width:390,height:844});
-assert.ok(await pages[0].locator('#rotateOverlay').isVisible());
+await pages[0].locator('#rotateOverlay').waitFor({state:'visible'});
 assert.deepEqual(errors,[]);
 console.log('PASS: four browser clients, mobile landscape controls, bomb, portrait warning, no JS errors');
 }finally{await browser.close()}
