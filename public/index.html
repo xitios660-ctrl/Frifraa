@@ -24,11 +24,12 @@
   <script src="/game.js" defer></script>
 
   <style>
-    .cofrinho-party-cta{display:inline-flex;align-items:center;justify-content:center;gap:14px;margin:24px 0 10px;padding:15px 24px;border:2px solid #ffe2a1;border-radius:17px;background:linear-gradient(170deg,#fff0be,#ffc66d 53%,#dd8d35);box-shadow:inset 0 3px 0 #ffffffc0,inset 0 -3px 0 #a96121,0 7px 0 #895023,0 16px 28px #07051088;color:#4c240d!important;font-size:1.02rem;font-weight:900;text-decoration:none!important;letter-spacing:.01em;transition:transform .15s,box-shadow .15s}
-    .cofrinho-party-cta:hover{filter:brightness(1.08);transform:translateY(-2px)}
-    .cofrinho-party-cta:active{transform:translateY(5px);box-shadow:inset 0 2px 0 #ffffffa1,0 2px 0 #895023}
-    .cofrinho-party-cta .piggy-arrow{font-size:1.4rem;margin-left:3px}
-    @media(max-width:600px){.cofrinho-party-cta{width:100%;font-size:.96rem;padding:15px 12px}}
+    .cofrinho-top-link{display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;padding:8px 11px;border:1px solid #775b9e;border-radius:11px;color:#eee3ff!important;background:linear-gradient(150deg,#382950,#211933);box-shadow:0 3px 0 #120b22;text-decoration:none!important;font-size:11px;font-weight:800;line-height:1;transition:filter .15s,transform .15s}
+    .cofrinho-top-link:hover{filter:brightness(1.18)}
+    .cofrinho-top-link:active{transform:translateY(2px);box-shadow:0 1px 0 #120b22}
+    .topbar-right{gap:12px}
+    @media(max-width:770px){.topbar-right{gap:8px}}
+    @media(max-width:600px){.cofrinho-top-link{padding:8px 9px;font-size:15px}.cofrinho-top-link .cofrinho-label{display:none}}
   </style>
 </head>
 <body>
@@ -43,6 +44,7 @@
         <span><strong>BOMBA <span class="brand-highlight">PARTY</span></strong><small>ARENA DOS 4 AMIGOS</small></span>
       </a>
       <div class="topbar-right">
+        <a class="cofrinho-top-link" href="https://cofrinho-bomba-party.onrender.com/" aria-label="Abrir Cofrinho dos quatro amigos" title="Cofrinho">🐷 <span class="cofrinho-label">Cofrinho</span></a>
         <span class="live-pill"><span id="serverDot" class="status-dot"></span><span id="serverText">Conectando...</span></span>
         <span class="topbar-cap">4 PLAYERS MAX</span>
       </div>
@@ -57,7 +59,6 @@
           <div class="feature-pills">
             <span>💣 Bombas & poderes</span><span>⚡ Tempo real</span><span>🎮 Até 4 pessoas</span>
           </div>
-          <a class="cofrinho-party-cta" href="https://cofrinho-bomba-party.onrender.com/" aria-label="Abrir cofrinho da turma, desafio de 200 depósitos">🐷 <span>COFRINHO DOS 4 AMIGOS</span><span class="piggy-arrow">↗</span></a>
           <div class="illustration" aria-hidden="true">
             <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
             <div class="big-bomb"><div class="big-fuse"></div><div class="big-shine"></div><div class="bomb-face"><i></i><i></i></div></div>
