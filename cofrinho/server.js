@@ -97,7 +97,15 @@ function createApp(store = createMongoStore()) {
 
 if (require.main === module) {
   const port = Number(process.env.PORT) || 3000;
-  const server = createApp().listen(port, '0.0.0.0', () => console.log(`Cofrinho Bomba Party no porto ${port}`));
+  const store = createMongoStore();
+  const server = createApp(store).listen(port, '0.0.0.0', () => {
+    console.log(`Cofrinho Bomba Party no porto ${port}`);
+    store.getAll().then(people => {
+      console.log(`[cofrinho] MongoDB conectado e consulta realizada para ${people.length} cofrinhos.`);
+    }).catch(() => {
+      console.error('[cofrinho] MongoDB ainda indisponível; depósitos continuam bloqueados.');
+    });
+  });
   process.on('SIGTERM', () => server.close(() => process.exit(0)));
 }
 
