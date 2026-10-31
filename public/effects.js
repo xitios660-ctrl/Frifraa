@@ -15,7 +15,7 @@
     ctx.save();ctx.translate(x,y);
     ctx.fillStyle='#05051288';ctx.beginPath();ctx.ellipse(0,8,21,9,0,0,TAU);ctx.fill();
     ctx.scale(frame.scale,frame.scale);
-    const flash=frame.remaining<700 && Math.sin(frame.age/45)>.15;
+    const flash=b.piercing||frame.remaining<700 && Math.sin(frame.age/45)>.15;
     const gradient=ctx.createRadialGradient(-7,-8,1,0,0,21);
     gradient.addColorStop(0,flash?'#ffc0aa':'#9c87cb');
     gradient.addColorStop(.32,flash?'#e85962':'#493b6b');gradient.addColorStop(1,flash?'#6b203f':'#130e28');

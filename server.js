@@ -6,8 +6,8 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { WebSocketServer, WebSocket } = require('ws');
 
-const WIDTH = 15;
-const HEIGHT = 13;
+const maps=require('./public/maps');
+const {WIDTH,HEIGHT,SPAWNS}=maps;
 const PORT = Number(process.env.PORT) || 3000;
 const TICK_MS = 1000 / 60;
 const physics = require('./public/physics');
@@ -15,12 +15,6 @@ const {STEP} = require('./public/netcode');
 const bots=require('./bots');
 const COLORS = ['#ac82ff', '#ff6e96', '#55dcff', '#ffd36f'];
 const SKINS = ['Mary', 'Kaique', 'Jheniffer', 'Gustavo'];
-const SPAWNS = [
-  { x: 1, y: 1 },
-  { x: WIDTH - 2, y: 1 },
-  { x: 1, y: HEIGHT - 2 },
-  { x: WIDTH - 2, y: HEIGHT - 2 }
-];
 const rooms = new Map();
 const clients = new Set();
 const PUBLIC = path.join(__dirname, 'public');
@@ -70,7 +64,7 @@ function newPlayer(ws, name, slot, skinIndex) {
     bombs: 1,
     activeBombs: 0,
     range: 2,
-    speed: 170,
+    speed: 170, shield:0, invulnerableUntil:0, bombPass:false, piercing:false,
     lastMove: 0,
     inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false,
     motion: { x: 0, y: 0 },
@@ -85,6 +79,7 @@ function newRoom(code, ws, name) {
     phase: 'lobby',
     players: new Map(),
     board: null,
+    mapChoice:'rotation', mapId:'classic', roundIndex:0,
     bombs: [],
     flames: [],
     effects: [],
@@ -105,20 +100,20 @@ function playerView(p) {
   return {
     id: p.id, name: p.name, bot:!!p.bot, slot: p.slot, skinIndex: p.skinIndex, color: p.color, skin: p.skin,
     x: p.x, y: p.y, ack: p.ack, motion: p.motion, facing: p.facing, alive: p.alive, bombs: p.bombs,
-    range: p.range, speed: p.speed, kills: p.kills, place: p.place
+    range: p.range, speed: p.speed, shield:p.shield, invulnerableUntil:p.invulnerableUntil, bombPass:p.bombPass, piercing:p.piercing, kills: p.kills, place: p.place
   };
 }
 function stateFor(room) {
   return {
     type: 'state',
-    serverTime: now(),
+    serverTime: now(), mapChoice:room.mapChoice, mapId:room.mapId, mapName:maps.DEFS[room.mapId].name,
     effects: room.effects,
     code: room.code,
     hostId: room.hostId,
     phase: room.phase,
     players: [...room.players.values()].map(playerView),
     board: room.board,
-    bombs: room.bombs.map(b => ({ id:b.id, ownerId:b.ownerId, placedAt:b.placedAt, explodeAt:b.explodeAt, x: b.x, y: b.y, passThrough: b.passThrough, fuse: Math.max(0, b.explodeAt - now()) })),
+    bombs: room.bombs.map(b => ({ id:b.id, piercing:b.piercing, ownerId:b.ownerId, placedAt:b.placedAt, explodeAt:b.explodeAt, x: b.x, y: b.y, passThrough: b.passThrough, fuse: Math.max(0, b.explodeAt - now()) })),
     flames: room.flames.map(f => ({ x: f.x, y: f.y, startedAt:f.startedAt, expiresAt:f.expiresAt })),
     powerups: [...room.powerups.entries()].map(([key, type]) => {
       const [x, y] = key.split(',').map(Number);
@@ -164,20 +159,7 @@ function leaveRoom(ws, allowReconnect = false) {
   broadcast(room);
 }
 function getRoom(ws) { return ws.roomCode && rooms.get(ws.roomCode); }
-function makeBoard() {
-  const board = Array.from({ length: HEIGHT }, (_, y) =>
-    Array.from({ length: WIDTH }, (_, x) => {
-      if (x === 0 || y === 0 || x === WIDTH - 1 || y === HEIGHT - 1 || (x % 2 === 0 && y % 2 === 0)) return 1;
-      return Math.random() < 0.64 ? 2 : 0;
-    })
-  );
-  for (const { x, y } of SPAWNS) {
-    for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      if (board[y + dy]?.[x + dx] !== undefined && board[y + dy][x + dx] !== 1) board[y + dy][x + dx] = 0;
-    }
-  }
-  return board;
-}
+function makeBoard(id='classic'){return maps.create(id);}
 function removeBots(room) {
   for(const [id,p] of room.players) if(p.bot) room.players.delete(id);
 }
@@ -194,11 +176,16 @@ function fillBots(room) {
 function startGame(room) {
   fillBots(room);
   room.lastTick = now();
-  room.board = makeBoard();
+  const ids=Object.keys(maps.DEFS);
+  room.mapId=room.mapChoice==='rotation'?ids[room.roundIndex%ids.length]:room.mapChoice;
+  room.roundIndex++;
+  room.board = makeBoard(room.mapId);
   room.bombs = [];
   room.flames = [];
   room.effects = [];
   room.powerups.clear();
+  const special=['shield','bombpass','pierce','maxrange'];
+  for(let slot=0;slot<4;slot++){const p=SPAWNS[slot],dx=p.x===1?2:-2,dy=p.y===1?2:-2;room.powerups.set(tileKey(p.x+dx,p.y),special[(slot+room.roundIndex-1)%4]);room.powerups.set(tileKey(p.x,p.y+dy),'speed');}
   room.winnerId = null;
   room.phase = 'countdown';
   room.countdownUntil = now() + 3000;
@@ -208,7 +195,7 @@ function startGame(room) {
     const pos = SPAWNS[p.slot];
     Object.assign(p, {
       x: pos.x, y: pos.y, facing: 'down', alive: true, bombs: 1, activeBombs: 0,
-      range: 2, speed: 170, lastMove: 0, inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false, motion: { x: 0, y: 0 }, kills: 0, place: null, botTarget:null, botThinkAt:0, botCooldown:0, botStall:0
+      range: 2, speed: 170, shield:0, invulnerableUntil:0, bombPass:false, piercing:false, lastMove: 0, inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false, motion: { x: 0, y: 0 }, kills: 0, place: null, botTarget:null, botThinkAt:0, botCooldown:0, botStall:0
     });
   }
   broadcast(room);
@@ -236,7 +223,11 @@ function movePlayers(room, t) {
     const key = tileKey(Math.round(p.x), Math.round(p.y));
     const bonus = room.powerups.get(key);
     if (bonus) {
-      if (bonus === 'range') p.range = Math.min(6, p.range + 1);
+      if (bonus === 'range') p.range = Math.min(8, p.range + 1);
+      if (bonus === 'maxrange') p.range=8;
+      if (bonus === 'shield') p.shield=1;
+      if (bonus === 'bombpass') p.bombPass=true;
+      if (bonus === 'pierce') p.piercing=true;
       if (bonus === 'bomb') p.bombs = Math.min(5, p.bombs + 1);
       if (bonus === 'speed') p.speed = Math.max(100, p.speed - 20);
       room.effects.push({kind:'pickup',x:Math.round(p.x),y:Math.round(p.y),startedAt:t,expiresAt:t+600});
@@ -251,7 +242,7 @@ function putBomb(room, player) {
   room.bombs.push({
     id:crypto.randomUUID(), placedAt:now(),
     x: Math.round(player.x), y: Math.round(player.y), ownerId: player.id,
-    range: player.range, explodeAt: now() + 2250,
+    range: player.range, piercing:player.piercing, explodeAt: now() + 2250,
     passThrough: [...room.players.values()].filter(p => p.alive && physics.overlaps(p, {x:Math.round(player.x),y:Math.round(player.y)})).map(p => p.id)
   });
   player.activeBombs++;
@@ -276,10 +267,10 @@ function explodeBomb(room, bomb, t) {
         room.board[y][x] = 0;
         room.effects.push({kind:'crate',x,y,startedAt:t,expiresAt:t+650});
         if (Math.random() < 0.25) {
-          const types = ['range', 'range', 'bomb', 'speed'];
+          const types = ['range', 'range', 'bomb', 'bomb', 'speed','shield','bombpass','pierce','maxrange'];
           room.powerups.set(tileKey(x, y), types[crypto.randomInt(types.length)]);
         }
-        break;
+        if(!bomb.piercing)break;
       }
     }
   }
@@ -295,7 +286,10 @@ function applyFlames(room) {
   for (const p of room.players.values()) {
     if (!p.alive) continue;
     const flame = room.flames.find(f => Math.abs(f.x - p.x) < .72 && Math.abs(f.y - p.y) < .72);
-    if (flame) eliminated.push({ player: p, flame });
+    if(flame && (p.invulnerableUntil||0)<=now()){
+      if(p.shield){p.shield=0;p.invulnerableUntil=now()+1400;room.effects.push({kind:'pickup',x:Math.round(p.x),y:Math.round(p.y),startedAt:now(),expiresAt:now()+600});send(p.ws,{type:'shield'});}
+      else eliminated.push({player:p,flame});
+    }
   }
   // Quem sai primeiro fica em último; eliminações no mesmo tick empatam.
   const place = room.participantsAtStart - room.eliminatedCount;
@@ -414,6 +408,11 @@ function onMessage(ws, raw) {
     player.skin = SKINS[skinIndex];
     player.color = COLORS[skinIndex];
     broadcast(room);
+  } else if(message.type==='map'){
+    if(room.hostId!==ws.playerId)return error(ws,'Só o anfitrião escolhe o mapa.');
+    if(!['lobby','finished'].includes(room.phase))return;
+    if(message.mapId!=='rotation'&&!Object.hasOwn(maps.DEFS,message.mapId))return;
+    room.mapChoice=message.mapId;broadcast(room);
   } else if (message.type === 'start') {
     if (room.hostId !== ws.playerId) return error(ws, 'Apenas o anfitrião pode iniciar.');
     if (room.phase !== 'lobby' && room.phase !== 'finished') return;
@@ -447,6 +446,8 @@ const FILES = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/index.html': ['index.html', 'text/html; charset=utf-8'],
   '/styles.css': ['styles.css', 'text/css; charset=utf-8'],
+  '/maps.js': ['maps.js', 'text/javascript; charset=utf-8'],
+  '/camera.js': ['camera.js', 'text/javascript; charset=utf-8'],
   '/effects.js': ['effects.js', 'text/javascript; charset=utf-8'],
   '/animation.js': ['animation.js', 'text/javascript; charset=utf-8'],
   '/skins/gustavo-walk-v1.png': ['skins/gustavo-walk-v1.png', 'image/png'],
@@ -478,7 +479,7 @@ const server = http.createServer((req, res) => {
     return res.end('Não encontrado');
   }
   const [file, contentType] = entry;
-  res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': ['index.html', 'sw.js', 'manifest.webmanifest', 'game.js', 'physics.js', 'animation.js', 'effects.js', 'netcode.js', 'styles.css'].includes(file) ? 'no-cache' : 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
+  res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': ['index.html', 'sw.js', 'manifest.webmanifest', 'game.js', 'physics.js', 'animation.js', 'effects.js', 'maps.js', 'camera.js', 'netcode.js', 'styles.css'].includes(file) ? 'no-cache' : 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
   if (req.method === 'HEAD') return res.end();
   fs.createReadStream(path.join(PUBLIC, file)).on('error', () => res.destroy()).pipe(res);
 });

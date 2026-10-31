@@ -44,6 +44,10 @@
   const snapshotHistory = [];
   let rosterKey = '';
   let stateReceivedAt=0;
+  let camera=null;
+  let arenaPalette=BombaMaps.DEFS.classic;
+  let minimapKey='';
+  const minimap=document.createElement('canvas');
   let audioCtx = null;
   let disconnected = false;
   let entering = false;
@@ -140,9 +144,10 @@
       leave(false);
       return;
     }
+    if(msg.type==='shield'){if(soundOn)beep(880,.18,'triangle');toast('🛡 Seu escudo absorveu a explosão!');return;}
     if (msg.type === 'pickup') {
       if (soundOn) beep(670, .12, 'triangle');
-      const labels = { range: '🔥 Alcance aumentado!', bomb: '💣 Bomba extra!', speed: '⚡ Mais velocidade!' };
+      const labels = { range: '🔥 Alcance aumentado!', bomb: '💣 Bomba extra!', speed: '⚡ Mais velocidade!', shield:'🛡 Escudo: protege de uma explosão!', bombpass:'👻 Você pode atravessar bombas!', pierce:'◆ Suas bombas atravessam caixas!', maxrange:'✹ Chamas com alcance máximo!' };
       toast(labels[msg.bonus] || 'Poder recebido!');
       return;
     }
@@ -157,7 +162,7 @@
         if(msg.phase!=='playing'||previousPhase!=='playing'||!prediction) {
           prediction=BombaNetcode.create(authoritative,msg.board,msg.bombs);
           inputAccumulator=0;localPlayer=prediction.player;
-          if(previousPhase!==msg.phase) {displayPositions.clear();snapshotHistory.length=0;}
+          if(previousPhase!==msg.phase) {displayPositions.clear();snapshotHistory.length=0;camera=null;}
         } else localPlayer=BombaNetcode.acknowledge(prediction,authoritative,msg.board,msg.bombs);
       }
       snapshotHistory.push({time:performance.now(),players:msg.players});
@@ -308,6 +313,8 @@
   }
   function updateUi() {
     if (!state) return;
+    $('mapSelect').disabled=state.hostId!==meId;
+    if($('mapSelect').value!==state.mapChoice)$('mapSelect').value=state.mapChoice||'rotation';
     $('playerCount').textContent = `${state.players.length} / 4`;
     const isHost = state.hostId === meId;
     const me = state.players.find(p => p.id === meId);
@@ -385,6 +392,7 @@
   // Enter the one shared room on the same gesture that unlocks audio/fullscreen.
   $('createBtn').addEventListener('click', () => {requestImmersive();entering=safeSend({type:'enter',name:getName()});});
   nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') $('createBtn').click(); });
+  $('mapSelect').addEventListener('change',()=>safeSend({type:'map',mapId:$('mapSelect').value}));
   $('startBtn').addEventListener('click', () => {
     requestImmersive();
     safeSend({ type: 'start' });
@@ -623,7 +631,7 @@
     ctx.fill();
   }
   function drawFloor(x, y, ix, iy) {
-    rectangle(x, y, SIZE, SIZE, ((ix + iy) & 1) ? '#26203d' : '#2c2444');
+    rectangle(x, y, SIZE, SIZE, arenaPalette.floor[(ix+iy)&1]);
     rectangle(x + 4, y + 4, SIZE - 8, 1, '#ffffff08');
     if ((ix * 11 + iy * 13) % 9 === 0) {
       circle(x + 12, y + 35, 2, '#5f4e80');
@@ -633,17 +641,17 @@
   function drawWall(x, y, time) {
     rectangle(x, y, SIZE, SIZE, '#1a1730');
     roundRect(x + 2, y + 2, SIZE - 4, SIZE - 5, 6, '#61518c');
-    roundRect(x + 4, y + 4, SIZE - 8, SIZE - 10, 5, '#544579');
-    rectangle(x + 7, y + 7, SIZE - 14, 3, '#8473ab');
-    rectangle(x + 7, y + SIZE - 11, SIZE - 14, 3, '#382e58');
+    roundRect(x + 4, y + 4, SIZE - 8, SIZE - 10, 5, arenaPalette.wall);
+    rectangle(x + 7, y + 7, SIZE - 14, 3, arenaPalette.light);
+    rectangle(x + 7, y + SIZE - 11, SIZE - 14, 3, arenaPalette.dark);
     rectangle(x + 23, y + 14, 2, 17, '#382f5a');
     const shine=((time/30+x+y)%300)/300;
     if(shine<.12) rectangle(x+7+shine*220,y+7,6,2,'#c5b0e5');
   }
   function drawCrate(x, y, time) {
     roundRect(x + 3, y + 4, 42, 40, 5, '#a85b69');
-    roundRect(x + 5, y + 5, 38, 34, 4, '#cf7b70');
-    rectangle(x + 11, y + 7, 26, 29, '#a95c67');
+    roundRect(x + 5, y + 5, 38, 34, 4, arenaPalette.crate);
+    rectangle(x + 11, y + 7, 26, 29, arenaPalette.trim);
     rectangle(x + 21, y + 7, 5, 29, '#e19a83');
     ctx.strokeStyle = '#e5ac8b';
     ctx.lineWidth = 4;
@@ -654,19 +662,19 @@
   }
   function drawPowerup(p, time) {
     const x = p.x * SIZE + 24, y = p.y * SIZE + 25 + Math.sin(time / 230 + p.x) * 2;
-    const color = p.type === 'range' ? '#ffbb73' : p.type === 'bomb' ? '#c29aff' : '#72f0e1';
+    const color=({range:'#ffbb73',bomb:'#c29aff',speed:'#72f0e1',shield:'#9acaff',bombpass:'#c3eafc',pierce:'#ff8293',maxrange:'#ffe26e'})[p.type]||'#fff';
     circle(x, y + 3, 18, '#140f29');
     ctx.save();ctx.strokeStyle=color;ctx.globalAlpha=.4;ctx.lineWidth=1.5;
     ctx.beginPath();ctx.arc(x,y,19+Math.sin(time/180)*2,time/500,time/500+Math.PI*1.4);ctx.stroke();ctx.restore();
     roundRect(x - 14, y - 14, 28, 28, 7, color);
     circle(x - 6, y - 6, 3, '#ffffff99');
     ctx.fillStyle = '#31203f';
-    ctx.font = '1000 20px system-ui';
+    ctx.font=p.type==='maxrange'?'1000 11px system-ui':'1000 18px system-ui';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(p.type === 'range' ? '✹' : p.type === 'bomb' ? '+' : '»', x, y + 1);
+    ctx.fillText(({range:'✹',bomb:'+',speed:'»',shield:'🛡',bombpass:'👻',pierce:'◆',maxrange:'MAX'})[p.type]||'?', x, y + 1);
   }
-  function drawPlayer(p, time) {
+  function drawPlayer(p, time, worldTime) {
     const position = p.id===meId && localPlayer && state.phase==='playing'
       ? localPlayer : BombaNetcode.remotePosition(snapshotHistory,p.id,performance.now()-80) || p;
     const previous=displayPositions.get(p.id);
@@ -677,6 +685,8 @@
     if (!p.alive) return;
     const skinIndex = getSkinIndex(p);
     ctx.save();
+    if((p.invulnerableUntil||0)>worldTime)ctx.globalAlpha=.55+.35*Math.sin(worldTime/65);
+    if(p.shield){ctx.strokeStyle='#9cddff';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(x,y-4,25,34,0,0,Math.PI*2);ctx.stroke();}
     ctx.fillStyle = '#09071688';ctx.beginPath();ctx.ellipse(x,y+22,14,5,0,0,Math.PI*2);ctx.fill();
     if (!BombaAnimation.drawAtlas(ctx,walkAtlases[skinIndex],skinIndex,point.pose,x,y)) {
       // Keep the existing personal image visible while the atlas loads or if it fails.
@@ -691,6 +701,29 @@
     if(p.id===meId) {
       ctx.strokeStyle='#fff4aa';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(x,y+23,17,7,0,0,Math.PI*2);ctx.stroke();
       ctx.fillStyle='#fff1a6';ctx.textAlign='center';ctx.font='900 11px sans-serif';ctx.fillText('VOCÊ',x,y-45);
+    }
+  }
+  function drawMapHud(view,me){
+    const key=state.mapId+state.board.map(row=>row.join('')).join('');
+    if(key!==minimapKey){
+      minimapKey=key;minimap.width=state.width*4;minimap.height=state.height*4;
+      const mapCtx=minimap.getContext('2d');
+      for(let y=0;y<state.height;y++)for(let x=0;x<state.width;x++){
+        mapCtx.fillStyle=state.board[y][x]===1?arenaPalette.light:state.board[y][x]===2?arenaPalette.crate:arenaPalette.floor[0];mapCtx.fillRect(x*4,y*4,4,4);
+      }
+    }
+    const x=canvas.width-minimap.width-12;
+    const local=displayPositions.get(meId)||me;
+    const y=local&&local.y*SIZE+24-view.y>canvas.height/2?10:canvas.height-minimap.height-28;
+    roundRect(x-5,y-5,minimap.width+10,minimap.height+26,5,'#090719d9');
+    ctx.drawImage(minimap,x,y);
+    ctx.strokeStyle='#ffffffa0';ctx.lineWidth=1;ctx.strokeRect(x+view.x/SIZE*4,y+view.y/SIZE*4,canvas.width/SIZE*4,canvas.height/SIZE*4);
+    for(const p of state.players)if(p.alive)circle(x+(p.x+.5)*4,y+(p.y+.5)*4,p.id===meId?2.7:2,p.id===meId?'#fff':p.color);
+    ctx.textAlign='left';ctx.textBaseline='middle';ctx.font='bold 10px system-ui';ctx.fillStyle='#eaddff';ctx.fillText(state.mapName||'Arena',x+2,y+minimap.height+10);
+    if(me){
+      const powers=[`🔥 ${me.range}`,`💣 ${me.bombs}`,`⚡ ${Math.round(170/me.speed*100)}%`];
+      if(me.shield)powers.push('🛡 Escudo');if(me.bombPass)powers.push('👻 Passa-bomba');if(me.piercing)powers.push('◆ Perfurante');
+      roundRect(8,canvas.height-34,Math.min(x-18,450),26,6,'#100c25d9');ctx.fillStyle='#fff0b1';ctx.font='bold 12px system-ui';ctx.fillText(powers.join('  '),16,canvas.height-20);
     }
   }
   function drawEmpty() {
@@ -712,21 +745,31 @@
     }
     if (!state?.board || $('gamePanel').hidden) return;
     const worldTime=(state.serverTime||Date.now())+(performance.now()-stateReceivedAt);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    for (let y = 0; y < state.height; y++) {
-      for (let x = 0; x < state.width; x++) {
-        const px = x * SIZE, py = y * SIZE;
-        drawFloor(px, py, x, y);
-        if (state.board[y][x] === 1) drawWall(px, py, worldTime);
-        else if (state.board[y][x] === 2) drawCrate(px, py, worldTime);
-      }
+    arenaPalette=BombaMaps.DEFS[state.mapId]||BombaMaps.DEFS.classic;
+    const me=state.players.find(p=>p.id===meId);
+    const focus=me?.alive?(displayPositions.get(meId)||localPlayer||me):state.players.find(p=>p.alive)||me;
+    if(focus)camera=BombaCamera.follow(camera,{x:focus.x*SIZE+24,y:focus.y*SIZE+24},{width:canvas.width,height:canvas.height},{width:state.width*SIZE,height:state.height*SIZE},frameDt);
+    const view=camera||{x:0,y:0};
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.save();ctx.translate(-view.x,-view.y);
+    const firstX=Math.max(0,Math.floor(view.x/SIZE)),firstY=Math.max(0,Math.floor(view.y/SIZE));
+    const lastX=Math.min(state.width,Math.ceil((view.x+canvas.width)/SIZE));
+    const lastY=Math.min(state.height,Math.ceil((view.y+canvas.height)/SIZE));
+    for(let y=firstY;y<lastY;y++)for(let x=firstX;x<lastX;x++){
+      const px=x*SIZE,py=y*SIZE;
+      drawFloor(px,py,x,y);
+      if(state.board[y][x]===1)drawWall(px,py,worldTime);
+      else if(state.board[y][x]===2)drawCrate(px,py,worldTime);
     }
-    for (const p of state.powerups || []) drawPowerup(p, worldTime);
-    for (const b of state.bombs || []) BombaEffects.bomb(ctx,b,worldTime);
+    for(const p of state.powerups||[])drawPowerup(p,worldTime);
+    for(const b of state.bombs||[])BombaEffects.bomb(ctx,b,worldTime);
     const flameTiles=new Set((state.flames||[]).filter(f=>f.expiresAt>worldTime).map(f=>`${f.x},${f.y}`));
-    for (const f of state.flames || []) BombaEffects.flame(ctx,f,worldTime,flameTiles);
-    for (const effect of state.effects||[]) BombaEffects.debris(ctx,effect,worldTime);
-    for (const p of [...(state.players || [])].sort((a,b)=>a.y-b.y || a.slot-b.slot)) drawPlayer(p, time);
+    for(const f of state.flames||[])BombaEffects.flame(ctx,f,worldTime,flameTiles);
+    for(const effect of state.effects||[])BombaEffects.debris(ctx,effect,worldTime);
+    for(const p of [...(state.players||[])].sort((a,b)=>a.y-b.y||a.slot-b.slot))drawPlayer(p,time,worldTime);
+    ctx.restore();
+    drawMapHud(view,me);
+
   }
 
   $('soundLabel').textContent = soundOn ? 'LIGADO' : 'SOM';

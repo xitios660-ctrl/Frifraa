@@ -7,7 +7,7 @@ function blast(board,bomb){
  for(const [dx,dy] of DIRECTIONS) for(let i=1;i<=bomb.range;i++) {
   const x=bomb.x+dx*i,y=bomb.y+dy*i,cell=board[y]?.[x];
   if(cell===undefined||cell===1)break;
-  cells.push({x,y});if(cell===2)break;
+  cells.push({x,y});if(cell===2&&!bomb.piercing)break;
  }
  return cells;
 }
@@ -28,7 +28,7 @@ function dangerMap(room,bombs=room.bombs){
 function route(room,p,t,bombs=room.bombs,escape=false){
  const danger=dangerMap(room,bombs),start={x:Math.round(p.x),y:Math.round(p.y),path:[]};
  const queue=[start],visited=new Set([key(start.x,start.y)]);
- const blocked=new Set(bombs.map(b=>key(b.x,b.y)));
+ const blocked=new Set((p.bombPass?[]:bombs).map(b=>key(b.x,b.y)));
  let best=null,bestScore=-Infinity;
  const unsafe=(x,y,from,to)=>(danger.get(key(x,y))||[]).some(d=>d.start<=to&&d.end>=from);
  for(let index=0;index<queue.length;index++) {
@@ -56,7 +56,7 @@ function decide(room,p,t){
  const danger=dangerMap(room),x=Math.round(p.x),y=Math.round(p.y);
  const threatened=(danger.get(key(x,y))||[]).some(d=>d.end>t&&d.start<t+2850);
  if(threatened)return {path:route(room,p,t,room.bombs,true)||[],bomb:false};
- const hypothetical={x,y,range:p.range,explodeAt:t+2250};
+ const hypothetical={x,y,range:p.range,piercing:p.piercing,explodeAt:t+2250};
  const hits=blast(room.board,hypothetical);
  const useful=hits.some(c=>room.board[c.y]?.[c.x]===2||[...room.players.values()].some(other=>other.id!==p.id&&other.alive&&Math.round(other.x)===c.x&&Math.round(other.y)===c.y));
  if(useful&&p.activeBombs<p.bombs&&t>=(p.botCooldown||0)&&!room.bombs.some(b=>b.x===x&&b.y===y)) {

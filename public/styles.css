@@ -58,3 +58,5 @@ footer{display:flex;align-items:center;justify-content:space-between;gap:16px;bo
 @media(pointer:coarse) and (orientation:landscape) and (max-height:380px){body.play-mode .canvas-wrap{width:min(113dvh,calc(100vw - 235px))}body.play-mode .joystick{width:min(24vh,100px);height:min(24vh,100px)}body.play-mode .bomb-btn{width:min(23vh,95px);height:min(23vh,95px)}body.play-mode .mobile-hud{top:4px}.hud-player{font-size:8px;padding:3px 5px}}
 
 @media(pointer:coarse) and (orientation:portrait){body.play-mode{overflow:hidden}body.play-mode .site-shell{width:100%;max-width:none}body.play-mode .game-panel{padding:0;min-height:100dvh}body.play-mode .board-card{border:0;border-radius:0}body.play-mode .topbar,body.play-mode .game-header,body.play-mode .game-sidebar,body.play-mode footer{display:none!important}}
+
+.map-select{width:100%;padding:13px;border:1px solid #695282;background:#161126;color:#f7f2ff;border-radius:10px;font:inherit}.map-select:disabled{opacity:.65}

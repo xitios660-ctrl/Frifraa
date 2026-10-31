@@ -13,6 +13,8 @@
   <link rel="apple-touch-icon" href="/icon-180.png" />
   <link rel="icon" type="image/png" href="/icon-192.png" />
   <link rel="stylesheet" href="/styles.css" />
+  <script src="/maps.js"></script>
+  <script src="/camera.js"></script>
   <script src="/effects.js"></script>
   <script src="/animation.js"></script>
   <script src="/physics.js"></script>
@@ -75,6 +77,8 @@
             <div class="room-card-header"><span class="input-label">TODOS NO MESMO LUGAR</span><span class="room-open"><span class="status-dot live"></span> SALA ÚNICA</span></div>
             <div class="room-code" style="font-size:32px">BOMBA PARTY</div>
             <button id="shareBtn" class="primary-btn" type="button"><span>Copiar link do jogo</span><span>↗</span></button>
+            <label class="input-label" for="mapSelect" style="margin-top:22px">TIPO DE MAPA</label>
+            <select id="mapSelect" class="map-select"><option value="rotation">Rodízio a cada partida</option><option value="classic">Arena Clássica</option><option value="jungle">Ruínas da Selva</option><option value="ice">Palácio de Gelo</option><option value="factory">Fábrica Neon</option></select>
             <p class="room-tip">Abra este mesmo site nos quatro celulares. Ninguém precisa digitar código.</p>
           </div>
           <div class="player-card">
@@ -112,7 +116,7 @@
           </div>
           <aside class="game-sidebar">
             <div class="sidebar-card"><div class="sidebar-head"><span class="section-eyebrow">STATUS DA ARENA</span><span class="tiny-light">● LIVE</span></div><h3>Sobreviventes</h3><div id="gamePlayers" class="game-players"></div></div>
-            <div class="sidebar-card"><span class="section-eyebrow">COMO JOGAR</span><h3>Controles</h3><div class="control-guide"><div><span class="key-bunch">↑ ← ↓ →</span><span>ou <strong>W A S D</strong> para mover</span></div><div><span class="key-bunch space-key">ESPAÇO</span><span>para soltar uma bomba</span></div></div><div class="guide-rule"></div><div class="power-guide"><span>🔥 Aumenta o alcance</span><span>💣 Bomba extra</span><span>⚡ Mais velocidade</span></div></div>
+            <div class="sidebar-card"><span class="section-eyebrow">COMO JOGAR</span><h3>Controles</h3><div class="control-guide"><div><span class="key-bunch">↑ ← ↓ →</span><span>ou <strong>W A S D</strong> para mover</span></div><div><span class="key-bunch space-key">ESPAÇO</span><span>para soltar uma bomba</span></div></div><div class="guide-rule"></div><div class="power-guide"><span>🔥 Aumenta o alcance</span><span>💣 Bomba extra</span><span>⚡ Mais velocidade</span><span>🛡 Escudo contra uma explosão</span><span>👻 Atravessar bombas</span><span>◆ Bomba perfurante</span><span>✹ Chama máxima</span></div></div>
             <button id="exitGameBtn" class="ghost-btn full" type="button">← Sair da partida</button>
           </aside>
         </div>

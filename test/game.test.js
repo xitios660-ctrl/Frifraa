@@ -124,8 +124,8 @@ test('limita a sala a quatro pessoas e inicia uma partida real', async () => {
   assert.equal(withBomb.bombs[0].explodeAt-withBomb.bombs[0].placedAt,2250);
   assert.ok(Number.isFinite(withBomb.serverTime));
   assert.deepEqual(withBomb.bombs[0].passThrough,[joined.playerId]);
-  assert.equal(withBomb.board.length, 13);
-  assert.equal(withBomb.board[0].length, 15);
+  assert.equal(withBomb.board.length, 21);
+  assert.equal(withBomb.board[0].length, 31);
   assert.deepEqual(withBomb.players.map(p => p.skin).sort(), ['Gustavo', 'Jheniffer', 'Kaique', 'Mary']);
   const firstOut = await message(p1, m => m.type === 'state' && m.players.find(p => p.name === 'Mary')?.place === 4);
   assert.equal(firstOut.players.find(p => p.name === 'Mary').alive, false);
@@ -141,7 +141,7 @@ test('limita a sala a quatro pessoas e inicia uma partida real', async () => {
   write(others[0], { type: 'move', x: -1, y: 0 });
   const moving = await message(others[0], m => m.type === 'state' && m.phase === 'playing' && m.players.some(p => p.name === 'Jheniffer' && !Number.isInteger(p.x)));
   const moved = moving.players.find(p => p.name === 'Jheniffer');
-  assert.ok(moved.x < 13 && moved.x > 12);
+  assert.ok(moved.x < 29 && moved.x > 28);
   write(others[0], { type: 'move', x: 0, y: 0 });
   for (const p of others.slice(0, 2)) write(p, { type: 'bomb' });
   const finished = await message(p1, m => m.type === 'state' && m.phase === 'finished');

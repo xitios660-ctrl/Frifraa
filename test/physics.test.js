@@ -47,3 +47,32 @@ test('other players cannot walk through a bomb, and a removed bomb immediately f
  for(let i=0;i<20;i++) move(p,{x:1,y:0},1/60,board,[]);
  assert.ok(p.x>2.5);
 });
+test('half-tile corner turns find the free lane rather than trapping against the nearest blocked lane',()=>{
+ for(const offset of [1.49,1.5,1.51,1.6,1.7,1.75]){
+  const map=board.map(row=>[...row]);map[2][2]=1;
+  const p={id:'p',x:offset,y:1,speed:170};
+  for(let i=0;i<50;i++)move(p,{x:0,y:1},1/60,map,[]);
+  assert.ok(p.y>3,`stuck at offset ${offset}`);
+ }
+});
+test('a character can circle a solid block repeatedly without clipping, snapping or getting stuck',()=>{
+ const map=board.map(row=>[...row]);map[2][2]=1;
+ const p={id:'p',x:1,y:1,speed:170};
+ for(let lap=0;lap<12;lap++)for(const [target,dir] of [[{x:3,y:1},{x:1,y:0}],[{x:3,y:3},{x:0,y:1}],[{x:1,y:3},{x:-1,y:0}],[{x:1,y:1},{x:0,y:-1}]]){
+  let steps=0;
+  while(Math.hypot(p.x-target.x,p.y-target.y)>.00001&&steps++<100){
+   const before={...p},distance=Math.abs(dir.x?target.x-p.x:target.y-p.y);
+   move(p,dir,Math.min(1/60,distance*p.speed/1000),map,[]);
+   assert.ok(require('../public/physics').canOccupy(p,p.x,p.y,map,[]));
+   assert.ok(Math.hypot(p.x-before.x,p.y-before.y)<=1000/170/60+.00001);
+  }
+  assert.ok(steps<100,'character got stuck circling a block');
+ }
+});
+test('bomb-pass crosses bombs while preserving wall collision',()=>{
+ const p={id:'p',x:1,y:2,speed:170,bombPass:true},bombs=[{x:2,y:2,passThrough:[]}];
+ for(let i=0;i<25;i++)move(p,{x:1,y:0},1/60,board,bombs);
+ assert.ok(p.x>3);
+ for(let i=0;i<60;i++)move(p,{x:1,y:0},1/60,board,bombs);
+ assert.ok(p.x<=5.25);
+});

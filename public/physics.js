@@ -10,7 +10,7 @@
       for (const oy of [-RADIUS+EPSILON,RADIUS-EPSILON]) {
         const tx=Math.floor(x+ox+.5),ty=Math.floor(y+oy+.5);
         if(board[ty]?.[tx]!==0) return false;
-        if(bombs.some(b=>b.x===tx && b.y===ty && !b.passThrough?.includes(p.id))) return false;
+        if(bombs.some(b=>b.x===tx && b.y===ty && !p.bombPass && !b.passThrough?.includes(p.id))) return false;
       }
     }
     return true;
@@ -33,13 +33,16 @@
       if(canOccupy(p,nx,ny,board,bombs)) {p.x=nx;p.y=ny;}
       else {
         // Ease into an open corridor instead of snapping or catching on its corner.
-        const centre=Math.round(dx?p.y:p.x);
-        const offset=centre-(dx?p.y:p.x);
-        if(Math.abs(offset)>.001 && Math.abs(offset)<=.48 &&
-           canOccupy(p,dx?nx:centre,dx?centre:ny,board,bombs)) {
+        const perpendicular=dx?p.y:p.x;
+        const centres=[...new Set([Math.floor(perpendicular),Math.ceil(perpendicular)])]
+          .sort((a,b)=>Math.abs(a-perpendicular)-Math.abs(b-perpendicular));
+        for(const centre of centres) {
+          const offset=centre-perpendicular;
+          if(Math.abs(offset)<=.001||Math.abs(offset)>.75+EPSILON)continue;
+          if(!canOccupy(p,dx?nx:centre,dx?centre:ny,board,bombs))continue;
           const slide=Math.sign(offset)*Math.min(Math.abs(offset),step);
           const sx=p.x+(dy?slide:0),sy=p.y+(dx?slide:0);
-          if(canOccupy(p,sx,sy,board,bombs)){p.x=sx;p.y=sy;}
+          if(canOccupy(p,sx,sy,board,bombs)){p.x=sx;p.y=sy;break;}
         }
       }
       revokePassage(p,bombs);

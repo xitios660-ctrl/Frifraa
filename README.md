@@ -154,3 +154,26 @@ revanche incluem bots. Entre rodadas, bots cedem suas vagas aos humanos; saindo 
 
 `node scripts/bots-smoke.cjs` verifica um humano + três bots, movimento, bombas,
 explosões e limpeza da sala. Usa `BOMBA_BASE` e `BOMBA_CHROME`, como o smoke normal.
+
+
+### Arena ampliada, mapas e novos poderes
+
+O mundo tem 31 × 21 casas; a janela mantém 15 × 13 casas visíveis e a câmera
+acompanha o próprio jogador com uma zona central estável e limites nas bordas.
+O minimapa mostra a arena inteira, os jogadores e a área visível. A renderização
+principal desenha apenas os blocos dentro da janela, preservando desempenho.
+Ao ser eliminado, o jogador acompanha um sobrevivente.
+
+O anfitrião escolhe Arena Clássica, Ruínas da Selva, Palácio de Gelo ou Fábrica Neon,
+ou deixa o rodízio automático (padrão). Cada opção tem geometria, densidade de
+caixas e cores próprias. Gelo é o tema visual; os controles mantêm a mesma aderência.
+Os quatro cantos têm corredores iniciais livres e itens próximos.
+
+Além de alcance, bombas extras e velocidade, há escudo (absorve uma explosão e dá
+1,4 s de proteção para sair das chamas), passa-bomba (atravessa bombas, sem atravessar
+paredes), chama máxima (alcance 8) e bomba perfurante (atravessa caixas, para nas
+paredes). Esses poderes duram a rodada, exceto o escudo consumido no impacto.
+A IA considera o alcance e a perfuração ao calcular áreas perigosas. Poderes são
+reiniciados na revanche. As viradas nas quinas procuram as duas faixas adjacentes
+livres e deslocam o personagem gradualmente, sem alterar sua velocidade nem
+teletransportá-lo; testes cobrem voltas repetidas ao redor de um bloco.
