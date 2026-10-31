@@ -21,9 +21,9 @@ Jogo **original inspirado no estilo de batalhas com bombas**, feito para jogar e
 
 ## Skins
 
-Há três skins personalizadas baseadas em fotos enviadas pela usuária: **Mary, Kaique e Jheniffer**. A quarta skin **Solar** permanece como personagem provisório. A seleção é independente da ordem em que os amigos entram na sala.
+Há quatro skins personalizadas baseadas nas fotos: **Mary, Kaique, Jheniffer e Gustavo**. Gustavo substitui a vaga temporária de Solar. A seleção é independente da ordem em que os amigos entram na sala.
 
-Para personalizar o quarto personagem, envie uma foto nítida, preferencialmente de corpo inteiro, em pé, de frente, com rosto visível e boa iluminação. Fotos em **JPG, PNG ou HEIC** servem como referência. O personagem será criado como ilustração original com **fundo transparente**, sem reproduzir personagens de outros jogos.
+A skin Gustavo usa o quadro frontal neutro da sua folha como retrato na sala. Ao entrar com o nome Gustavo, a seleção sugere essa skin quando estiver livre.
 
 Os originais gerados foram exportados em PNG RGBA, e a cópia para o site foi otimizada em WebP transparente (320 × 320 px). O script `python scripts/prepare_skins.py nome=imagem.png` permite otimizar novas imagens.
 
@@ -71,8 +71,7 @@ como fallback durante o carregamento. Na partida, cada personagem personalizado
 usa uma nova folha transparente de 16 quadros (frente, dois perfis e costas).
 `public/animation.js` mede os limites de cada quadro uma vez para alinhar os pés;
 a cadência acompanha a distância percorrida, independentemente da taxa de quadros,
-e para ao encostar na parede. Solar mantém coroa/capa e usa pernas e braços
-animados com orientação nas quatro direções. A renderização respeita a ordem de
+e para ao encostar na parede. Gustavo também tem sua própria folha nas quatro direções, baseada no homem à direita da foto de referência, com camiseta preta e cabelo curto escuro. A renderização respeita a ordem de
 profundidade dos jogadores. As folhas `*-walk-v1.png` foram criadas com base nas
 imagens originais; os WebPs originais não foram substituídos. O áudio é uma composição sintetizada
 original com melodia de partida e vinhetas de vitória/derrota. Requer um toque

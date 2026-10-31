@@ -6,16 +6,16 @@
   const ctx = canvas.getContext('2d');
   const SIZE = 48;
   const COLOR = ['#ac82ff', '#ff6e96', '#55dcff', '#ffd36f'];
-  const SKIN_ICONS = ['💙', '👓', '🌸', '👑'];
-  const SKIN_LABELS = ['MARY', 'KAIQUE', 'JHENIFFER', 'SOLAR'];
-  const SPRITE_URLS = ['/skins/mary.webp', '/skins/kaique.webp', '/skins/jheniffer.webp', null];
+  const SKIN_ICONS = ['💙', '👓', '🌸', '😎'];
+  const SKIN_LABELS = ['MARY', 'KAIQUE', 'JHENIFFER', 'GUSTAVO'];
+  const SPRITE_URLS = ['/skins/mary.webp', '/skins/kaique.webp', '/skins/jheniffer.webp', '/skins/gustavo-walk-v1.png'];
   const sprites = SPRITE_URLS.map(src => {
     if (!src) return null;
     const picture = new Image();
     picture.src = src;
     return picture;
   });
-  const walkAtlases = ['mary','kaique','jheniffer'].map(name => {
+  const walkAtlases = ['mary','kaique','jheniffer','gustavo'].map(name => {
     const atlas = new Image();
     atlas.addEventListener('load',()=>BombaAnimation.prepareAtlas(atlas));
     atlas.src = `/skins/${name}-walk-v1.png`; return atlas;
@@ -212,6 +212,11 @@
       const picture = document.createElement('img');
       picture.src = SPRITE_URLS[skinIndex];
       picture.alt = '';
+      if(skinIndex===3) {
+        // Show the neutral front cell of Gustavo's sheet as the lobby portrait.
+        avatar.style.position='relative';
+        Object.assign(picture.style,{position:'absolute',width:'400%',height:'400%',maxWidth:'none',objectFit:'fill',left:'-100%',top:'0'});
+      }
       avatar.append(picture);
     } else avatar.textContent = SKIN_ICONS[skinIndex];
     avatar.title = `Skin ${SKIN_LABELS[skinIndex]}`;
@@ -702,11 +707,13 @@
     const skinIndex = getSkinIndex(p);
     ctx.save();
     ctx.fillStyle = '#09071688';ctx.beginPath();ctx.ellipse(x,y+22,14,5,0,0,Math.PI*2);ctx.fill();
-    if (skinIndex === 3) BombaAnimation.drawSolar(ctx,point.pose,x,y);
-    else if (!BombaAnimation.drawAtlas(ctx,walkAtlases[skinIndex],skinIndex,point.pose,x,y)) {
+    if (!BombaAnimation.drawAtlas(ctx,walkAtlases[skinIndex],skinIndex,point.pose,x,y)) {
       // Keep the existing personal image visible while the atlas loads or if it fails.
       const sprite=sprites[skinIndex];
-      if(sprite?.complete && sprite.naturalWidth) ctx.drawImage(sprite,x-28,y-41,56,68);
+      if(sprite?.complete && sprite.naturalWidth) {
+        if(skinIndex===3) BombaAnimation.drawAtlas(ctx,sprite,skinIndex,point.pose,x,y);
+        else ctx.drawImage(sprite,x-28,y-41,56,68);
+      }
       else { ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(x,y,14,0,Math.PI*2);ctx.fill(); }
     }
     ctx.restore();

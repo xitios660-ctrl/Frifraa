@@ -13,7 +13,7 @@ const TICK_MS = 1000 / 60;
 const physics = require('./public/physics');
 const {STEP} = require('./public/netcode');
 const COLORS = ['#ac82ff', '#ff6e96', '#55dcff', '#ffd36f'];
-const SKINS = ['Mary', 'Kaique', 'Jheniffer', 'Solar'];
+const SKINS = ['Mary', 'Kaique', 'Jheniffer', 'Gustavo'];
 const SPAWNS = [
   { x: 1, y: 1 },
   { x: WIDTH - 2, y: 1 },
@@ -45,6 +45,7 @@ function preferredSkin(name) {
   if (/^(mary|mariany|maryane)(\b|\s)/.test(normalized)) return 0;
   if (/^kaique(\b|\s)/.test(normalized)) return 1;
   if (/^(jheniffer|jhenifer|jhen|jhe)(\b|\s)/.test(normalized)) return 2;
+  if (/^gustavo(\b|\s)/.test(normalized)) return 3;
   return null;
 }
 function availableSkin(room, name) {
@@ -399,6 +400,7 @@ const FILES = {
   '/index.html': ['index.html', 'text/html; charset=utf-8'],
   '/styles.css': ['styles.css', 'text/css; charset=utf-8'],
   '/animation.js': ['animation.js', 'text/javascript; charset=utf-8'],
+  '/skins/gustavo-walk-v1.png': ['skins/gustavo-walk-v1.png', 'image/png'],
   '/skins/mary-walk-v1.png': ['skins/mary-walk-v1.png', 'image/png'],
   '/skins/kaique-walk-v1.png': ['skins/kaique-walk-v1.png', 'image/png'],
   '/skins/jheniffer-walk-v1.png': ['skins/jheniffer-walk-v1.png', 'image/png'],

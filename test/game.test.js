@@ -58,7 +58,7 @@ test('serve página, skins personalizadas e endpoint de saúde', async () => {
   assert.equal(page.status, 200);
   assert.match(await page.text(), /Bomba Party · Arena Online/);
   assert.equal((await health.json()).ok, true);
-  for (const name of ['mary','kaique','jheniffer']) {
+  for (const name of ['mary','kaique','jheniffer','gustavo']) {
     const atlas = await fetch(`${BASE}/skins/${name}-walk-v1.png`);
     assert.equal(atlas.status, 200);
     assert.match(atlas.headers.get('content-type'), /image\/png/);
@@ -119,7 +119,7 @@ test('limita a sala a quatro pessoas e inicia uma partida real', async () => {
   assert.deepEqual(withBomb.bombs[0].passThrough,[joined.playerId]);
   assert.equal(withBomb.board.length, 13);
   assert.equal(withBomb.board[0].length, 15);
-  assert.deepEqual(withBomb.players.map(p => p.skin).sort(), ['Jheniffer', 'Kaique', 'Mary', 'Solar']);
+  assert.deepEqual(withBomb.players.map(p => p.skin).sort(), ['Gustavo', 'Jheniffer', 'Kaique', 'Mary']);
   const firstOut = await message(p1, m => m.type === 'state' && m.players.find(p => p.name === 'Mary')?.place === 4);
   assert.equal(firstOut.players.find(p => p.name === 'Mary').alive, false);
   assert.equal(firstOut.participantsAtStart, 4);
@@ -156,8 +156,12 @@ test('limita a sala a quatro pessoas e inicia uma partida real', async () => {
 });
 
 test('numbered movement is acknowledged once and a bomb follows its queued movement',async()=>{
- const p=await client();write(p,{type:'create',name:'Netcode'});
- await message(p,m=>m.type==='joined');write(p,{type:'start'});
+ const p=await client();write(p,{type:'create',name:'Gustavo'});
+ await message(p,m=>m.type==='joined');
+ const lobby=await message(p,m=>m.type==='state'&&m.phase==='lobby');
+ assert.equal(lobby.players[0].skin,'Gustavo');
+ assert.equal(lobby.players[0].skinIndex,3);
+ write(p,{type:'start'});
  await message(p,m=>m.type==='state'&&m.phase==='playing');
  write(p,{type:'input',steps:Array.from({length:8},(_,i)=>({seq:i+1,x:1,y:0}))});
  write(p,{type:'bomb'});
