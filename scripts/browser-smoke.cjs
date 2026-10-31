@@ -23,6 +23,7 @@ for(let i=0;i<4;i++) {
        }
      };
    }
+   const ObservedSocket=window.WebSocket;window.WebSocket=class extends ObservedSocket{constructor(...args){super(...args);this.addEventListener('message',event=>{const m=JSON.parse(event.data);if(m.type==='joined')window.myId=m.playerId;if(m.type==='state')window.latestState=m;});}};
    window.sentDirections=[];
    const send=window.WebSocket.prototype.send;
    window.WebSocket.prototype.send=function(data){try{const m=JSON.parse(data);if(m.type==='input'){window.sentDirections.push(...m.steps);if(window.sentDirections.length>500)window.sentDirections.splice(0,250);}}catch{}return send.call(this,data);};
@@ -116,6 +117,9 @@ await pages[0].mouse.move(cx+stick.width*.3,cy);await pages[0].mouse.down();
 assert.ok(await pages[0].locator('#joystick').evaluate(node=>node.classList.contains('active')),'joystick must accept a new touch after focus loss');
 await pages[0].mouse.up();
 for (const [direction,row] of [['ArrowRight',2],['ArrowLeft',1],['ArrowDown',0],['ArrowUp',3]]) {
+ // Return through the clear spawn lanes before each pose; a random crate can legitimately block a turn elsewhere.
+ await pages[0].keyboard.down('ArrowLeft');await pages[0].waitForFunction(()=>window.latestState.players.find(p=>p.id===window.myId).x===1);await pages[0].keyboard.up('ArrowLeft');
+ await pages[0].keyboard.down('ArrowUp');await pages[0].waitForFunction(()=>window.latestState.players.find(p=>p.id===window.myId).y===1);await pages[0].keyboard.up('ArrowUp');
  await pages[0].evaluate(()=>{window.skinDraws=[];});
  await pages[0].keyboard.down(direction);
  await pages[0].waitForFunction(row=>window.skinDraws.some(d=>d.src.includes('mary-walk') && d.row===row),row);
@@ -155,5 +159,5 @@ await pages[0].setViewportSize({width:390,height:844});
 await pages[0].locator('#rotateOverlay').waitFor({state:'visible'});
 assert.deepEqual(errors,[]);
 console.log('PASS: one room without codes, large scrolling arena/map selection, animated bombs/debris, four browser clients, mobile landscape controls, bomb, portrait warning, four sprite sheets, four directions, idle animation, music playback/mute/resume, stable joystick, no teleports or reverse corrections, no JS errors');
-}finally{await browser.close()}
+}catch(e){console.log('BROWSER DEBUG',await pages[0].evaluate(()=>({id:window.myId,state:window.latestState,directions:window.sentDirections.slice(-8),focused:document.hasFocus(),visible:document.visibilityState})));await pages[0].screenshot({path:'/tmp/bomba-browser-failure.png'});throw e;}finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exit(1)});

@@ -57,7 +57,8 @@
   let entering = false;
   let toastTimer;
   let lastPhase = null;
-  let lastSoundKey = '';
+  let lastBombCount=0;
+  let lastKickTime=0;
   let flameSoundActive = false;
   let deferredInstallPrompt = null;
   let penaltyNotified = false;
@@ -176,8 +177,8 @@
     }
     if(msg.type==='shield'){if(soundOn)beep(880,.18,'triangle');toast('🛡 Seu escudo absorveu a explosão!');return;}
     if (msg.type === 'pickup') {
-      if (soundOn) beep(670, .12, 'triangle');
-      const labels = { range: '🔥 Alcance aumentado!', bomb: '💣 Bomba extra!', speed: '⚡ Mais velocidade!', shield:'🛡 Escudo: protege de uma explosão!', bombpass:'👻 Você pode atravessar bombas!', pierce:'◆ Suas bombas atravessam caixas!', maxrange:'✹ Chamas com alcance máximo!' };
+      if (soundOn) beep(msg.bonus==='curse'?145:670,.12,msg.bonus==='curse'?'sawtooth':'triangle');
+      const labels = { range: '🔥 Alcance aumentado!', bomb: '💣 Bomba extra!', speed: '⚡ Mais velocidade!', shield:'🛡 Escudo: protege de uma explosão!', bombpass:'👻 Você pode atravessar bombas!', pierce:'◆ Suas bombas atravessam caixas!', maxrange:'✹ Chamas com alcance máximo!',curse:'💀 Caveira! Lentidão por 6 segundos.',kick:'🥊 Luva! Encoste andando para chutar bombas.' };
       toast(labels[msg.bonus] || 'Poder recebido!');
       return;
     }
@@ -407,11 +408,12 @@
       lastPhase = state.phase;
     }
     if (soundOn && state.phase === 'playing') {
-      const key = state.bombs.map(b => `${b.x},${b.y}`).join('|');
+      const kick=state.effects?.filter(e=>e.kind==='kick').at(-1);
+      if(kick&&kick.startedAt>lastKickTime){beep(160,.08,'square');lastKickTime=kick.startedAt;}
       if (state.flames.length && !flameSoundActive) beep(90, .28, 'sawtooth');
       flameSoundActive = state.flames.length > 0;
-      if (key.length > lastSoundKey.length) beep(220,.06,'square');
-      lastSoundKey = key;
+      if (state.bombs.length>lastBombCount) beep(220,.06,'square');
+      lastBombCount=state.bombs.length;
     }
   }
   function showDeathMessage(me) {
@@ -688,6 +690,7 @@
     const skinIndex = getSkinIndex(p);
     ctx.save();
     if((p.invulnerableUntil||0)>worldTime)ctx.globalAlpha=.55+.35*Math.sin(worldTime/65);
+    if((p.slowedUntil||0)>worldTime){ctx.strokeStyle='#c58aff';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(x,y+20,19,6,0,0,Math.PI*2);ctx.stroke();}
     if(p.shield){ctx.strokeStyle='#9cddff';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(x,y+3,23,23,0,0,Math.PI*2);ctx.stroke();}
     ctx.fillStyle = '#09071688';ctx.beginPath();ctx.ellipse(x,y+22,14,5,0,0,Math.PI*2);ctx.fill();
     if (!BombaAnimation.drawAtlas(ctx,walkAtlases[skinIndex],skinIndex,point.pose,x,y)) {
@@ -705,7 +708,7 @@
       ctx.fillStyle='#fff1a6';ctx.textAlign='center';ctx.font='900 11px sans-serif';ctx.fillText('VOCÊ',x,y-24);
     }
   }
-  function drawMapHud(view,me){
+  function drawMapHud(view,me,worldTime){
     const key=state.mapId+state.board.map(row=>row.join('')).join('');
     if(key!==minimapKey){
       minimapKey=key;minimap.width=state.width*4;minimap.height=state.height*4;
@@ -725,6 +728,7 @@
     ctx.textAlign='left';ctx.textBaseline='middle';ctx.font='bold 10px system-ui';ctx.fillStyle='#eaddff';ctx.fillText(state.mapName||'Arena',x+2,y+minimap.height+10);
     if(me){
       const powers=[`🔥 ${me.range}`,`💣 ${me.bombs}`,`⚡ ${Math.round(170/me.speed*100)}%`];
+      if(me.kick)powers.push('🥊 Chute');if(me.slowedUntil>worldTime)powers.push(`💀 ${Math.ceil((me.slowedUntil-worldTime)/1000)}s`);
       if(me.shield)powers.push('🛡 Escudo');if(me.bombPass)powers.push('👻 Passa-bomba');if(me.piercing)powers.push('◆ Perfurante');
       roundRect(8,canvas.height-34,Math.min(x-18,450),26,6,'#100c25d9');ctx.fillStyle='#fff0b1';ctx.font='bold 12px system-ui';ctx.fillText(powers.join('  '),16,canvas.height-20);
     }
@@ -784,7 +788,7 @@
     for(const p of [...(state.players||[])].sort((a,b)=>a.y-b.y||a.slot-b.slot))drawPlayer(p,time,worldTime);
     for(const tile of state.collapse?.falling||[])BombaEffects.fallingWall(ctx,tile,worldTime,arenaPalette);
     ctx.restore();
-    drawMapHud(view,watching?target||me:me);
+    drawMapHud(view,watching?target||me:me,worldTime);
     drawCollapseTimer(worldTime);
 
   }

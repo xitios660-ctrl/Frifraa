@@ -1,12 +1,12 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const art=require('../public/items');
-test('nine reference skins cover the seven existing effects without changing power rules',()=>{
- assert.equal(Object.keys(art.SKINS).length,9);assert.equal(Object.keys(art.DEFS).length,7);
+test('nine reference skins each have their own effect',()=>{
+ assert.equal(Object.keys(art.SKINS).length,9);assert.equal(Object.keys(art.DEFS).length,9);
  const selected=new Set();for(const type of Object.keys(art.DEFS))for(let x=0;x<2;x++)selected.add(art.selectSkin(type,x,0));
  assert.equal(selected.size,9);for(const skin of selected)assert.ok(art.SKINS[skin]);
  assert.equal(art.selectSkin('bombpass',2,3,1),art.selectSkin('bombpass',2,3,1));
- assert.notEqual(art.selectSkin('pierce',2,2,1),art.selectSkin('pierce',2,3,1));
+ assert.equal(art.selectSkin('curse',2,2,1),'skull');assert.equal(art.selectSkin('kick',2,3,1),'glove');
 });
 test('all nine animations are deterministic, change over time and keep their volume bounded',()=>{
  for(const skin of Object.keys(art.SKINS)){

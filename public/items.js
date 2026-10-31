@@ -2,8 +2,8 @@
 (function(root){
  const TAU=Math.PI*2;
  const SKINS={rainbow:{cell:0,color:'#db7bff'},techbomb:{cell:1,color:'#5cdbff'},flame:{cell:2,color:'#ffb346'},skate:{cell:3,color:'#68e9ff'},skull:{cell:4,color:'#ffcd60'},tanks:{cell:5,color:'#ffb950'},glove:{cell:6,color:'#ff8655'},goldflame:{cell:7,color:'#ffe46d'},heart:{cell:8,color:'#ff6481'}};
- const variants={bombpass:['rainbow','skull'],pierce:['tanks','glove']};
- const defaults={range:'flame',bomb:'techbomb',speed:'skate',shield:'heart',bombpass:'rainbow',pierce:'tanks',maxrange:'goldflame'};
+ const variants={};
+ const defaults={range:'flame',bomb:'techbomb',speed:'skate',shield:'heart',bombpass:'rainbow',pierce:'tanks',maxrange:'goldflame',curse:'skull',kick:'glove'};
  function selectSkin(type,x,y,round=0){const choices=variants[type];return choices?choices[Math.abs(x+y+round)%choices.length]:defaults[type];}
  const tiles={},shine={};let loaded=false;
  function prepare(image){
@@ -18,7 +18,7 @@
   loaded=true;
  }
  const ready=typeof root.Image==='function'?new Promise(resolve=>{const image=new root.Image();image.onload=()=>{prepare(image);resolve(true);};image.onerror=()=>resolve(false);image.src='/items/powerups-3d-v1.png';}):Promise.resolve(false);
- const DEFS={range:{color:'#ff9558',name:'Alcance'},bomb:{color:'#bb9aff',name:'Bomba extra'},speed:{color:'#65ebd2',name:'Velocidade'},shield:{color:'#79caff',name:'Escudo'},bombpass:{color:'#d1b5ff',name:'Passa-bomba'},pierce:{color:'#ff7ca6',name:'Perfurante'},maxrange:{color:'#ffe275',name:'Chama máxima'}};
+ const DEFS={range:{color:'#ff9558',name:'Alcance'},bomb:{color:'#bb9aff',name:'Bomba extra'},speed:{color:'#65ebd2',name:'Velocidade'},shield:{color:'#79caff',name:'Escudo'},bombpass:{color:'#d1b5ff',name:'Passa-bomba'},pierce:{color:'#ff7ca6',name:'Perfurante'},maxrange:{color:'#ffe275',name:'Chama máxima'},curse:{color:'#c48aff',name:'Caveira · lentidão por 6s'},kick:{color:'#ff8655',name:'Luva · chutar bombas'}};
  function circle(c,x,y,r,color){c.fillStyle=color;c.beginPath();c.arc(x,y,r,0,TAU);c.fill();}
  function shape(c,points,fill,stroke){c.beginPath();points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.closePath();c.fillStyle=fill;c.fill();if(stroke){c.strokeStyle=stroke;c.lineWidth=1.4;c.stroke();}}
  function rect(c,x,y,w,h,r,color){c.fillStyle=color;c.beginPath();c.roundRect(x,y,w,h,r);c.fill();}
@@ -40,7 +40,9 @@
   circle(c,Math.sin(t*5)*6,-17-(t*11%6),1.6,'#ffe786');c.restore();
  }
  function icon(c,type,t){
-  if(type==='range')fire(c,0,0,1,t);
+  if(type==='curse'){circle(c,0,0,13,'#eee3ff');circle(c,-5,-2,3,'#43304f');circle(c,5,-2,3,'#43304f');rect(c,-6,10,12,5,1,'#eee3ff');}
+  else if(type==='kick'){circle(c,0,-2,13,'#ff7744');rect(c,-8,9,16,7,2,'#ffb751');}
+  else if(type==='range')fire(c,0,0,1,t);
   else if(type==='bomb'){
    const g=c.createRadialGradient(-5,-4,1,0,2,12);g.addColorStop(0,'#9a80c1');g.addColorStop(1,'#211933');circle(c,-2,3,11,g);circle(c,-6,-2,2.5,'#ffffff7a');
    rect(c,-5,-10,7,5,1,'#aa96cc');c.strokeStyle='#ffeab3';c.lineWidth=2;c.beginPath();c.moveTo(-1,-10);c.quadraticCurveTo(0,-18,7,-13);c.stroke();circle(c,7,-13,2+Math.sin(t*12)*.5,'#fff1a4');

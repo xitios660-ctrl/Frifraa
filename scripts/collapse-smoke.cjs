@@ -37,7 +37,7 @@ const items=require('../public/items');
    const x=3+i;let y=3;if(items.selectSkin(type,x,y,r.roundIndex)!==skin)y++;
    r.board[y][x]=0;r.powerups.set(`${x},${y}`,type);placed.push({x,y});
   });
-  tick();await pages[0].evaluate(()=>BombaItems.ready);await pages[0].waitForFunction(()=>window.itemDraws.size===7&&window.skinDraws.size===9);
+  tick();await pages[0].evaluate(()=>BombaItems.ready);await pages[0].waitForFunction(()=>window.itemDraws.size===9&&window.skinDraws.size===9);
   await pages[0].screenshot({path:'/tmp/bomba-items-mobile.png'});
   simulated=startsAt-350;tick();
   for(const page of pages)await page.waitForFunction(()=>window.latestState?.collapse?.falling?.length>0);
@@ -53,6 +53,6 @@ const items=require('../public/items');
   r.bombs.push({...placed[0],range:0,ownerId:r.hostId,explodeAt:Date.now()});simulated+=34;tick();
   for(const page of pages)await page.waitForFunction(tile=>!window.latestState.powerups.some(p=>p.x===tile.x&&p.y===tile.y),placed[0]);
   assert.deepEqual(errors,[]);
-  console.log('PASS: four real mobile clients share the 90s timer, warning, falling-wall collision/death/ranking, spectator and item burn; all nine 3D skins render with seven original effects; no JS errors');
+  console.log('PASS: four real mobile clients share the 90s timer, warning, falling-wall collision/death/ranking, spectator and item burn; all nine 3D skins render with nine effects; no JS errors');
  }finally{await browser.close();}
 })().then(()=>process.kill(process.pid,'SIGTERM')).catch(e=>{console.error(e);process.exit(1)});

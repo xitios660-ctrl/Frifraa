@@ -260,16 +260,16 @@ itens, e mantém a classificação e o modo espectador. O servidor controla o te
 e envia as quedas aos quatro clientes. Bots antecipam essas casas como perigo
 permanente. A revanche restaura mapa e temporizador.
 
-Os sete poderes usam nove skins 3D pré-renderizadas, baseadas na referência
+Os nove poderes usam nove skins 3D pré-renderizadas, baseadas na referência
 do usuário, no atlas transparente `public/items/powerups-3d-v1.png`. A animação
 em `public/items.js` combina perspectiva suave, flutuação, sombras, reflexos
 mascarados pelo contorno e movimentos próprios de cada skin, sincronizados
 pelo relógio da partida. O coração pulsa, a luva golpeia, o patins oscila com
 rastro, as chamas soltam brasas, a bomba acende o visor e a caveira pulsa os olhos.
-A bomba colorida e a caveira são skins de atravessar bombas; os tanques e a luva
-são skins de bomba perfurante. As demais correspondem a bomba extra, alcance,
-velocidade, alcance máximo e escudo. A escolha visual é determinística por casa
-e rodada e vem no estado do servidor; os efeitos dos poderes permanecem iguais. Fogo destrói imediatamente itens expostos, com partículas; itens
+Cada arte agora corresponde a um efeito: bomba colorida para atravessar bombas,
+tanques para perfuração, caveira para lentidão temporária, luva para chute, além
+de bomba extra, alcance, velocidade, alcance máximo e escudo. A identidade
+do item vem no estado do servidor. Fogo destrói imediatamente itens expostos, com partículas; itens
 revelados por caixas aparecem depois que a chama daquela casa termina.
 
 `node scripts/collapse-smoke.cjs` inicia um servidor local e quatro navegadores
@@ -283,3 +283,30 @@ de tela são salvas em `/tmp/bomba-items-mobile.png` e
 `node scripts/item-art-smoke.cjs` verifica as nove skins com transparência,
 quadros animados distintos e reprodução idêntica no mesmo instante; salva a
 prévia em `/tmp/bomba-3d-items-preview.png`. O teste não modifica a partida.
+
+
+### Caveira e luva como poderes próprios
+
+A caveira reduz a velocidade de movimento para 62,5% durante seis segundos.
+Coletar outra renova o prazo. Bônus de velocidade são preservados, inclusive
+quando coletados durante a lentidão, e voltam a valer normalmente ao terminar.
+O HUD mostra os segundos restantes e o personagem recebe um indicador violeta.
+Bots evitam procurar caveiras. Uma caveira fica na região central e ambas as
+novidades também podem surgir de caixas; a luva participa da rotação dos itens
+perto dos pontos iniciais. Fogo destrói esses itens como os demais.
+
+Com a luva, andar diretamente contra uma bomba livre e alinhada inicia um chute.
+A bomba percorre o corredor, com animação interpolada e passos de 100 ms, até
+encontrar parede, caixa, outra bomba ou jogador. A origem e o destino de cada
+passo ficam reservados para impedir cruzamentos durante o movimento. Não é
+possível chutar uma bomba ocupada por um jogador. O pavio, o dono e a regra de
+eliminações permanecem os originais. Reações em cadeia e paredes caindo também
+afetam bombas em movimento. Passa-bomba tem prioridade sobre o chute.
+
+O servidor controla os chutes em `bomb-motion.js`; os clientes recebem a direção
+e os horários do deslocamento. Bots consideram o trajeto e as futuras explosões.
+A revanche limpa luva e lentidão. `test/kick.test.js` e
+`test/skull-glove.test.js` cobrem colisões, duração, bônus, reações em cadeia e
+reinício. `node scripts/powers-smoke.cjs` testa coleta, chute, animação, parada,
+pavio, explosão, lentidão e recuperação com quatro navegadores móveis reais
+contra um servidor local. Não há comando de teste exposto na versão publicada.

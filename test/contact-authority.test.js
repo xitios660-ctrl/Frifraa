@@ -11,7 +11,7 @@ test('server spares a nearby player, eliminates on actual flame contact and catc
  room.flames=[{x:2,y:2,startedAt:time,expiresAt:time+1000,ownerId:'p'}];
  p.x=2.7;p.y=2;time+=17;tick();assert.equal(p.alive,true,'proximity and glow cannot kill');
  p.x=2.61;time+=17;tick();assert.equal(p.alive,false,'solid fire contact must kill');
- room.phase='playing';p.alive=true;p.place=null;p.x=1;p.y=3;p.speed=10;p.motion={x:1,y:0};p.lastInput=time;
+ room.phase='playing';p.alive=true;p.place=null;p.x=1;p.y=3;p.speed=10;p.baseSpeed=10;p.motion={x:1,y:0};p.lastInput=time;
  room.lastTick=time;room.flames=[{x:3,y:3,startedAt:time,expiresAt:time+1000,ownerId:'p'}];
  time+=50;tick();assert.ok(p.x>4);assert.equal(p.alive,false,'crossing fire cannot skip contact between endpoints');
  console.log('PASS');process.kill(process.pid,'SIGTERM');

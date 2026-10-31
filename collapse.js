@@ -33,7 +33,7 @@ function update(room,t){
   room.pendingPowerups=room.pendingPowerups?.filter(p=>p.x!==tile.x||p.y!==tile.y)||[];
   room.flames=room.flames.filter(f=>f.x!==tile.x||f.y!==tile.y);
   room.bombs=room.bombs.filter(b=>{
-   if(b.x!==tile.x||b.y!==tile.y)return true;
+   if(!(b.x===tile.x&&b.y===tile.y||b.slide?.fromX===tile.x&&b.slide?.fromY===tile.y))return true;
    const owner=room.players.get(b.ownerId);if(owner)owner.activeBombs=Math.max(0,owner.activeBombs-1);return false;
   });
   for(const p of room.players.values())if(p.alive&&physics.overlaps(p,tile))eliminated.add(p);

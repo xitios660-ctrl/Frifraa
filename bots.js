@@ -1,6 +1,7 @@
 'use strict';
 const physics=require('./public/physics');
 const {INTERVAL}=require('./collapse');
+const bombMotion=require('./bomb-motion');
 const DIRECTIONS=[[1,0],[-1,0],[0,1],[0,-1]];
 const key=(x,y)=>`${x},${y}`;
 function blast(board,bomb){
@@ -12,7 +13,7 @@ function blast(board,bomb){
  }
  return cells;
 }
-function dangerMap(room,bombs=room.bombs){
+function dangerMap(room,bombs=room.bombs,t=Date.now()){
  const danger=new Map(),times=bombs.map(b=>b.explodeAt),blasts=bombs.map(b=>blast(room.board,b));
  for(let pass=0;pass<bombs.length;pass++) {
   let changed=false;
@@ -23,12 +24,18 @@ function dangerMap(room,bombs=room.bombs){
  }
  function add(x,y,start,end){const k=key(x,y);if(!danger.has(k))danger.set(k,[]);danger.get(k).push({start,end});}
  blasts.forEach((cells,i)=>cells.forEach(c=>add(c.x,c.y,times[i],times[i]+500)));
+ for(const b of bombs)if(b.rolling){
+  for(const cell of bombMotion.projected(room,b,t)){
+   add(cell.x,cell.y,0,b.explodeAt+500);
+   for(const hit of blast(room.board,{...b,x:cell.x,y:cell.y}))add(hit.x,hit.y,b.explodeAt,b.explodeAt+500);
+  }
+ }
  for(const f of room.flames)add(f.x,f.y,0,f.expiresAt);
  if(room.collapse){const c=room.collapse;for(let i=c.index;i<c.path.length;i++){const cell=c.path[i];add(cell.x,cell.y,c.startsAt+i*INTERVAL,Infinity);}}
  return danger;
 }
 function route(room,p,t,bombs=room.bombs,escape=false){
- const danger=dangerMap(room,bombs),start={x:Math.round(p.x),y:Math.round(p.y),path:[]};
+ const danger=dangerMap(room,bombs,t),start={x:Math.round(p.x),y:Math.round(p.y),path:[]};
  const queue=[start],visited=new Set([key(start.x,start.y)]);
  const blocked=new Set((p.bombPass?[]:bombs).map(b=>key(b.x,b.y)));
  let best=null,bestScore=-Infinity;
@@ -38,7 +45,7 @@ function route(room,p,t,bombs=room.bombs,escape=false){
   if(!unsafe(node.x,node.y,arrival,Math.max(arrival+600,t+2850))) {
    if(escape)return node.path;
    let score=-node.path.length*.25;
-   if(room.powerups.has(key(node.x,node.y)))score+=16;
+   if(room.powerups.has(key(node.x,node.y)))score+=room.powerups.get(key(node.x,node.y))==='curse'?-24:16;
    for(const [dx,dy] of DIRECTIONS)if(room.board[node.y+dy]?.[node.x+dx]===2)score+=5;
    const opponents=[...room.players.values()].filter(other=>other.alive&&other.id!==p.id);
    if(opponents.length)score-=Math.min(...opponents.map(other=>Math.abs(other.x-node.x)+Math.abs(other.y-node.y)))*.4;
@@ -55,7 +62,7 @@ function route(room,p,t,bombs=room.bombs,escape=false){
  return best;
 }
 function decide(room,p,t){
- const danger=dangerMap(room),x=Math.round(p.x),y=Math.round(p.y);
+ const danger=dangerMap(room,room.bombs,t),x=Math.round(p.x),y=Math.round(p.y);
  const threatened=(danger.get(key(x,y))||[]).some(d=>d.end>t&&d.start<t+2850);
  if(threatened)return {path:route(room,p,t,room.bombs,true)||[],bomb:false};
  const hypothetical={x,y,range:p.range,piercing:p.piercing,explodeAt:t+2250};
@@ -67,7 +74,7 @@ function decide(room,p,t){
  }
  return {path:route(room,p,t)||[],bomb:false};
 }
-function update(room,p,t,dt,putBomb,onStep){
+function update(room,p,t,dt,putBomb,onStep,beforeMove){
  const centred=Math.abs(p.x-Math.round(p.x))<.005&&Math.abs(p.y-Math.round(p.y))<.005;
  if(centred&&(!p.botTarget||t>=(p.botThinkAt||0))){
   const action=decide(room,p,t);p.botTarget=action.path[0]||null;p.botThinkAt=t+120;
@@ -80,6 +87,7 @@ function update(room,p,t,dt,putBomb,onStep){
  const remaining=Math.abs(direction.x?dx:dy);
  const before={x:p.x,y:p.y};
  p.motion=direction;
+ if(beforeMove)beforeMove(direction);
  physics.move(p,direction,Math.min(dt,remaining*p.speed/1000),room.board,room.bombs,onStep);
  if(Math.hypot(p.x-target.x,p.y-target.y)<.005)p.botTarget=null;
  if(Math.hypot(p.x-before.x,p.y-before.y)<.00001){

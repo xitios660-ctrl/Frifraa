@@ -15,6 +15,7 @@ const {STEP} = require('./public/netcode');
 const bots=require('./bots');
 const collapse=require('./collapse');
 const itemArt=require('./public/items');
+const bombMotion=require('./bomb-motion');
 const COLORS = ['#ac82ff', '#ff6e96', '#55dcff', '#ffd36f'];
 const SKINS = ['Mary', 'Kaique', 'Jheniffer', 'Gustavo'];
 const rooms = new Map();
@@ -66,7 +67,7 @@ function newPlayer(ws, name, slot, skinIndex) {
     bombs: 1,
     activeBombs: 0,
     range: 2,
-    speed: 170, shield:0, invulnerableUntil:0, bombPass:false, piercing:false,
+    speed: 170, baseSpeed:170, slowedUntil:0, kick:false, shield:0, invulnerableUntil:0, bombPass:false, piercing:false,
     lastMove: 0,
     inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false,
     motion: { x: 0, y: 0 },
@@ -102,7 +103,7 @@ function playerView(p) {
   return {
     id: p.id, name: p.name, bot:!!p.bot, slot: p.slot, skinIndex: p.skinIndex, color: p.color, skin: p.skin,
     x: p.x, y: p.y, ack: p.ack, motion: p.motion, facing: p.facing, alive: p.alive, bombs: p.bombs,
-    range: p.range, speed: p.speed, shield:p.shield, invulnerableUntil:p.invulnerableUntil, bombPass:p.bombPass, piercing:p.piercing, kills: p.kills, place: p.place
+    range: p.range, speed: p.speed, slowedUntil:p.slowedUntil, kick:p.kick, shield:p.shield, invulnerableUntil:p.invulnerableUntil, bombPass:p.bombPass, piercing:p.piercing, kills: p.kills, place: p.place
   };
 }
 function stateFor(room) {
@@ -115,7 +116,7 @@ function stateFor(room) {
     phase: room.phase,
     players: [...room.players.values()].map(playerView),
     board: room.board,
-    bombs: room.bombs.map(b => ({ id:b.id, piercing:b.piercing, ownerId:b.ownerId, placedAt:b.placedAt, explodeAt:b.explodeAt, x: b.x, y: b.y, passThrough: b.passThrough, fuse: Math.max(0, b.explodeAt - now()) })),
+    bombs: room.bombs.map(b => ({ id:b.id, piercing:b.piercing, ownerId:b.ownerId, placedAt:b.placedAt, explodeAt:b.explodeAt, slide:b.slide, rolling:b.rolling, x: b.x, y: b.y, passThrough: b.passThrough, fuse: Math.max(0, b.explodeAt - now()) })),
     flames: room.flames.map(f => ({ x: f.x, y: f.y, startedAt:f.startedAt, expiresAt:f.expiresAt })),
     powerups: [...room.powerups.entries()].map(([key, type]) => {
       const [x, y] = key.split(',').map(Number);
@@ -200,7 +201,10 @@ function startGame(room) {
   room.powerups.clear();
   room.pendingPowerups=[];
   const special=['shield','bombpass','pierce','maxrange'];
-  for(let slot=0;slot<4;slot++){const p=SPAWNS[slot],dx=p.x===1?2:-2,dy=p.y===1?2:-2;room.powerups.set(tileKey(p.x+dx,p.y),special[(slot+room.roundIndex-1)%4]);room.powerups.set(tileKey(p.x,p.y+dy),'speed');}
+  for(let slot=0;slot<4;slot++){const p=SPAWNS[slot],dx=p.x===1?2:-2,dy=p.y===1?2:-2;room.powerups.set(tileKey(p.x+dx,p.y),slot===room.roundIndex%4?'kick':special[(slot+room.roundIndex-1)%special.length]);room.powerups.set(tileKey(p.x,p.y+dy),'speed');}
+  const centre={x:Math.floor(WIDTH/2),y:Math.floor(HEIGHT/2)};
+  const curseCell=room.board.flatMap((row,y)=>row.flatMap((cell,x)=>cell===0?[{x,y}]:[])).sort((a,b)=>(Math.abs(a.x-centre.x)+Math.abs(a.y-centre.y))-(Math.abs(b.x-centre.x)+Math.abs(b.y-centre.y)))[0];
+  if(curseCell)room.powerups.set(tileKey(curseCell.x,curseCell.y),'curse');
   room.winnerId = null;
   room.phase = 'countdown';
   room.countdownUntil = now() + 3000;
@@ -211,7 +215,7 @@ function startGame(room) {
     const pos = SPAWNS[p.slot];
     Object.assign(p, {
       x: pos.x, y: pos.y, facing: 'down', alive: true, bombs: 1, activeBombs: 0,
-      range: 2, speed: 170, shield:0, invulnerableUntil:0, bombPass:false, piercing:false, lastMove: 0, inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false, motion: { x: 0, y: 0 }, kills: 0, place: null, botTarget:null, botThinkAt:0, botCooldown:0, botStall:0
+      range: 2, speed: 170, baseSpeed:170, slowedUntil:0, kick:false, shield:0, invulnerableUntil:0, bombPass:false, piercing:false, lastMove: 0, inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false, motion: { x: 0, y: 0 }, kills: 0, place: null, botTarget:null, botThinkAt:0, botCooldown:0, botStall:0
     });
   }
   broadcast(room);
@@ -224,10 +228,12 @@ function movePlayers(room, t) {
   const hazards=liveFlames.map(flame=>({flame,shapes:physics.flameShapes(flame,tiles)}));
   for (const p of room.players.values()) {
     if (!p.alive) continue;
+    p.baseSpeed??=p.speed;
+    p.speed=p.baseSpeed*((p.slowedUntil||0)>t?1.6:1);
     p.flameContact=null;
     const contact=hazards.length?(x,y)=>{if(!p.flameContact)p.flameContact=hazards.find(h=>physics.touchesFlame({x,y},h.flame,tiles,h.shapes))?.flame;}:undefined;
     if(p.bot) {
-      bots.update(room,p,t,dt,putBomb,contact);
+      bots.update(room,p,t,dt,putBomb,contact,direction=>bombMotion.tryKick(room,p,direction,t));
     } else if(p.usingInputs) {
       p.inputBudget=Math.min(.1,p.inputBudget+dt);
       while(p.inputQueue.length) {
@@ -235,11 +241,11 @@ function movePlayers(room, t) {
         if(command.type==='bomb') {p.inputQueue.shift();putBomb(room,p);continue;}
         if(p.inputBudget+1e-9<STEP) break;
         p.inputQueue.shift();p.inputBudget-=STEP;p.motion={x:command.x,y:command.y};
-        physics.move(p,p.motion,STEP,room.board,room.bombs,contact);p.ack=command.seq;
+        bombMotion.tryKick(room,p,p.motion,t);physics.move(p,p.motion,STEP,room.board,room.bombs,contact);p.ack=command.seq;
       }
     } else {
       if (t - (p.lastInput || 0) > 1200) p.motion = { x: 0, y: 0 };
-      physics.move(p, p.motion, dt, room.board, room.bombs,contact);
+      bombMotion.tryKick(room,p,p.motion,t);physics.move(p, p.motion, dt, room.board, room.bombs,contact);
     }
     const key = tileKey(Math.round(p.x), Math.round(p.y));
     const bonus = room.powerups.get(key);
@@ -250,7 +256,10 @@ function movePlayers(room, t) {
       if (bonus === 'bombpass') p.bombPass=true;
       if (bonus === 'pierce') p.piercing=true;
       if (bonus === 'bomb') p.bombs = Math.min(5, p.bombs + 1);
-      if (bonus === 'speed') p.speed = Math.max(100, p.speed - 20);
+      if (bonus === 'speed') p.baseSpeed = Math.max(100, p.baseSpeed - 20);
+      if (bonus === 'curse') p.slowedUntil=t+6000;
+      if (bonus === 'kick') p.kick=true;
+      p.speed=p.baseSpeed*(p.slowedUntil>t?1.6:1);
       room.effects.push({kind:'pickup',x:Math.round(p.x),y:Math.round(p.y),startedAt:t,expiresAt:t+600});
       room.powerups.delete(key);
       send(p.ws, { type: 'pickup', bonus });
@@ -259,7 +268,7 @@ function movePlayers(room, t) {
 }
 function putBomb(room, player) {
   if (room.phase !== 'playing' || !player.alive || player.activeBombs >= player.bombs) return;
-  if (room.bombs.some(b => b.x === Math.round(player.x) && b.y === Math.round(player.y))) return;
+  if (room.bombs.some(b => bombMotion.occupies(b,Math.round(player.x),Math.round(player.y)))) return;
   room.bombs.push({
     id:crypto.randomUUID(), placedAt:now(),
     x: Math.round(player.x), y: Math.round(player.y), ownerId: player.id,
@@ -288,7 +297,7 @@ function explodeBomb(room, bomb, t) {
         room.board[y][x] = 0;
         room.effects.push({kind:'crate',x,y,startedAt:t,expiresAt:t+650});
         if (Math.random() < 0.25) {
-          const types = ['range', 'range', 'bomb', 'bomb', 'speed','shield','bombpass','pierce','maxrange'];
+          const types = ['range', 'range', 'bomb', 'bomb', 'speed','shield','bombpass','pierce','maxrange','kick','curse'];
           room.pendingPowerups.push({x,y,type:types[crypto.randomInt(types.length)],readyAt:t+500});
         }
         if(!bomb.piercing)break;
@@ -299,7 +308,7 @@ function explodeBomb(room, bomb, t) {
     if(room.powerups.delete(tileKey(x,y)))room.effects.push({kind:'itemBurn',x,y,startedAt:t,expiresAt:t+420});
     room.flames.push({ x, y, startedAt:t, expiresAt: t + 500, ownerId: bomb.ownerId });
     for (const chained of room.bombs) {
-      if (chained.x === x && chained.y === y) chained.explodeAt = t;
+      if (bombMotion.occupies(chained,x,y)) chained.explodeAt = t;
     }
   }
 }
@@ -355,9 +364,11 @@ function tick() {
     }
     if (room.phase === 'playing') {
       collapse.update(room,t);
+      bombMotion.update(room,t);
       updatePowerups(room,t);
       movePlayers(room, t);
       room.flames = room.flames.filter(f => f.expiresAt > t);
+      for(const b of room.bombs)if(room.flames.some(f=>bombMotion.occupies(b,f.x,f.y)))b.explodeAt=t;
       while (true) {
         const due = room.bombs.find(b => b.explodeAt <= t);
         if (!due) break;
