@@ -675,20 +675,6 @@
     rectangle(x + 35, y + 8, 5, 5, '#f9d69d');
     if(Math.sin(time/700+x+y)>.92) rectangle(x+8,y+8,5,2,'#fff1c1');
   }
-  function drawPowerup(p, time) {
-    const x = p.x * SIZE + 24, y = p.y * SIZE + 25 + Math.sin(time / 230 + p.x) * 2;
-    const color=({range:'#ffbb73',bomb:'#c29aff',speed:'#72f0e1',shield:'#9acaff',bombpass:'#c3eafc',pierce:'#ff8293',maxrange:'#ffe26e'})[p.type]||'#fff';
-    circle(x, y + 3, 18, '#140f29');
-    ctx.save();ctx.strokeStyle=color;ctx.globalAlpha=.4;ctx.lineWidth=1.5;
-    ctx.beginPath();ctx.arc(x,y,19+Math.sin(time/180)*2,time/500,time/500+Math.PI*1.4);ctx.stroke();ctx.restore();
-    roundRect(x - 14, y - 14, 28, 28, 7, color);
-    circle(x - 6, y - 6, 3, '#ffffff99');
-    ctx.fillStyle = '#31203f';
-    ctx.font=p.type==='maxrange'?'1000 11px system-ui':'1000 18px system-ui';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(({range:'✹',bomb:'+',speed:'»',shield:'🛡',bombpass:'👻',pierce:'◆',maxrange:'MAX'})[p.type]||'?', x, y + 1);
-  }
   function drawPlayer(p, time, worldTime) {
     const position = p.id===meId && localPlayer && state.phase==='playing'
       ? localPlayer : BombaNetcode.remotePosition(snapshotHistory,p.id,performance.now()-80) || p;
@@ -734,12 +720,23 @@
     ctx.drawImage(minimap,x,y);
     ctx.strokeStyle='#ffffffa0';ctx.lineWidth=1;ctx.strokeRect(x+view.x/SIZE*4,y+view.y/SIZE*4,canvas.width/SIZE*4,canvas.height/SIZE*4);
     for(const p of state.players)if(p.alive)circle(x+(p.x+.5)*4,y+(p.y+.5)*4,p.id===me?.id?2.7:2,p.id===me?.id?'#fff':p.color);
+    for(const tile of state.collapse?.falling||[])rectangle(x+tile.x*4,y+tile.y*4,4,4,'#ff9463');
     ctx.textAlign='left';ctx.textBaseline='middle';ctx.font='bold 10px system-ui';ctx.fillStyle='#eaddff';ctx.fillText(state.mapName||'Arena',x+2,y+minimap.height+10);
     if(me){
       const powers=[`🔥 ${me.range}`,`💣 ${me.bombs}`,`⚡ ${Math.round(170/me.speed*100)}%`];
       if(me.shield)powers.push('🛡 Escudo');if(me.bombPass)powers.push('👻 Passa-bomba');if(me.piercing)powers.push('◆ Perfurante');
       roundRect(8,canvas.height-34,Math.min(x-18,450),26,6,'#100c25d9');ctx.fillStyle='#fff0b1';ctx.font='bold 12px system-ui';ctx.fillText(powers.join('  '),16,canvas.height-20);
     }
+  }
+  function drawCollapseTimer(worldTime){
+    const collapse=state.collapse;if(!collapse)return;
+    const seconds=Math.ceil(Math.max(0,collapse.startsAt-worldTime)/1000);
+    const label=seconds?`ARENA FECHA EM ${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`:'CUIDADO! ARENA FECHANDO';
+    const timer=$('collapseTimer');timer.textContent=label;timer.classList.toggle('urgent',seconds<=10);
+    ctx.save();ctx.font='bold 13px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';
+    const width=ctx.measureText(label).width+28;
+    roundRect((canvas.width-width)/2,54,width,30,8,seconds<=10?'#6c2533eb':'#130e2dec');
+    ctx.fillStyle=seconds<=10?'#ffe39a':'#e9deff';ctx.fillText(label,canvas.width/2,69);ctx.restore();
   }
   function drawEmpty() {
     ctx.fillStyle = '#1a1430';ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -777,14 +774,16 @@
       if(state.board[y][x]===1)drawWall(px,py,worldTime);
       else if(state.board[y][x]===2)drawCrate(px,py,worldTime);
     }
-    for(const p of state.powerups||[])drawPowerup(p,worldTime);
+    for(const p of state.powerups||[])BombaItems.draw(ctx,p,worldTime);
     for(const b of state.bombs||[])BombaEffects.bomb(ctx,b,worldTime);
     const flameTiles=new Set((state.flames||[]).filter(f=>f.expiresAt>worldTime).map(f=>`${f.x},${f.y}`));
     for(const f of state.flames||[])BombaEffects.flame(ctx,f,worldTime,flameTiles);
     for(const effect of state.effects||[])BombaEffects.debris(ctx,effect,worldTime);
     for(const p of [...(state.players||[])].sort((a,b)=>a.y-b.y||a.slot-b.slot))drawPlayer(p,time,worldTime);
+    for(const tile of state.collapse?.falling||[])BombaEffects.fallingWall(ctx,tile,worldTime,arenaPalette);
     ctx.restore();
     drawMapHud(view,watching?target||me:me);
+    drawCollapseTimer(worldTime);
 
   }
 

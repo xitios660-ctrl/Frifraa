@@ -17,6 +17,7 @@
   <script src="/camera.js"></script>
   <script src="/physics.js"></script>
   <script src="/effects.js"></script>
+  <script src="/items.js"></script>
   <script src="/animation.js"></script>
   <script src="/joystick.js"></script>
   <script src="/netcode.js"></script>
@@ -81,7 +82,7 @@
             <button id="shareBtn" class="primary-btn" type="button"><span>Copiar link do jogo</span><span>↗</span></button>
             <label class="input-label" for="mapSelect" style="margin-top:22px">TIPO DE MAPA</label>
             <select id="mapSelect" class="map-select"><option value="rotation">Rodízio a cada partida</option><option value="classic">Arena Clássica</option><option value="jungle">Ruínas da Selva</option><option value="ice">Palácio de Gelo</option><option value="factory">Fábrica Neon</option></select>
-            <p class="room-tip">Abra este mesmo site nos quatro celulares. Ninguém precisa digitar código.</p>
+            <p class="room-tip">Abra este mesmo site nos quatro celulares. Ninguém precisa digitar código. Após 1min30s, paredes caem em espiral e fecham a arena.</p>
           </div>
           <div class="player-card">
             <div class="player-card-head"><h3>Jogadores conectados</h3><span id="playerCount" class="count-badge">0 / 4</span></div>
@@ -102,7 +103,7 @@
         </div>
         <div class="game-layout">
           <div class="board-card">
-            <div class="board-topline"><div><span class="status-dot live"></span> <span id="roundStatus">PARTIDA EM ANDAMENTO</span></div><div class="board-actions"><button id="spectateBtn" class="icon-btn" type="button" title="Toque para acompanhar o próximo sobrevivente" hidden>👁 TELAR</button><button id="fullscreenBtn" class="icon-btn" type="button" aria-label="Tela cheia">⛶ <span>TELA</span></button><button id="soundBtn" class="icon-btn" type="button" aria-label="Ativar ou desativar som">♫ <span id="soundLabel">SOM</span></button></div></div>
+            <div class="board-topline"><div><span class="status-dot live"></span> <span id="roundStatus">PARTIDA EM ANDAMENTO</span></div><span id="collapseTimer" class="collapse-timer" role="timer" aria-label="Tempo até o fechamento da arena">ARENA FECHA EM 1:30</span><div class="board-actions"><button id="spectateBtn" class="icon-btn" type="button" title="Toque para acompanhar o próximo sobrevivente" hidden>👁 TELAR</button><button id="fullscreenBtn" class="icon-btn" type="button" aria-label="Tela cheia">⛶ <span>TELA</span></button><button id="soundBtn" class="icon-btn" type="button" aria-label="Ativar ou desativar som">♫ <span id="soundLabel">SOM</span></button></div></div>
             <div class="canvas-wrap"><canvas id="arena" width="720" height="624" aria-label="Tabuleiro de Bomberman"></canvas><div id="roundOverlay" class="round-overlay" hidden><div id="overlayIcon" class="overlay-icon">💣</div><h3 id="overlayTitle">Prepare-se</h3><p id="overlayText">A partida vai começar!</p><button id="watchBtn" class="primary-btn overlay-btn" type="button" hidden>👁 Telar jogadores</button><button id="playAgainBtn" class="primary-btn overlay-btn" type="button" hidden>Jogar novamente <span>↻</span></button></div></div>
             <div id="mobileHud" class="mobile-hud" aria-label="Jogadores na arena"></div>
             <div class="touch-controls" id="touchControls">

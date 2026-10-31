@@ -1,5 +1,6 @@
 'use strict';
 const physics=require('./public/physics');
+const {INTERVAL}=require('./collapse');
 const DIRECTIONS=[[1,0],[-1,0],[0,1],[0,-1]];
 const key=(x,y)=>`${x},${y}`;
 function blast(board,bomb){
@@ -23,6 +24,7 @@ function dangerMap(room,bombs=room.bombs){
  function add(x,y,start,end){const k=key(x,y);if(!danger.has(k))danger.set(k,[]);danger.get(k).push({start,end});}
  blasts.forEach((cells,i)=>cells.forEach(c=>add(c.x,c.y,times[i],times[i]+500)));
  for(const f of room.flames)add(f.x,f.y,0,f.expiresAt);
+ if(room.collapse){const c=room.collapse;for(let i=c.index;i<c.path.length;i++){const cell=c.path[i];add(cell.x,cell.y,c.startsAt+i*INTERVAL,Infinity);}}
  return danger;
 }
 function route(room,p,t,bombs=room.bombs,escape=false){

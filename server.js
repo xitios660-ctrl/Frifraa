@@ -13,6 +13,7 @@ const TICK_MS = 1000 / 60;
 const physics = require('./public/physics');
 const {STEP} = require('./public/netcode');
 const bots=require('./bots');
+const collapse=require('./collapse');
 const COLORS = ['#ac82ff', '#ff6e96', '#55dcff', '#ffd36f'];
 const SKINS = ['Mary', 'Kaique', 'Jheniffer', 'Gustavo'];
 const rooms = new Map();
@@ -83,7 +84,7 @@ function newRoom(code, ws, name) {
     bombs: [],
     flames: [],
     effects: [],
-    powerups: new Map(),
+    powerups: new Map(), pendingPowerups:[], collapse:null,
     countdownUntil: 0,
     winnerId: null,
     participantsAtStart: 0,
@@ -107,7 +108,7 @@ function stateFor(room) {
   return {
     type: 'state',
     serverTime: now(), mapChoice:room.mapChoice, mapId:room.mapId, mapName:maps.DEFS[room.mapId].name,
-    effects: room.effects,
+    effects: room.effects, collapse:collapse.view(room.collapse,now()),
     code: room.code,
     hostId: room.hostId,
     phase: room.phase,
@@ -196,11 +197,13 @@ function startGame(room) {
   room.flames = [];
   room.effects = [];
   room.powerups.clear();
+  room.pendingPowerups=[];
   const special=['shield','bombpass','pierce','maxrange'];
   for(let slot=0;slot<4;slot++){const p=SPAWNS[slot],dx=p.x===1?2:-2,dy=p.y===1?2:-2;room.powerups.set(tileKey(p.x+dx,p.y),special[(slot+room.roundIndex-1)%4]);room.powerups.set(tileKey(p.x,p.y+dy),'speed');}
   room.winnerId = null;
   room.phase = 'countdown';
   room.countdownUntil = now() + 3000;
+  room.collapse=collapse.create(room.board,room.countdownUntil);
   room.participantsAtStart = room.players.size;
   room.eliminatedCount = 0;
   for (const p of room.players.values()) {
@@ -285,18 +288,27 @@ function explodeBomb(room, bomb, t) {
         room.effects.push({kind:'crate',x,y,startedAt:t,expiresAt:t+650});
         if (Math.random() < 0.25) {
           const types = ['range', 'range', 'bomb', 'bomb', 'speed','shield','bombpass','pierce','maxrange'];
-          room.powerups.set(tileKey(x, y), types[crypto.randomInt(types.length)]);
+          room.pendingPowerups.push({x,y,type:types[crypto.randomInt(types.length)],readyAt:t+500});
         }
         if(!bomb.piercing)break;
       }
     }
   }
   for (const { x, y } of tiles) {
+    if(room.powerups.delete(tileKey(x,y)))room.effects.push({kind:'itemBurn',x,y,startedAt:t,expiresAt:t+420});
     room.flames.push({ x, y, startedAt:t, expiresAt: t + 500, ownerId: bomb.ownerId });
     for (const chained of room.bombs) {
       if (chained.x === x && chained.y === y) chained.explodeAt = t;
     }
   }
+}
+function updatePowerups(room,t){
+  for(const f of room.flames)if(f.expiresAt>t&&room.powerups.delete(tileKey(f.x,f.y)))room.effects.push({kind:'itemBurn',x:f.x,y:f.y,startedAt:t,expiresAt:t+420});
+  room.pendingPowerups=room.pendingPowerups.filter(p=>{
+    if(room.board[p.y]?.[p.x]!==0)return false;
+    if(p.readyAt>t||room.flames.some(f=>f.x===p.x&&f.y===p.y&&f.expiresAt>t))return true;
+    room.powerups.set(tileKey(p.x,p.y),p.type);return false;
+  });
 }
 function applyFlames(room) {
   const eliminated = [];
@@ -341,6 +353,8 @@ function tick() {
       broadcast(room);
     }
     if (room.phase === 'playing') {
+      collapse.update(room,t);
+      updatePowerups(room,t);
       movePlayers(room, t);
       room.flames = room.flames.filter(f => f.expiresAt > t);
       while (true) {
@@ -438,6 +452,7 @@ const FILES = {
   '/styles.css': ['styles.css', 'text/css; charset=utf-8'],
   '/maps.js': ['maps.js', 'text/javascript; charset=utf-8'],
   '/camera.js': ['camera.js', 'text/javascript; charset=utf-8'],
+  '/items.js': ['items.js', 'text/javascript; charset=utf-8'],
   '/effects.js': ['effects.js', 'text/javascript; charset=utf-8'],
   '/animation.js': ['animation.js', 'text/javascript; charset=utf-8'],
   '/skins/gustavo-walk-v1.png': ['skins/gustavo-walk-v1.png', 'image/png'],
@@ -470,7 +485,7 @@ const server = http.createServer((req, res) => {
     return res.end('Não encontrado');
   }
   const [file, contentType] = entry;
-  res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': ['index.html', 'sw.js', 'manifest.webmanifest', 'game.js', 'physics.js', 'animation.js', 'effects.js', 'maps.js', 'camera.js', 'netcode.js', 'joystick.js', 'styles.css'].includes(file) ? 'no-cache' : 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
+  res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': ['index.html', 'sw.js', 'manifest.webmanifest', 'game.js', 'physics.js', 'animation.js', 'effects.js', 'maps.js', 'camera.js', 'netcode.js', 'joystick.js', 'items.js', 'styles.css'].includes(file) ? 'no-cache' : 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
   if (req.method === 'HEAD') return res.end();
   fs.createReadStream(path.join(PUBLIC, file)).on('error', () => res.destroy()).pipe(res);
 });

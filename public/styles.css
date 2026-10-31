@@ -68,3 +68,5 @@ body.eliminated .touch-controls{display:none!important}
 .entry-characters{margin-top:10px}.entry-characters .player-avatar{width:64px;height:76px}.entry-characters .skin-choice{min-height:118px}
 
 .joystick,.joystick-wrap,.bomb-btn{touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+
+.collapse-timer{font-size:10px;font-weight:800;letter-spacing:.5px;color:#e4d8ff}.collapse-timer.urgent{color:#ffc285}@media(pointer:coarse) and (orientation:landscape){body.play-mode .collapse-timer{display:none}}

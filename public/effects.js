@@ -63,12 +63,36 @@
     } else if(e.kind==='wall') {
       ctx.strokeStyle='#ffe4a8';ctx.lineWidth=3*(1-p);ctx.strokeRect(e.x*SIZE+3,e.y*SIZE+3,42,41);
       for(let i=0;i<4;i++) circle(ctx,x+Math.cos(i*TAU/4)*18,y+Math.sin(i*TAU/4)*18,3*(1-p),'#ffd995');
+    } else if(e.kind==='itemBurn') {
+      circle(ctx,x,y-14*p,18*(1-p),'#ff983f');circle(ctx,x,y-14*p,9*(1-p),'#fff0af');
+      for(let i=0;i<8;i++){const a=i*TAU/8;circle(ctx,x+Math.cos(a)*22*p,y+Math.sin(a)*18*p-20*p,3*(1-p),'#ffc967');}
+    } else if(e.kind==='slam') {
+      for(let i=0;i<10;i++){const a=i*TAU/10;circle(ctx,x+Math.cos(a)*30*p,y+15+Math.sin(a)*12*p,5*(1-p),'#c6b3ad');}
+      ctx.strokeStyle='#ffce7e';ctx.lineWidth=2*(1-p);ctx.strokeRect(x-23-p*6,y-23-p*6,46+p*12,46+p*12);
     } else if(e.kind==='pickup') {
       ctx.strokeStyle='#fff3a2';ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y,10+p*22,0,TAU);ctx.stroke();
       for(let i=0;i<6;i++) circle(ctx,x+Math.cos(i*TAU/6)*(8+p*22),y-p*24+Math.sin(i*TAU/6)*(8+p*22),2,'#fff3a2');
     }
     ctx.restore();
   }
-  const api={bombFrame,progress,bomb,flame,debris};
+  function fallingWall(ctx,tile,time,palette){
+    if(time<tile.startedAt||time>=tile.landsAt)return;
+    const x=tile.x*SIZE,y=tile.y*SIZE,remaining=tile.landsAt-time;
+    const fall=clamp(1-remaining/420),lift=180*(1-fall*fall);
+    ctx.save();
+    ctx.fillStyle=`rgba(255,100,70,${.2+.2*Math.sin(time/55)})`;ctx.fillRect(x+1,y+1,46,46);
+    ctx.strokeStyle='#ffd49c';ctx.lineWidth=2;ctx.setLineDash([5,4]);ctx.strokeRect(x+3,y+3,42,42);ctx.setLineDash([]);
+    ctx.beginPath();ctx.moveTo(x+14,y+14);ctx.lineTo(x+34,y+34);ctx.moveTo(x+34,y+14);ctx.lineTo(x+14,y+34);ctx.stroke();
+    ctx.fillStyle='#08051788';ctx.beginPath();ctx.ellipse(x+24,y+31,12+fall*11,5+fall*9,0,0,TAU);ctx.fill();
+    if(remaining<=420){
+      const py=y-lift;ctx.globalAlpha=.5+.5*fall;
+      round(ctx,x+2,py+2,44,44,5,'#1d182b');round(ctx,x+4,py+3,40,36,4,palette.wall);
+      round(ctx,x+7,py+5,34,5,2,palette.light);round(ctx,x+7,py+32,34,5,2,palette.dark);
+      ctx.strokeStyle='#ffce7e';ctx.lineWidth=2;ctx.strokeRect(x+10,py+12,28,16);
+      ctx.strokeStyle='#fff0bd';ctx.beginPath();ctx.moveTo(x+20,py+14);ctx.lineTo(x+20,py+26);ctx.moveTo(x+28,py+14);ctx.lineTo(x+28,py+26);ctx.stroke();
+    }
+    ctx.restore();
+  }
+  const api={bombFrame,progress,bomb,flame,debris,fallingWall};
   if(typeof module!=='undefined')module.exports=api;else root.BombaEffects=api;
 })(typeof window!=='undefined'?window:globalThis);

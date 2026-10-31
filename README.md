@@ -247,3 +247,29 @@ foco e direções. `node scripts/joystick-smoke.cjs` exercita toques simultâneo
 no Chromium móvel, arrasto externo, captura perdida ou indisponível, bomba,
 soltura e novo gesto. Use `BOMBA_BASE` para o endereço e `BOMBA_CHROME` para
 o executável Chromium, se necessário. Isso não substitui teste em iPhone físico.
+
+
+### Fechamento da arena e arte dos poderes
+
+A contagem de 90 segundos começa depois dos três segundos de preparação. O HUD
+mostra o tempo; ao terminar, paredes permanentes caem a cada 350 ms em espiral
+das bordas até a faixa central. Pilares existentes são preservados. Cada casa
+recebe um aviso de 900 ms, sombra e animação de queda antes da colisão. O impacto
+elimina quem estiver sobreposto à casa, inclusive com escudo, remove bombas e
+itens, e mantém a classificação e o modo espectador. O servidor controla o tempo
+e envia as quedas aos quatro clientes. Bots antecipam essas casas como perigo
+permanente. A revanche restaura mapa e temporizador.
+
+Os sete poderes têm arte vetorial original em `public/items.js`: chama, bomba
+extra, bota, escudo, fantasma, broca e chama coroada. Eles flutuam com sombra,
+brilho e movimentos próprios de cada símbolo, sincronizados pelo relógio da
+partida. Fogo destrói imediatamente itens expostos, com partículas; itens
+revelados por caixas aparecem depois que a chama daquela casa termina.
+
+`node scripts/collapse-smoke.cjs` inicia um servidor local e quatro navegadores
+móveis reais, avança o relógio apenas nesse processo de teste e verifica
+contagem, aviso, impacto, morte, classificação, espectador e queima dos itens.
+Não existe comando de acelerar tempo exposto no servidor publicado. Capturas
+de tela são salvas em `/tmp/bomba-items-mobile.png` e
+`/tmp/bomba-collapse-mobile.png`. Os testes de regras ficam em
+`test/collapse.test.js` e `test/item-fire.test.js`.
