@@ -169,7 +169,7 @@ test('limita a sala a quatro pessoas e inicia uma partida real', async () => {
 
 test('numbered movement is acknowledged once and a bomb follows its queued movement',async()=>{
  const p=await client();write(p,{type:'enter',name:'Gustavo'});
- await message(p,m=>m.type==='joined');
+ const joined=await message(p,m=>m.type==='joined');
  const lobby=await message(p,m=>m.type==='state'&&m.phase==='lobby');
  assert.equal(lobby.players[0].skin,'Gustavo');
  assert.equal(lobby.players[0].skinIndex,3);
@@ -177,9 +177,9 @@ test('numbered movement is acknowledged once and a bomb follows its queued movem
  await message(p,m=>m.type==='state'&&m.phase==='playing');
  write(p,{type:'input',steps:Array.from({length:8},(_,i)=>({seq:i+1,x:1,y:0}))});
  write(p,{type:'bomb'});
- const placed=await message(p,m=>m.type==='state'&&m.bombs.length>0);
+ const placed=await message(p,m=>m.type==='state'&&m.bombs.some(b=>b.ownerId===joined.playerId));
  assert.equal(placed.players[0].ack,8);
- assert.equal(placed.bombs[0].x,2);
+ assert.equal(placed.bombs.find(b=>b.ownerId===joined.playerId).x,2);
  const x=placed.players[0].x;
  write(p,{type:'input',steps:[{seq:8,x:1,y:0}]});
  write(p,{type:'input',steps:[{seq:10000,x:1,y:0}]});
@@ -190,7 +190,7 @@ test('numbered movement is acknowledged once and a bomb follows its queued movem
  write(p,{type:'leave'});await message(p,m=>m.type==='left');
 });
 
-test('one shared room waits for an active round and accepts direct entry for the rematch',async()=>{
+test('one shared room waits for an active round and releases bots when humans leave',async()=>{
  const host=await client(),second=await client(),late=await client();
  write(host,{type:'enter',name:'Mary'});const joined=await message(host,m=>m.type==='joined');
  write(second,{type:'enter',name:'Gustavo'});await message(second,m=>m.type==='joined'&&m.code===joined.code);
@@ -199,9 +199,10 @@ test('one shared room waits for an active round and accepts direct entry for the
  await message(late,m=>m.type==='error'&&/andamento/.test(m.message));
  assert.equal((await(await fetch(`${BASE}/health`)).json()).rooms,1);
  write(second,{type:'leave'});await message(second,m=>m.type==='left');
- await message(host,m=>m.type==='state'&&m.phase==='finished');
+ write(host,{type:'leave'});await message(host,m=>m.type==='left');
+ assert.equal((await(await fetch(`${BASE}/health`)).json()).rooms,0);
  write(late,{type:'enter',name:'Kaique'});
- await message(late,m=>m.type==='joined'&&m.code===joined.code);
- write(host,{type:'leave'});write(late,{type:'leave'});
+ await message(late,m=>m.type==='joined');
+ write(late,{type:'leave'});
  await message(late,m=>m.type==='left');
 });

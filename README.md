@@ -6,7 +6,7 @@ Jogo **original inspirado no estilo de batalhas com bombas**, feito para jogar e
 
 1. Abra o site, escolha seu apelido e entre na sala — sem código e sem senha. Se você digitar **Mary**, **Kaique** ou **Jheniffer**, o jogo já sugere a sua skin.
 2. Todos abrem o mesmo endereço e tocam em Entrar na sala; não é preciso código.
-3. Na sala, cada pessoa pode escolher uma das quatro skins (nenhuma pode ser repetida). O anfitrião inicia quando todos entrarem (ou sozinho para treinar).
+3. Na sala, cada pessoa pode escolher uma das quatro skins (nenhuma pode ser repetida). O anfitrião inicia quando todos entrarem (ou sozinho para enfrentar três bots).
 4. Vire o celular na horizontal para ver apenas a arena. Use o joystick à esquerda e o botão de bomba à direita. No computador, use setas/WASD e espaço.
 5. O primeiro eliminado fica em último e recebe a mensagem brincalhona de bebida na própria tela.
 
@@ -53,7 +53,7 @@ Salas, mapas e resultados ficam apenas na memória do servidor. Ao reiniciar o p
 - Limite rigoroso de quatro jogadores na arena inteira.
 - Tabuleiro diferente a cada rodada, poderes de alcance, bombas extras e velocidade.
 - Bombas com efeito em cruz, caixas destrutíveis e explosões em cadeia.
-- Joystick touch e teclado, orientação horizontal, revanche e treino solo.
+- Joystick touch e teclado, orientação horizontal, revanche e partidas com bots.
 
 Projeto independente sem associação com os titulares da marca Bomberman.
 
@@ -137,3 +137,20 @@ A destruição emite fragmentos de caixas; impactos nas paredes emitem brilho se
 alterar as colisões. Itens têm aro giratório e partículas ao serem coletados.
 Os eventos de efeito são compartilhados e expiram no servidor; a renderização
 respeita a validade mesmo quando a rodada já terminou.
+
+
+### Bots automáticos
+
+Ao iniciar, as vagas livres são preenchidas até quatro participantes: um humano
+recebe três bots, dois recebem dois, três recebem um e quatro jogam sem bots.
+Os bots usam as skins livres, aparecem com nome “Bot …” e ícone de robô, e são
+simulados somente no servidor. Todos veem seus movimentos, bombas e eliminações.
+
+A IA busca caixas, poderes e adversários por caminhos livres. Antes de colocar
+uma bomba, calcula uma rota de fuga; evita chamas e antecipa explosões em cadeia.
+Usa a mesma velocidade e as mesmas colisões dos humanos. A classificação e a
+revanche incluem bots. Entre rodadas, bots cedem suas vagas aos humanos; saindo o
+último humano, todos os bots são removidos e a sala fica disponível novamente.
+
+`node scripts/bots-smoke.cjs` verifica um humano + três bots, movimento, bombas,
+explosões e limpeza da sala. Usa `BOMBA_BASE` e `BOMBA_CHROME`, como o smoke normal.

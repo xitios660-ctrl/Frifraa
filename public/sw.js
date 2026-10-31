@@ -1,4 +1,4 @@
-const CACHE = 'bomba-party-v12-single-room-fx';
+const CACHE = 'bomba-party-v13-bots';
 const SHELL = ['/', '/effects.js', '/skins/gustavo-walk-v1.png', '/netcode.js', '/animation.js', '/skins/mary-walk-v1.png', '/skins/kaique-walk-v1.png', '/skins/jheniffer-walk-v1.png', '/physics.js', '/styles.css', '/game.js', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/icon-180.png', '/skins/mary.webp', '/skins/kaique.webp', '/skins/jheniffer.webp'];
 
 self.addEventListener('install', event => {

@@ -12,6 +12,7 @@ const PORT = Number(process.env.PORT) || 3000;
 const TICK_MS = 1000 / 60;
 const physics = require('./public/physics');
 const {STEP} = require('./public/netcode');
+const bots=require('./bots');
 const COLORS = ['#ac82ff', '#ff6e96', '#55dcff', '#ffd36f'];
 const SKINS = ['Mary', 'Kaique', 'Jheniffer', 'Gustavo'];
 const SPAWNS = [
@@ -102,7 +103,7 @@ function newRoom(code, ws, name) {
 }
 function playerView(p) {
   return {
-    id: p.id, name: p.name, slot: p.slot, skinIndex: p.skinIndex, color: p.color, skin: p.skin,
+    id: p.id, name: p.name, bot:!!p.bot, slot: p.slot, skinIndex: p.skinIndex, color: p.color, skin: p.skin,
     x: p.x, y: p.y, ack: p.ack, motion: p.motion, facing: p.facing, alive: p.alive, bombs: p.bombs,
     range: p.range, speed: p.speed, kills: p.kills, place: p.place
   };
@@ -117,7 +118,7 @@ function stateFor(room) {
     phase: room.phase,
     players: [...room.players.values()].map(playerView),
     board: room.board,
-    bombs: room.bombs.map(b => ({ id:b.id, placedAt:b.placedAt, explodeAt:b.explodeAt, x: b.x, y: b.y, passThrough: b.passThrough, fuse: Math.max(0, b.explodeAt - now()) })),
+    bombs: room.bombs.map(b => ({ id:b.id, ownerId:b.ownerId, placedAt:b.placedAt, explodeAt:b.explodeAt, x: b.x, y: b.y, passThrough: b.passThrough, fuse: Math.max(0, b.explodeAt - now()) })),
     flames: room.flames.map(f => ({ x: f.x, y: f.y, startedAt:f.startedAt, expiresAt:f.expiresAt })),
     powerups: [...room.powerups.entries()].map(([key, type]) => {
       const [x, y] = key.split(',').map(Number);
@@ -143,6 +144,7 @@ function leaveRoom(ws, allowReconnect = false) {
   ws.roomCode = null;
   if (!room) return;
   room.players.delete(ws.playerId);
+  if(![...room.players.values()].some(p=>!p.bot)) removeBots(room);
   room.lastActivity = now();
   if (room.players.size === 0) {
     if (allowReconnect) {
@@ -156,7 +158,7 @@ function leaveRoom(ws, allowReconnect = false) {
     rooms.delete(room.code);
     return;
   }
-  if (!room.players.has(room.hostId)) room.hostId = room.players.keys().next().value;
+  if (!room.players.has(room.hostId)) room.hostId = [...room.players.values()].find(p=>!p.bot)?.id;
   if (room.phase === 'countdown' && room.players.size === 0) room.phase = 'lobby';
   if (room.phase === 'playing') checkWinner(room);
   broadcast(room);
@@ -176,7 +178,21 @@ function makeBoard() {
   }
   return board;
 }
+function removeBots(room) {
+  for(const [id,p] of room.players) if(p.bot) room.players.delete(id);
+}
+function fillBots(room) {
+  removeBots(room);
+  for(let slot=0;slot<4;slot++) {
+    if([...room.players.values()].some(p=>p.slot===slot))continue;
+    const skin=availableSkin(room,'Bot');
+    const ws={playerId:crypto.randomUUID(),readyState:WebSocket.CLOSED,send(){}};
+    const p=newPlayer(ws,`Bot ${SKINS[skin]}`,slot,skin);p.bot=true;
+    room.players.set(p.id,p);
+  }
+}
 function startGame(room) {
+  fillBots(room);
   room.lastTick = now();
   room.board = makeBoard();
   room.bombs = [];
@@ -192,7 +208,7 @@ function startGame(room) {
     const pos = SPAWNS[p.slot];
     Object.assign(p, {
       x: pos.x, y: pos.y, facing: 'down', alive: true, bombs: 1, activeBombs: 0,
-      range: 2, speed: 170, lastMove: 0, inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false, motion: { x: 0, y: 0 }, kills: 0, place: null
+      range: 2, speed: 170, lastMove: 0, inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false, motion: { x: 0, y: 0 }, kills: 0, place: null, botTarget:null, botThinkAt:0, botCooldown:0, botStall:0
     });
   }
   broadcast(room);
@@ -202,7 +218,9 @@ function movePlayers(room, t) {
   room.lastTick = t;
   for (const p of room.players.values()) {
     if (!p.alive) continue;
-    if(p.usingInputs) {
+    if(p.bot) {
+      bots.update(room,p,t,dt,putBomb);
+    } else if(p.usingInputs) {
       p.inputBudget=Math.min(.1,p.inputBudget+dt);
       while(p.inputQueue.length) {
         const command=p.inputQueue[0];
@@ -334,8 +352,9 @@ function onMessage(ws, raw) {
       room=newRoom(randomCode(),ws,message.name);
     } else {
       if(ws.roomCode===room.code) {send(ws,{type:'joined',code:room.code,playerId:ws.playerId});broadcast(room);return;}
-      if(room.players.size>=4) return error(ws,'Sala cheia! Máximo de quatro jogadores.');
       if(room.phase==='playing'||room.phase==='countdown') return error(ws,'A partida está em andamento. Aguarde terminar e entre para a revanche.');
+      removeBots(room);
+      if(room.players.size>=4) return error(ws,'Sala cheia! Máximo de quatro jogadores.');
       leaveRoom(ws);
       if(room.players.size===0) room.hostId=ws.playerId;
       const slot=[0,1,2,3].find(n=>![...room.players.values()].some(p=>p.slot===n));
@@ -365,6 +384,7 @@ function onMessage(ws, raw) {
     if (!room) return error(ws, 'Essa sala não existe mais. Peça um novo convite.');
     if (ws.roomCode === code) return broadcast(room);
     if (room.phase !== 'lobby') return error(ws, 'A partida já começou. Aguarde uma nova sala.');
+    removeBots(room);
     if (room.players.size >= 4) return error(ws, 'Sala cheia! Máximo de quatro jogadores.');
     leaveRoom(ws);
     if (room.players.size === 0) room.hostId = ws.playerId;

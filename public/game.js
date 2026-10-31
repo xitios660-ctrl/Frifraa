@@ -243,7 +243,7 @@
     return row;
   }
   function updatePlayers() {
-    const key=JSON.stringify([state.code,state.phase,state.hostId,meId,state.players.map(p=>[p.id,p.name,p.slot,p.skinIndex,p.color,p.alive,p.place])]);
+    const key=JSON.stringify([state.code,state.phase,state.hostId,meId,state.players.map(p=>[p.id,p.name,p.slot,p.skinIndex,p.color,p.alive,p.place,p.bot])]);
     if(key===rosterKey) return;
     rosterKey=key;
     const lobby = $('lobbyPlayers');
@@ -261,7 +261,7 @@
       const chip = document.createElement('div');
       chip.className = `hud-player ${p.alive ? '' : 'hud-out'}`;
       chip.style.setProperty('--skin-color', p.color);
-      chip.textContent = `${SKIN_ICONS[getSkinIndex(p)]} ${p.name.slice(0, 10)}`;
+      chip.textContent = `${p.bot?'🤖':SKIN_ICONS[getSkinIndex(p)]} ${p.name.slice(0, 10)}`;
       mobileHud.append(chip);
     }
     for (let i = ordered.length; i < 4; i++) {
@@ -314,7 +314,7 @@
     const isLast = state.participantsAtStart > 1 && me?.place === state.participantsAtStart;
     $('startBtn').disabled = !isHost;
     $('startBtn').textContent = 'Iniciar partida ▶';
-    $('hostHint').textContent = isHost ? 'Você é o anfitrião. Pode iniciar com 1 a 4 pessoas.' : 'Aguardando o anfitrião iniciar a partida.';
+    $('hostHint').textContent = isHost ? 'Você é o anfitrião. Inicie quando quiser: bots completam as vagas até quatro jogadores.' : 'Aguardando o anfitrião iniciar a partida.';
     updatePlayers();
 
     if (state.phase === 'lobby') {
