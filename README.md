@@ -374,7 +374,7 @@ e 60 por dia UTC por processo, com até 4 por bot em cada rodada e um intervalo
 de 60 segundos entre consultas daquele bot. Esses contadores sobrevivem a
 revanche e troca de sala no mesmo processo; reiniciar o serviço reinicia os
 contadores locais. As cotas do Google continuam valendo independentemente deles.
-Timeout de 6 segundos, erros e cota esgotada preservam as decisões locais.
+Timeout de 12 segundos, erros e cota esgotada preservam as decisões locais.
 Não há troca automática para Grok.
 
 `bot-providers.js` implementa os protocolos Gemini/Grok e o limite compartilhado.

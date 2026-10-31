@@ -12,7 +12,7 @@ function createController(options={}){
  const enabled=options.enabled??provider!=='local';
  const model=options.model||(provider==='gemini'?process.env.GEMINI_MODEL||'gemini-3.1-flash-lite':process.env.XAI_MODEL||'grok-4.7');
  const fetchImpl=options.fetchImpl||globalThis.fetch;
- const timeoutMs=options.timeoutMs||(provider==='gemini'?6000:2500),intervalMs=options.intervalMs||(provider==='gemini'?60000:10000),maxCalls=options.maxCalls||(provider==='gemini'?4:12);
+ const timeoutMs=options.timeoutMs||(provider==='gemini'?12000:2500),intervalMs=options.intervalMs||(provider==='gemini'?60000:10000),maxCalls=options.maxCalls||(provider==='gemini'?4:12);
  const budget=providers.createBudget({perMinute:provider==='gemini'?4:12,perDay:provider==='gemini'?60:200});
  let remoteState=enabled&&apiKey?'ready':'local',pauseUntil=0,successfulReplies=0,lastSuccessAt=null;
  const outcomes={httpErrors:0,requestErrors:0,timeouts:0,discardedReplies:0,cancelled:0};let lastHttpStatus=null;

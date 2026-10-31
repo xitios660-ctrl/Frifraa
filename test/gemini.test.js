@@ -37,3 +37,8 @@ test('Gemini quota errors keep the local controller active without trying anothe
  ai.reset(r,1000);ai.tick(r,3000);await flush();assert.equal(ai.status().state,'rate-limited');assert.equal(ai.status().successfulReplies,0);assert.equal(ai.status().outcomes.httpErrors,3);assert.equal(ai.status().lastHttpStatus,429);
  assert.ok(requests.every(url=>url.includes('generativelanguage.googleapis.com')&&url.includes('gemini-3.1-flash-lite')));assert.ok([...r.players.values()].filter(p=>p.bot).every(p=>p.botSpeech.source==='local'));
 });
+test('a Gemini timeout aborts requests without blocking local bot decisions',async()=>{
+ const r=room(),ai=createController({provider:'gemini',apiKey:'test-secret',timeoutMs:15,fetchImpl:(url,{signal})=>new Promise((resolve,reject)=>signal.addEventListener('abort',()=>reject(new Error('aborted')),{once:true}))});
+ ai.reset(r,1000);ai.tick(r,3000);assert.ok([...r.players.values()].filter(p=>p.bot).every(p=>p.botSpeech?.text));
+ await new Promise(resolve=>setTimeout(resolve,35));assert.equal(ai.status().outcomes.timeouts,3);assert.equal(ai.status().state,'timeout');assert.ok([...r.players.values()].filter(p=>p.bot).every(p=>!p.botMind.pending&&p.botSpeech.source==='local'));
+});
