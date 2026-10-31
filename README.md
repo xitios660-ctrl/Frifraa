@@ -231,3 +231,19 @@ na conexão e atualizada quando alguém entra, sai ou muda de skin. Uma vaga liv
 pode ser escolhida mesmo com outro anfitrião na sala. Pedidos antigos de criar ou
 entrar por convite são encaminhados à mesma sala, sem erro de anfitrião existente.
 A primeira pessoa continua responsável por iniciar a partida e escolher o mapa.
+
+
+### Joystick e dois dedos
+
+O joystick mantém um único dedo responsável pelo movimento. Eventos na janela
+acompanham o arrasto fora do círculo mesmo se a captura do navegador falhar ou
+for perdida. Outro dedo pode soltar uma bomba sem interromper o movimento. Soltar,
+cancelar, girar a tela ou sair do aplicativo recentraliza o controle e envia parada.
+A zona neutra usa limites diferentes para iniciar e parar, evitando oscilações;
+o deslocamento visual do botão acompanha o tamanho real do controle.
+
+`node --test test/joystick.test.js` cobre captura, cancelamento, segundo dedo,
+foco e direções. `node scripts/joystick-smoke.cjs` exercita toques simultâneos
+no Chromium móvel, arrasto externo, captura perdida ou indisponível, bomba,
+soltura e novo gesto. Use `BOMBA_BASE` para o endereço e `BOMBA_CHROME` para
+o executável Chromium, se necessário. Isso não substitui teste em iPhone físico.

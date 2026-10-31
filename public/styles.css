@@ -66,3 +66,5 @@ footer{display:flex;align-items:center;justify-content:space-between;gap:16px;bo
 body.eliminated .touch-controls{display:none!important}
 
 .entry-characters{margin-top:10px}.entry-characters .player-avatar{width:64px;height:76px}.entry-characters .skin-choice{min-height:118px}
+
+.joystick,.joystick-wrap,.bomb-btn{touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}

@@ -444,6 +444,7 @@ const FILES = {
   '/skins/mary-walk-v1.png': ['skins/mary-walk-v1.png', 'image/png'],
   '/skins/kaique-walk-v1.png': ['skins/kaique-walk-v1.png', 'image/png'],
   '/skins/jheniffer-walk-v1.png': ['skins/jheniffer-walk-v1.png', 'image/png'],
+  '/joystick.js': ['joystick.js', 'text/javascript; charset=utf-8'],
   '/netcode.js': ['netcode.js', 'text/javascript; charset=utf-8'],
   '/physics.js': ['physics.js', 'text/javascript; charset=utf-8'],
   '/game.js': ['game.js', 'text/javascript; charset=utf-8'],
@@ -469,7 +470,7 @@ const server = http.createServer((req, res) => {
     return res.end('Não encontrado');
   }
   const [file, contentType] = entry;
-  res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': ['index.html', 'sw.js', 'manifest.webmanifest', 'game.js', 'physics.js', 'animation.js', 'effects.js', 'maps.js', 'camera.js', 'netcode.js', 'styles.css'].includes(file) ? 'no-cache' : 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
+  res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': ['index.html', 'sw.js', 'manifest.webmanifest', 'game.js', 'physics.js', 'animation.js', 'effects.js', 'maps.js', 'camera.js', 'netcode.js', 'joystick.js', 'styles.css'].includes(file) ? 'no-cache' : 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
   if (req.method === 'HEAD') return res.end();
   fs.createReadStream(path.join(PUBLIC, file)).on('error', () => res.destroy()).pipe(res);
 });

@@ -227,7 +227,7 @@
     lastPhase = null;
     displayPositions.clear();
     heldKeys.clear();
-    touchDirection = null;
+    resetJoystick();
     lastDirection = '0,0';
     penaltyNotified = false;watching=false;spectatingId=null;document.body.classList.remove('spectating','eliminated');
     sessionStorage.removeItem(storedRoomKey);
@@ -615,51 +615,11 @@
     resetJoystick();
     syncDirection();
   });
-  const joystick = $('joystick');
-  const knob = $('joystickKnob');
-  let joystickPointer = null;
-  let joystickAxis = null;
-  function moveJoystick(event) {
-    if (joystickPointer !== event.pointerId) return;
-    const rect = joystick.getBoundingClientRect();
-    const dx = event.clientX - (rect.left + rect.width / 2);
-    const dy = event.clientY - (rect.top + rect.height / 2);
-    const distance = Math.hypot(dx, dy);
-    const radius = Math.min(42, distance);
-    const x = distance ? (dx / distance) * radius : 0;
-    const y = distance ? (dy / distance) * radius : 0;
-    knob.style.transform = `translate(${x}px, ${y}px)`;
-    if(distance<15){touchDirection=[0,0];joystickAxis=null;}
-    else{
-      if(!joystickAxis)joystickAxis=Math.abs(dx)>=Math.abs(dy)?'x':'y';
-      if(joystickAxis==='x'&&Math.abs(dy)>Math.abs(dx)*1.3)joystickAxis='y';
-      else if(joystickAxis==='y'&&Math.abs(dx)>Math.abs(dy)*1.3)joystickAxis='x';
-      touchDirection=joystickAxis==='x'?[Math.sign(dx),0]:[0,Math.sign(dy)];
-    }
+  const joystickController=BombaJoystick.create($('joystick'),$('joystickKnob'),direction=>{
+    touchDirection=direction[0]||direction[1]?direction:null;
     syncDirection();
-  }
-  function resetJoystick(){
-    const pointer=joystickPointer;
-    joystickPointer=null;joystickAxis=null;touchDirection=null;
-    if(pointer!==null&&joystick.hasPointerCapture(pointer))joystick.releasePointerCapture(pointer);
-    joystick.classList.remove('active');knob.style.transform='translate(0,0)';
-  }
-  function releaseJoystick(event) {
-    if(joystickPointer!==event.pointerId)return;
-    resetJoystick();syncDirection();
-  }
-  joystick.addEventListener('pointerdown', event => {
-    event.preventDefault();
-    if (joystickPointer !== null) return;
-    joystickPointer = event.pointerId;joystickAxis=null;
-    joystick.setPointerCapture(event.pointerId);
-    joystick.classList.add('active');
-    moveJoystick(event);
-  });
-  joystick.addEventListener('pointermove', event => { event.preventDefault(); moveJoystick(event); });
-  joystick.addEventListener('pointerup', releaseJoystick);
-  joystick.addEventListener('pointercancel', releaseJoystick);
-  joystick.addEventListener('lostpointercapture', releaseJoystick);
+  },{enabled:()=>!!currentCode&&['countdown','playing'].includes(state?.phase)&&state.players.some(p=>p.id===meId&&p.alive)});
+  function resetJoystick(){joystickController.reset();touchDirection=null;}
   $('touchBomb').addEventListener('pointerdown', event => {
     event.preventDefault();
     if (isPlaying()) {
