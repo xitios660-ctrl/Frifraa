@@ -100,3 +100,26 @@ acordes e pulsação, agendada pelo relógio do Web Audio. O primeiro toque/tecl
 libera o áudio, inclusive para convidados. SOM silencia e retoma a música; ao
 ocultar a página ou terminar a rodada, a trilha para. O navegador pode exigir um
 novo toque ao retornar de uma interrupção de áudio no iPhone.
+
+
+### Sincronização sem saltos
+
+O protocolo atual envia comandos numerados em passos fixos de 1/60 s. O servidor
+confirma o último comando aplicado (`ack`); o cliente reconstrói sua previsão a
+partir dessa confirmação e reaplica só os comandos pendentes. Estados antigos
+não são misturados à posição atual. As bombas respeitam a ordem dos comandos de
+movimento. O servidor limita a simulação ao tempo transcorrido; a previsão local
+para de avançar após dois segundos sem confirmação. Jogadores remotos usam um
+buffer de interpolação de 80 ms, e correções visuais têm velocidade limitada.
+
+`npm test` inclui simulações com RTT de 200, 400 e 800 ms e variação no atraso.
+O smoke com quatro navegadores aceita `BOMBA_LATENCY=150` (atraso em cada sentido,
+mais até 40 ms de variação) e verifica se o personagem recua ou salta entre quadros
+enquanto mantém a direção. Música, skins, bombas e rotação também são verificados.
+O comando `move` antigo é aceito pelo servidor para compatibilidade, mas o cliente
+atual usa exclusivamente o protocolo `input` com confirmações.
+
+O ZIP fornecido para referência contém uma ROM SNES HiROM de 512 KiB, título
+`SUPER BOMBERMAN`, com checksum e complemento válidos. A ROM não foi incluída no
+repositório nem distribuída no site. A versão web continua usando o motor original
+do Bomba Party para preservar as skins e o multiplayer online.

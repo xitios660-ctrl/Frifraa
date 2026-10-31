@@ -47,15 +47,3 @@ test('other players cannot walk through a bomb, and a removed bomb immediately f
  for(let i=0;i<20;i++) move(p,{x:1,y:0},1/60,board,[]);
  assert.ok(p.x>2.5);
 });
-
-test('late snapshot cannot pull an escaped player back into a bomb or wall',()=>{
- const {reconcile,canOccupy}=require('../public/physics');
- const p={id:'p',x:2.8,y:2,speed:170};
- const bombs=[{x:2,y:2,passThrough:[]}];
- for(let i=0;i<8;i++) reconcile(p,{x:2.6,y:2,speed:170},board,bombs);
- assert.ok(p.x>=2.75);
- assert.ok(canOccupy(p,p.x,p.y,board,bombs));
- const map=board.map(row=>[...row]);map[2][2]=1;
- reconcile(p,{x:2.6,y:2,speed:170},map,[]);
- assert.ok(canOccupy(p,p.x,p.y,map,[]));
-});

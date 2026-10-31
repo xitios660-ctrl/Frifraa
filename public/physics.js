@@ -45,17 +45,7 @@
       revokePassage(p,bombs);
     }
   }
-  function reconcile(p,authoritative,board,bombs) {
-    const gap=Math.hypot(p.x-authoritative.x,p.y-authoritative.y);
-    const x=p.x+(authoritative.x-p.x)*.25,y=p.y+(authoritative.y-p.y)*.25;
-    const localValid=canOccupy(p,p.x,p.y,board,bombs);
-    const serverValid=canOccupy(p,authoritative.x,authoritative.y,board,bombs);
-    if((gap>.8 || !localValid) && serverValid) {p.x=authoritative.x;p.y=authoritative.y;}
-    else if(canOccupy(p,x,y,board,bombs)) {p.x=x;p.y=y;}
-    // A delayed snapshot must not pull a player back into a bomb they already exited.
-    p.speed=authoritative.speed;
-  }
-  const api={move,canOccupy,overlaps,reconcile};
+  const api={move,canOccupy,overlaps};
   if(typeof module!=='undefined') module.exports=api;
   else root.BombaPhysics=api;
 })(typeof window!=='undefined'?window:globalThis);

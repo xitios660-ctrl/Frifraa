@@ -1,5 +1,5 @@
-const CACHE = 'bomba-party-v9-collisions-music';
-const SHELL = ['/', '/animation.js', '/skins/mary-walk-v1.png', '/skins/kaique-walk-v1.png', '/skins/jheniffer-walk-v1.png', '/physics.js', '/styles.css', '/game.js', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/icon-180.png', '/skins/mary.webp', '/skins/kaique.webp', '/skins/jheniffer.webp'];
+const CACHE = 'bomba-party-v10-input-ack';
+const SHELL = ['/', '/netcode.js', '/animation.js', '/skins/mary-walk-v1.png', '/skins/kaique-walk-v1.png', '/skins/jheniffer-walk-v1.png', '/physics.js', '/styles.css', '/game.js', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/icon-180.png', '/skins/mary.webp', '/skins/kaique.webp', '/skins/jheniffer.webp'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL.map(url=>new Request(url,{cache:'reload'})))).then(() => self.skipWaiting()));
@@ -18,7 +18,7 @@ self.addEventListener('fetch', event => {
     event.respondWith(fetch(event.request).catch(() => caches.match('/')));
     return;
   }
-  if (new URL(event.request.url).pathname === '/animation.js' || new URL(event.request.url).pathname === '/physics.js' || new URL(event.request.url).pathname === '/game.js' || new URL(event.request.url).pathname === '/styles.css') {
+  if (new URL(event.request.url).pathname === '/netcode.js' || new URL(event.request.url).pathname === '/animation.js' || new URL(event.request.url).pathname === '/physics.js' || new URL(event.request.url).pathname === '/game.js' || new URL(event.request.url).pathname === '/styles.css') {
     event.respondWith(fetch(event.request,{cache:'no-cache'}).catch(() => caches.match(event.request)));
     return;
   }

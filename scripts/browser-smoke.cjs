@@ -6,7 +6,32 @@ const pages=[],errors=[];
 try {
 for(let i=0;i<4;i++) {
  const context=await browser.newContext({viewport:{width:844,height:390},isMobile:true,hasTouch:true});
- await context.addInitScript(() => {
+ await context.addInitScript(({latency}) => {
+   if(latency) {
+     const NativeSocket=window.WebSocket;
+     window.WebSocket=class extends NativeSocket {
+       send(data) {
+         this.sendAt=Math.max(this.sendAt||0,performance.now()+latency+Math.random()*40);
+         setTimeout(()=>{if(this.readyState===NativeSocket.OPEN)super.send(data);},this.sendAt-performance.now());
+       }
+       addEventListener(type,listener,options) {
+         if(type!=='message') return super.addEventListener(type,listener,options);
+         return super.addEventListener(type,event=>{
+           this.receiveAt=Math.max(this.receiveAt||0,performance.now()+latency+Math.random()*40);
+           setTimeout(()=>listener.call(this,event),this.receiveAt-performance.now());
+         },options);
+       }
+     };
+   }
+   window.playerPoints=[];
+   const ellipse=CanvasRenderingContext2D.prototype.ellipse;
+   CanvasRenderingContext2D.prototype.ellipse=function(...args) {
+     if(this.canvas.id==='arena' && args[2]===17 && args[3]===7) {
+       window.playerPoints.push({x:args[0],y:args[1],time:performance.now()});
+       if(window.playerPoints.length>2000) window.playerPoints.shift();
+     }
+     return ellipse.apply(this,args);
+   };
    window.audioContexts=[];window.audioStarts=[];
    const Base=window.AudioContext;
    if(Base) window.AudioContext=class extends Base {
@@ -26,7 +51,7 @@ for(let i=0;i<4;i++) {
      }
      return original.call(this,image,...args);
    };
- });
+ },{latency:Number(process.env.BOMBA_LATENCY)||0});
  const page=await context.newPage();pages.push(page);page.on('pageerror',e=>errors.push(e.message));
  await page.goto(process.env.BOMBA_BASE || 'http://127.0.0.1:3000');
  await page.waitForFunction(()=>document.querySelector('#serverDot').classList.contains('live'));
@@ -53,6 +78,18 @@ for (const [direction,row] of [['ArrowRight',2],['ArrowLeft',1],['ArrowDown',0],
  await pages[0].waitForTimeout(160);
  await pages[0].keyboard.up(direction);
 }
+await pages[0].evaluate(()=>{window.playerPoints=[];});
+await pages[0].keyboard.down('ArrowRight');
+await pages[0].waitForTimeout(1500);
+await pages[0].keyboard.up('ArrowRight');
+const points=await pages[0].evaluate(()=>window.playerPoints);
+assert.ok(points.length>15);
+for(let i=1;i<points.length;i++) {
+ assert.ok(points[i].x>=points[i-1].x-.5,'holding right must not rubber-band backwards');
+ const distance=Math.hypot(points[i].x-points[i-1].x,points[i].y-points[i-1].y);
+ const limit=Math.max(10,1000/170*1.5*48*Math.min(.05,(points[i].time-points[i-1].time)/1000)+2);
+ assert.ok(distance<=limit,`visible teleport: ${distance.toFixed(2)} px`);
+}
 await pages[0].waitForTimeout(650);
 await pages[0].evaluate(()=>{window.skinDraws=[];});
 await pages[0].waitForTimeout(150);
@@ -73,6 +110,6 @@ await pages[0].screenshot({path:'/tmp/bomba-party-mobile.png'});
 await pages[0].setViewportSize({width:390,height:844});
 await pages[0].locator('#rotateOverlay').waitFor({state:'visible'});
 assert.deepEqual(errors,[]);
-console.log('PASS: four browser clients, mobile landscape controls, bomb, portrait warning, three sprite sheets, four directions, idle animation, music playback/mute/resume, no JS errors');
+console.log('PASS: four browser clients, mobile landscape controls, bomb, portrait warning, three sprite sheets, four directions, idle animation, music playback/mute/resume, no teleports or reverse corrections, no JS errors');
 }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exit(1)});

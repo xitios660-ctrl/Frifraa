@@ -154,3 +154,22 @@ test('limita a sala a quatro pessoas e inicia uma partida real', async () => {
   await message(returning, m => m.type === 'left');
   assert.equal((await (await fetch(`${BASE}/health`)).json()).rooms, 0);
 });
+
+test('numbered movement is acknowledged once and a bomb follows its queued movement',async()=>{
+ const p=await client();write(p,{type:'create',name:'Netcode'});
+ await message(p,m=>m.type==='joined');write(p,{type:'start'});
+ await message(p,m=>m.type==='state'&&m.phase==='playing');
+ write(p,{type:'input',steps:Array.from({length:8},(_,i)=>({seq:i+1,x:1,y:0}))});
+ write(p,{type:'bomb'});
+ const placed=await message(p,m=>m.type==='state'&&m.bombs.length>0);
+ assert.equal(placed.players[0].ack,8);
+ assert.equal(placed.bombs[0].x,2);
+ const x=placed.players[0].x;
+ write(p,{type:'input',steps:[{seq:8,x:1,y:0}]});
+ write(p,{type:'input',steps:[{seq:10000,x:1,y:0}]});
+ await new Promise(resolve=>setTimeout(resolve,150));
+ const latest=p.messages.filter(m=>m.type==='state').at(-1);
+ assert.equal(latest.players[0].ack,8);
+ assert.equal(latest.players[0].x,x);
+ write(p,{type:'leave'});await message(p,m=>m.type==='left');
+});

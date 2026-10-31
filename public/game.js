@@ -43,6 +43,10 @@
   let lastFrame = 0;
   let frameDt = 1 / 60;
   let localPlayer = null;
+  let prediction = null;
+  let inputAccumulator = 0;
+  const snapshotHistory = [];
+  let rosterKey = '';
   let audioCtx = null;
   let disconnected = false;
   let toastTimer;
@@ -147,18 +151,18 @@
     if (msg.type === 'state') {
       if (currentCode && msg.code !== currentCode) return;
       currentCode = msg.code;
-      if(state?.phase==='playing' && msg.phase==='playing') {
-        for(const bomb of msg.bombs) {
-          const prior=state.bombs.find(b=>b.x===bomb.x && b.y===bomb.y);
-          if(prior && !prior.passThrough?.includes(meId) && bomb.passThrough) bomb.passThrough=bomb.passThrough.filter(id=>id!==meId);
-        }
-      }
+      const previousPhase=state?.phase;
       state = msg;
       const authoritative = msg.players.find(p => p.id === meId);
-      if (authoritative) {
-        if (!localPlayer || msg.phase !== 'playing') localPlayer = {...authoritative};
-        else BombaPhysics.reconcile(localPlayer,authoritative,msg.board,msg.bombs);
+      if(authoritative) {
+        if(msg.phase!=='playing'||previousPhase!=='playing'||!prediction) {
+          prediction=BombaNetcode.create(authoritative,msg.board,msg.bombs);
+          inputAccumulator=0;localPlayer=prediction.player;
+          if(previousPhase!==msg.phase) {displayPositions.clear();snapshotHistory.length=0;}
+        } else localPlayer=BombaNetcode.acknowledge(prediction,authoritative,msg.board,msg.bombs);
       }
+      snapshotHistory.push({time:performance.now(),players:msg.players});
+      if(snapshotHistory.length>30) snapshotHistory.shift();
       updateUi();
     }
   }
@@ -185,6 +189,7 @@
     if (notifyServer && currentCode) safeSend({ type: 'leave' });
     currentCode = null;
     state = null;
+    prediction = null;inputAccumulator=0;snapshotHistory.length=0;
     lastPhase = null;
     displayPositions.clear();
     heldKeys.clear();
@@ -234,6 +239,9 @@
     return row;
   }
   function updatePlayers() {
+    const key=JSON.stringify([state.code,state.phase,state.hostId,meId,state.players.map(p=>[p.id,p.name,p.slot,p.skinIndex,p.color,p.alive,p.place])]);
+    if(key===rosterKey) return;
+    rosterKey=key;
     const lobby = $('lobbyPlayers');
     const sidebar = $('gamePlayers');
     lobby.replaceChildren();
@@ -502,14 +510,17 @@
       nextMusicTime+=60/132/4;musicStep++;
     }
   },25);
-  setInterval(() => {
-    if (isPlaying()) {
-      const [x,y] = lastDirection.split(',').map(Number);
-      safeSend({type:'move',x,y});
+  function flushInputs() {
+    if(!prediction||socket?.readyState!==WebSocket.OPEN||!isPlaying()) return;
+    while(prediction.outbound.length) {
+      const steps=prediction.outbound.splice(0,8);
+      socket.send(JSON.stringify({type:'input',steps}));
     }
-  }, 250);
+  }
+  function sendBomb() {flushInputs();safeSend({type:'bomb'});}
+  setInterval(flushInputs,33);
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { stopMusic(); heldKeys.clear(); touchDirection = null; lastDirection = '0,0'; if (isPlaying()) safeSend({type:'move',x:0,y:0}); audioCtx?.suspend(); }
+    if (document.hidden) { stopMusic(); heldKeys.clear(); touchDirection = null; lastDirection = '0,0'; flushInputs(); audioCtx?.suspend(); }
     else if (soundOn) audioCtx?.resume();
   });
   const keyToDirection = {
@@ -530,7 +541,7 @@
     const key = dir.join(',');
     if (key === lastDirection || !isPlaying()) return;
     lastDirection = key;
-    safeSend({ type: 'move', x: dir[0], y: dir[1] });
+    flushInputs();
   }
   document.addEventListener('keydown', event => {
     if (/input|textarea/i.test(event.target.tagName)) return;
@@ -540,7 +551,7 @@
       syncDirection();
     } else if (event.code === 'Space' && isPlaying()) {
       event.preventDefault();
-      if (!event.repeat) safeSend({ type: 'bomb' });
+      if (!event.repeat) sendBomb();
     }
   });
   document.addEventListener('keyup', event => {
@@ -596,7 +607,7 @@
     event.preventDefault();
     if (isPlaying()) {
       if (soundOn) beep(240,.06,'square');
-      safeSend({ type: 'bomb' });
+      sendBomb();
       if (navigator.vibrate) navigator.vibrate(20);
     }
   });
@@ -680,17 +691,13 @@
     ctx.restore();
   }
   function drawPlayer(p, time) {
-    const position = p.id === meId && localPlayer && state.phase === 'playing' ? localPlayer : p;
-    const targetX = position.x * SIZE + 24, targetY = position.y * SIZE + 21;
-    let point = displayPositions.get(p.id);
-    if (!point || Math.hypot(point.x-targetX,point.y-targetY) > SIZE*1.5) {
-      point = { x: targetX, y: targetY }; displayPositions.set(p.id, point);
-    }
-    const smoothing = p.id === meId ? 1 : 1-Math.exp(-frameDt*35);
-    point.x += (targetX-point.x)*smoothing;
-    point.y += (targetY-point.y)*smoothing;
-    const x=point.x, y=point.y;
-    point.pose = BombaAnimation.advance(point.pose, {x:x/SIZE,y:y/SIZE,facing:position.facing || p.facing}, frameDt);
+    const position = p.id===meId && localPlayer && state.phase==='playing'
+      ? localPlayer : BombaNetcode.remotePosition(snapshotHistory,p.id,performance.now()-80) || p;
+    const previous=displayPositions.get(p.id);
+    const point=BombaNetcode.displayPoint(previous,position,frameDt,p.speed);
+    displayPositions.set(p.id,point);
+    const x=point.x*SIZE+24, y=point.y*SIZE+21;
+    point.pose = BombaAnimation.advance(point.pose, {x:point.x,y:point.y,facing:position.facing || p.facing}, frameDt);
     if (!p.alive) return;
     const skinIndex = getSkinIndex(p);
     ctx.save();
@@ -719,7 +726,11 @@
     lastFrame = time;
     if (localPlayer && isPlaying() && state.players.find(p=>p.id===meId)?.alive) {
       const [x,y] = lastDirection.split(',').map(Number);
-      BombaPhysics.move(localPlayer,{x,y},frameDt,state.board,state.bombs);
+      inputAccumulator+=frameDt;
+      while(inputAccumulator>=BombaNetcode.STEP) {
+        BombaNetcode.advance(prediction,{x,y});inputAccumulator-=BombaNetcode.STEP;
+      }
+      localPlayer=prediction.player;
     }
     if (!state?.board || $('gamePanel').hidden) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);

@@ -11,6 +11,7 @@ const HEIGHT = 13;
 const PORT = Number(process.env.PORT) || 3000;
 const TICK_MS = 1000 / 60;
 const physics = require('./public/physics');
+const {STEP} = require('./public/netcode');
 const COLORS = ['#ac82ff', '#ff6e96', '#55dcff', '#ffd36f'];
 const SKINS = ['Mary', 'Kaique', 'Jheniffer', 'Solar'];
 const SPAWNS = [
@@ -69,6 +70,7 @@ function newPlayer(ws, name, slot, skinIndex) {
     range: 2,
     speed: 170,
     lastMove: 0,
+    inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false,
     motion: { x: 0, y: 0 },
     kills: 0,
     place: null
@@ -99,7 +101,7 @@ function newRoom(code, ws, name) {
 function playerView(p) {
   return {
     id: p.id, name: p.name, slot: p.slot, skinIndex: p.skinIndex, color: p.color, skin: p.skin,
-    x: p.x, y: p.y, motion: p.motion, facing: p.facing, alive: p.alive, bombs: p.bombs,
+    x: p.x, y: p.y, ack: p.ack, motion: p.motion, facing: p.facing, alive: p.alive, bombs: p.bombs,
     range: p.range, speed: p.speed, kills: p.kills, place: p.place
   };
 }
@@ -185,7 +187,7 @@ function startGame(room) {
     const pos = SPAWNS[p.slot];
     Object.assign(p, {
       x: pos.x, y: pos.y, facing: 'down', alive: true, bombs: 1, activeBombs: 0,
-      range: 2, speed: 170, lastMove: 0, motion: { x: 0, y: 0 }, kills: 0, place: null
+      range: 2, speed: 170, lastMove: 0, inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false, motion: { x: 0, y: 0 }, kills: 0, place: null
     });
   }
   broadcast(room);
@@ -195,8 +197,19 @@ function movePlayers(room, t) {
   room.lastTick = t;
   for (const p of room.players.values()) {
     if (!p.alive) continue;
-    if (t - (p.lastInput || 0) > 1200) p.motion = { x: 0, y: 0 };
-    physics.move(p, p.motion, dt, room.board, room.bombs);
+    if(p.usingInputs) {
+      p.inputBudget=Math.min(.1,p.inputBudget+dt);
+      while(p.inputQueue.length) {
+        const command=p.inputQueue[0];
+        if(command.type==='bomb') {p.inputQueue.shift();putBomb(room,p);continue;}
+        if(p.inputBudget+1e-9<STEP) break;
+        p.inputQueue.shift();p.inputBudget-=STEP;p.motion={x:command.x,y:command.y};
+        physics.move(p,p.motion,STEP,room.board,room.bombs);p.ack=command.seq;
+      }
+    } else {
+      if (t - (p.lastInput || 0) > 1200) p.motion = { x: 0, y: 0 };
+      physics.move(p, p.motion, dt, room.board, room.bombs);
+    }
     const key = tileKey(Math.round(p.x), Math.round(p.y));
     const bonus = room.powerups.get(key);
     if (bonus) {
@@ -356,14 +369,28 @@ function onMessage(ws, raw) {
     if (room.hostId !== ws.playerId) return error(ws, 'Apenas o anfitrião pode iniciar.');
     if (room.phase !== 'lobby' && room.phase !== 'finished') return;
     startGame(room);
+  } else if (message.type === 'input') {
+    if(room.phase!=='playing'||!player.alive||!Array.isArray(message.steps)||message.steps.length>8) return;
+    let previous=player.lastQueuedSeq;
+    for(const command of message.steps) {
+      if(!command||!Number.isSafeInteger(command.seq)||command.seq!==previous+1 ||
+         ![-1,0,1].includes(command.x)||![-1,0,1].includes(command.y)||Math.abs(command.x)+Math.abs(command.y)>1) return;
+      previous=command.seq;
+    }
+    if(player.inputQueue.length+message.steps.length>128) return;
+    player.usingInputs=true;player.lastInput=now();player.lastQueuedSeq=previous;
+    player.inputQueue.push(...message.steps.map(({seq,x,y})=>({seq,x,y})));
   } else if (message.type === 'move') {
+    if(player.usingInputs) return;
     const x = Number(message.x), y = Number(message.y);
     if (room.phase !== 'playing' || !player.alive) return;
     if (![ -1, 0, 1 ].includes(x) || ![ -1, 0, 1 ].includes(y) || Math.abs(x) + Math.abs(y) > 1) return;
     player.motion = { x, y };
     player.lastInput = now();
   } else if (message.type === 'bomb') {
-    putBomb(room, player);
+    if(player.usingInputs) {
+      if(room.phase==='playing' && player.alive && player.inputQueue.filter(c=>c.type==='bomb').length<player.bombs) player.inputQueue.push({type:'bomb'});
+    } else putBomb(room, player);
   }
 }
 
@@ -375,6 +402,7 @@ const FILES = {
   '/skins/mary-walk-v1.png': ['skins/mary-walk-v1.png', 'image/png'],
   '/skins/kaique-walk-v1.png': ['skins/kaique-walk-v1.png', 'image/png'],
   '/skins/jheniffer-walk-v1.png': ['skins/jheniffer-walk-v1.png', 'image/png'],
+  '/netcode.js': ['netcode.js', 'text/javascript; charset=utf-8'],
   '/physics.js': ['physics.js', 'text/javascript; charset=utf-8'],
   '/game.js': ['game.js', 'text/javascript; charset=utf-8'],
   '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json; charset=utf-8'],
@@ -399,7 +427,7 @@ const server = http.createServer((req, res) => {
     return res.end('Não encontrado');
   }
   const [file, contentType] = entry;
-  res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': ['index.html', 'sw.js', 'manifest.webmanifest', 'game.js', 'physics.js', 'animation.js', 'styles.css'].includes(file) ? 'no-cache' : 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
+  res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': ['index.html', 'sw.js', 'manifest.webmanifest', 'game.js', 'physics.js', 'animation.js', 'netcode.js', 'styles.css'].includes(file) ? 'no-cache' : 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
   if (req.method === 'HEAD') return res.end();
   fs.createReadStream(path.join(PUBLIC, file)).on('error', () => res.destroy()).pipe(res);
 });
