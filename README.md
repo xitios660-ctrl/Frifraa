@@ -66,9 +66,15 @@ pelos estados autoritativos. Os adversários usam suavização visual. As entrad
 são renovadas a cada 250 ms e expiram para evitar movimento preso após perda de
 conexão. Bombas continuam na grade e permitem sair, mas bloqueiam o retorno.
 
-As imagens originais das três skins permanecem intactas. A caminhada usa balanço
-e recortes animados dos retratos, com orientação lateral; ainda não há desenhos
-independentes de frente, costas e perfil. O áudio é uma composição sintetizada
+As imagens originais das três skins permanecem intactas e continuam na sala e
+como fallback durante o carregamento. Na partida, cada personagem personalizado
+usa uma nova folha transparente de 16 quadros (frente, dois perfis e costas).
+`public/animation.js` mede os limites de cada quadro uma vez para alinhar os pés;
+a cadência acompanha a distância percorrida, independentemente da taxa de quadros,
+e para ao encostar na parede. Solar mantém coroa/capa e usa pernas e braços
+animados com orientação nas quatro direções. A renderização respeita a ordem de
+profundidade dos jogadores. As folhas `*-walk-v1.png` foram criadas com base nas
+imagens originais; os WebPs originais não foram substituídos. O áudio é uma composição sintetizada
 original com melodia de partida e vinhetas de vitória/derrota. Requer um toque
 para liberar o AudioContext conforme as regras do navegador. O botão SOM permite
 silenciar. Não foi incorporada ROM nem áudio comercial.
@@ -77,5 +83,5 @@ Validação: `npm test` cobre quatro clientes WebSocket, movimento fracionário,
 colisão, bombas, classificação, vencedor, revanche e skins. Para o smoke visual,
 com o servidor local ativo e Playwright/Chromium instalados, execute
 `node scripts/browser-smoke.cjs`; `BOMBA_CHROME` permite indicar o navegador.
-O smoke abre quatro contextos móveis, verifica joystick/bomba, rotação e erros JS.
+O smoke abre quatro contextos móveis, verifica joystick/bomba, rotação, carregamento das três folhas, quatro direções de caminhada, parada dos passos e erros JS.
 Testes em aparelhos físicos e a audição humana da trilha continuam necessários.

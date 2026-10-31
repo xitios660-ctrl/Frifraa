@@ -184,7 +184,7 @@ function startGame(room) {
   for (const p of room.players.values()) {
     const pos = SPAWNS[p.slot];
     Object.assign(p, {
-      x: pos.x, y: pos.y, alive: true, bombs: 1, activeBombs: 0,
+      x: pos.x, y: pos.y, facing: 'down', alive: true, bombs: 1, activeBombs: 0,
       range: 2, speed: 170, lastMove: 0, motion: { x: 0, y: 0 }, kills: 0, place: null
     });
   }
@@ -370,6 +370,10 @@ const FILES = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/index.html': ['index.html', 'text/html; charset=utf-8'],
   '/styles.css': ['styles.css', 'text/css; charset=utf-8'],
+  '/animation.js': ['animation.js', 'text/javascript; charset=utf-8'],
+  '/skins/mary-walk-v1.png': ['skins/mary-walk-v1.png', 'image/png'],
+  '/skins/kaique-walk-v1.png': ['skins/kaique-walk-v1.png', 'image/png'],
+  '/skins/jheniffer-walk-v1.png': ['skins/jheniffer-walk-v1.png', 'image/png'],
   '/physics.js': ['physics.js', 'text/javascript; charset=utf-8'],
   '/game.js': ['game.js', 'text/javascript; charset=utf-8'],
   '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json; charset=utf-8'],

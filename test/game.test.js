@@ -58,6 +58,12 @@ test('serve página, skins personalizadas e endpoint de saúde', async () => {
   assert.equal(page.status, 200);
   assert.match(await page.text(), /Bomba Party · Arena Online/);
   assert.equal((await health.json()).ok, true);
+  for (const name of ['mary','kaique','jheniffer']) {
+    const atlas = await fetch(`${BASE}/skins/${name}-walk-v1.png`);
+    assert.equal(atlas.status, 200);
+    assert.match(atlas.headers.get('content-type'), /image\/png/);
+    assert.ok((await atlas.arrayBuffer()).byteLength > 1000);
+  }
   assert.equal(manifest.status, 200);
   assert.equal((await manifest.json()).display, 'standalone');
   assert.equal(icon.status, 200);

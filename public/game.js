@@ -15,6 +15,11 @@
     picture.src = src;
     return picture;
   });
+  const walkAtlases = ['mary','kaique','jheniffer'].map(name => {
+    const atlas = new Image();
+    atlas.addEventListener('load',()=>BombaAnimation.prepareAtlas(atlas));
+    atlas.src = `/skins/${name}-walk-v1.png`; return atlas;
+  });
   const storedRoomKey = 'bomba-party-active-room';
   let savedRoom = (() => {
     try { return JSON.parse(sessionStorage.getItem(storedRoomKey)); } catch { return null; }
@@ -635,94 +640,32 @@
     ctx.restore();
   }
   function drawPlayer(p, time) {
-    const moving = p.id === meId ? lastDirection !== '0,0' : !!(p.motion?.x || p.motion?.y);
     const position = p.id === meId && localPlayer && state.phase === 'playing' ? localPlayer : p;
     const targetX = position.x * SIZE + 24, targetY = position.y * SIZE + 21;
     let point = displayPositions.get(p.id);
-    if (!point) { point = { x: targetX, y: targetY }; displayPositions.set(p.id, point); }
-    point.x += (targetX - point.x) * (p.id === meId ? 1 : 1-Math.exp(-frameDt*35));
-    point.y += (targetY - point.y) * (p.id === meId ? 1 : 1-Math.exp(-frameDt*35));
-    const x = point.x, y = point.y + (moving ? Math.sin(time / 55) * 2 : 0);
+    if (!point || Math.hypot(point.x-targetX,point.y-targetY) > SIZE*1.5) {
+      point = { x: targetX, y: targetY }; displayPositions.set(p.id, point);
+    }
+    const smoothing = p.id === meId ? 1 : 1-Math.exp(-frameDt*35);
+    point.x += (targetX-point.x)*smoothing;
+    point.y += (targetY-point.y)*smoothing;
+    const x=point.x, y=point.y;
+    point.pose = BombaAnimation.advance(point.pose, {x:x/SIZE,y:y/SIZE,facing:position.facing || p.facing}, frameDt);
     if (!p.alive) return;
-    const color = p.color;
     const skinIndex = getSkinIndex(p);
-    circle(x, y + 22, 16, '#09071688');
-    const sprite = sprites[skinIndex];
-    if (sprite?.complete && sprite.naturalWidth > 0) {
-      // Retratos personalizados com transparência, sempre em corpo inteiro.
-      ctx.save();
-      ctx.shadowColor = `${color}99`;
-      ctx.shadowBlur = 9;
-      ctx.translate(x, y);
-      const facing = position.facing || p.facing || 'down';
-      const stride = moving ? Math.sin(time / 65) : 0;
-      ctx.rotate(stride * .035);
-      ctx.scale(facing === 'left' ? -1 : 1, 1);
-      // Preserve the portrait; animate its gait with alternating foot/body slices.
-      ctx.drawImage(sprite, 0, 0, sprite.naturalWidth, sprite.naturalHeight*.72, -28,-41,56,49);
-      const half = sprite.naturalWidth/2;
-      for(let foot=0;foot<2;foot++) ctx.drawImage(sprite,foot*half,sprite.naturalHeight*.72,half,sprite.naturalHeight*.28,-28+foot*28,8+(foot?stride:-stride)*2,28,19);
-      if (facing === 'up') { ctx.fillStyle = '#20183322'; ctx.fillRect(-20,-35,40,35); }
-      ctx.restore();
-      if (p.id === meId) {
-        ctx.strokeStyle = '#fff4aa';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.ellipse(x, y + 23, 17, 7, 0, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.fillStyle = '#fff1a6';
-        ctx.textAlign = 'center';
-        ctx.font = '900 11px sans-serif';
-        ctx.fillText('VOCÊ', x, y - 45);
-      }
-      return;
+    ctx.save();
+    ctx.fillStyle = '#09071688';ctx.beginPath();ctx.ellipse(x,y+22,14,5,0,0,Math.PI*2);ctx.fill();
+    if (skinIndex === 3) BombaAnimation.drawSolar(ctx,point.pose,x,y);
+    else if (!BombaAnimation.drawAtlas(ctx,walkAtlases[skinIndex],skinIndex,point.pose,x,y)) {
+      // Keep the existing personal image visible while the atlas loads or if it fails.
+      const sprite=sprites[skinIndex];
+      if(sprite?.complete && sprite.naturalWidth) ctx.drawImage(sprite,x-28,y-41,56,68);
+      else { ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(x,y,14,0,Math.PI*2);ctx.fill(); }
     }
-    if (skinIndex === 0) { // Aparência alternativa enquanto a imagem carrega
-      ctx.fillStyle = '#7150bd';
-      ctx.beginPath();ctx.moveTo(x - 9, y + 4);ctx.lineTo(x - 22, y + 26);ctx.lineTo(x + 22, y + 26);ctx.lineTo(x + 9, y + 4);ctx.closePath();ctx.fill();
-    }
-    if (skinIndex === 3) { // Solar: capa de raio dourado
-      ctx.fillStyle = '#ff9859';
-      ctx.beginPath();ctx.moveTo(x - 10, y + 3);ctx.lineTo(x - 18, y + 26);ctx.lineTo(x + 17, y + 26);ctx.lineTo(x + 10, y + 3);ctx.closePath();ctx.fill();
-    }
-    roundRect(x - 12, y + 8, 24, 18, 8, color);
-    roundRect(x - 15, y - 20, 30, 34, 11, color);
-    roundRect(x - 19, y - 11, 6, 18, 3, color);
-    roundRect(x + 13, y - 11, 6, 18, 3, color);
-    roundRect(x - 10, y - 11, 20, 16, 7, '#faf5ff');
-    circle(x - 5, y - 3, 2.5, '#2b213e');
-    circle(x + 5, y - 3, 2.5, '#2b213e');
-    roundRect(x - 4, y - 25, 8, 8, 3, '#f6f3ff');
-    circle(x - 7, y - 15, 4, '#ffffff8a');
-    if (skinIndex === 0) {
-      ctx.fillStyle = '#6c45c0';
-      ctx.beginPath();ctx.moveTo(x - 15, y - 17);ctx.lineTo(x + 1, y - 38);ctx.lineTo(x + 17, y - 17);ctx.closePath();ctx.fill();
-      roundRect(x - 15, y - 20, 30, 5, 2, '#eac3ff');
-      circle(x + 1, y - 26, 3.6, '#ffe38a');
-    } else if (skinIndex === 1) {
-      // Rubi: laço e pequenas orelhas de coração.
-      circle(x - 14, y - 24, 8, '#ff3d83');
-      circle(x + 8, y - 24, 8, '#ff3d83');
-      circle(x - 3, y - 24, 5, '#ffdcf2');
-      circle(x - 17, y - 27, 2, '#ffe4ec');
-      circle(x + 11, y - 27, 2, '#ffe4ec');
-    } else if (skinIndex === 2) {
-      // Cyber: visor luminoso e antena.
-      roundRect(x - 13, y - 13, 26, 13, 5, '#1a3d58');
-      roundRect(x - 10, y - 10, 20, 6, 3, '#a3fff6');
-      roundRect(x - 2, y - 34, 4, 12, 2, '#35adcb');
-      circle(x, y - 35, 4, '#ecff9c');
-    } else if (skinIndex === 3) {
-      // Solar: coroa dourada de três pontas.
-      ctx.fillStyle = '#ffb73f';
-      ctx.beginPath();ctx.moveTo(x - 16, y - 18);ctx.lineTo(x - 15, y - 35);ctx.lineTo(x - 6, y - 25);ctx.lineTo(x, y - 39);ctx.lineTo(x + 6, y - 25);ctx.lineTo(x + 15, y - 35);ctx.lineTo(x + 16, y - 18);ctx.closePath();ctx.fill();
-      rectangle(x - 12, y - 20, 24, 4, '#fff1a5');
-    }
-    if (p.id === meId) {
-      ctx.strokeStyle = '#fffbd4';ctx.lineWidth = 2;
-      ctx.beginPath();ctx.arc(x, y - 3, 23, 0, Math.PI * 2);ctx.stroke();
-      ctx.fillStyle = '#fff1a6';ctx.textAlign = 'center';ctx.font = '900 11px sans-serif';
-      ctx.fillText('VOCÊ', x, y - 46);
+    ctx.restore();
+    if(p.id===meId) {
+      ctx.strokeStyle='#fff4aa';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(x,y+23,17,7,0,0,Math.PI*2);ctx.stroke();
+      ctx.fillStyle='#fff1a6';ctx.textAlign='center';ctx.font='900 11px sans-serif';ctx.fillText('VOCÊ',x,y-45);
     }
   }
   function drawEmpty() {
@@ -751,7 +694,7 @@
     for (const p of state.powerups || []) drawPowerup(p, time);
     for (const b of state.bombs || []) drawBomb(b, time);
     for (const f of state.flames || []) drawFlame(f, time);
-    for (const p of state.players || []) drawPlayer(p, time);
+    for (const p of [...(state.players || [])].sort((a,b)=>a.y-b.y || a.slot-b.slot)) drawPlayer(p, time);
   }
 
   $('soundLabel').textContent = soundOn ? 'LIGADO' : 'SOM';
