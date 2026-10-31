@@ -16,7 +16,7 @@ async function until(fn,timeout=10000){const start=Date.now();while(Date.now()-s
    const page=await context.newPage();pages.push(page);page.on('pageerror',e=>errors.push(e.message));
    page.on('websocket',ws=>ws.on('framereceived',e=>{try{const m=JSON.parse(e.payload);if(m.type==='state')states.push(m);}catch{}}));
    await page.goto(base);await page.waitForFunction(()=>document.querySelector('#serverDot').classList.contains('live'));
-   await page.fill('#nameInput',['Mary','Kaique','Jheniffer','Gustavo'][i]);await page.click('#createBtn');await page.locator('#roomPanel').waitFor({state:'visible'});
+   await page.locator(`#entryCharacters [data-skin-index="${i}"]`).click();await page.click('#createBtn');await page.locator('#roomPanel').waitFor({state:'visible'});
    if(i===1){
     await page.evaluate(()=>window.testSocket.send(JSON.stringify({type:'start'})));
     await page.waitForTimeout(3600);

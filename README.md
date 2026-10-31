@@ -4,7 +4,7 @@ Jogo **original inspirado no estilo de batalhas com bombas**, feito para jogar e
 
 ## Como jogar
 
-1. Abra o site, escolha seu apelido e entre na sala — sem código e sem senha. Se você digitar **Mary**, **Kaique** ou **Jheniffer**, o jogo já sugere a sua skin.
+1. Abra o site, escolha **Mary**, **Kaique**, **Jheniffer** ou **Gustavo** e entre na sala — sem nome, código ou senha. Personagens ocupados ficam marcados como em uso.
 2. Todos abrem o mesmo endereço e tocam em Entrar na sala; não é preciso código.
 3. Na sala, cada pessoa pode escolher uma das quatro skins (nenhuma pode ser repetida). O anfitrião inicia quando todos entrarem (ou sozinho para enfrentar três bots).
 4. Vire o celular na horizontal para ver apenas a arena. Use o joystick à esquerda e o botão de bomba à direita. No computador, use setas/WASD e espaço.
@@ -49,7 +49,7 @@ Salas, mapas e resultados ficam apenas na memória do servidor. Ao reiniciar o p
 
 ## Recursos
 
-- Uma única sala compartilhada, com entrada pelo apelido e sem código ou senha. Máximo de quatro pessoas; quem chegar durante a rodada aguarda a revanche.
+- Uma única sala compartilhada, com entrada pelo personagem e sem nome, código ou senha. Máximo de quatro pessoas; quem chegar durante a rodada aguarda a revanche.
 - Limite rigoroso de quatro jogadores na arena inteira.
 - Tabuleiro diferente a cada rodada, poderes de alcance, bombas extras e velocidade.
 - Bombas com efeito em cruz, caixas destrutíveis e explosões em cadeia.
@@ -126,7 +126,7 @@ do Bomba Party para preservar as skins e o multiplayer online.
 
 ### Sala única e animação dos objetos
 
-O fluxo público usa `enter`: o servidor cria a sala se ela não existir ou junta o
+O fluxo público usa `enter` com `skinIndex`: o servidor cria a sala se ela não existir ou junta o
 jogador à mesma sala existente. A interface não solicita nem exibe códigos. O link
 compartilhado é o endereço principal. Clientes antigos ainda podem usar o protocolo
 de convite, mas não conseguem criar uma segunda sala, nem como anfitrião.
@@ -221,3 +221,13 @@ quando o gesto é intencional. Perda de foco, cancelamento do toque e eliminaç�
 liberam a captura e recentralizam o controle. A suíte inclui os desvios mínimos que
 reproduziam o travamento, 16 mil mudanças rápidas e todas as junções abertas dos
 quatro mapas, além da repetição com confirmações de rede atrasadas.
+
+
+### Entrada só com personagem
+
+A tela inicial oferece as quatro skins; não há campo de nome. O servidor associa
+o nome ao personagem e impede escolhas duplicadas. A disponibilidade é enviada
+na conexão e atualizada quando alguém entra, sai ou muda de skin. Uma vaga livre
+pode ser escolhida mesmo com outro anfitrião na sala. Pedidos antigos de criar ou
+entrar por convite são encaminhados à mesma sala, sem erro de anfitrião existente.
+A primeira pessoa continua responsável por iniciar a partida e escolher o mapa.

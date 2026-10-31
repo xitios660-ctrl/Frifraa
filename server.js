@@ -126,12 +126,22 @@ function stateFor(room) {
     height: HEIGHT
   };
 }
+function availability(){
+  const room=rooms.values().next().value;
+  return {type:'availability',phase:room?.phase||'lobby',taken:room?[...room.players.values()].filter(p=>!p.bot).map(p=>p.skinIndex):[]};
+}
+let lastAvailability='';
+function broadcastAvailability(){
+  const payload=JSON.stringify(availability());if(payload===lastAvailability)return;
+  lastAvailability=payload;for(const ws of clients)if(ws.readyState===WebSocket.OPEN)ws.send(payload);
+}
 function broadcast(room) {
   const payload = JSON.stringify(stateFor(room));
   for (const p of room.players.values()) {
     if (p.ws.readyState === WebSocket.OPEN) p.ws.send(payload);
   }
   room.lastBroadcast = now();
+  broadcastAvailability();
 }
 function leaveRoom(ws, allowReconnect = false) {
   if (!ws.roomCode) return;
@@ -148,9 +158,11 @@ function leaveRoom(ws, allowReconnect = false) {
       room.phase = 'lobby';
       room.board = null;
       room.lastEmptyAt = now();
+      broadcastAvailability();
       return;
     }
     rooms.delete(room.code);
+    broadcastAvailability();
     return;
   }
   if (!room.players.has(room.hostId)) room.hostId = [...room.players.values()].find(p=>!p.bot)?.id;
@@ -347,55 +359,25 @@ function onMessage(ws, raw) {
   let message;
   try { message = JSON.parse(String(raw)); } catch { return; }
   if (!message || typeof message !== 'object') return;
-  if (message.type === 'enter') {
+  if(['enter','create','join'].includes(message.type)){
     let room=rooms.values().next().value;
-    if(!room) {
-      room=newRoom(randomCode(),ws,message.name);
-    } else {
-      if(ws.roomCode===room.code) {send(ws,{type:'joined',code:room.code,playerId:ws.playerId});broadcast(room);return;}
-      if(room.phase==='playing'||room.phase==='countdown') return error(ws,'A partida está em andamento. Aguarde terminar e entre para a revanche.');
-      removeBots(room);
-      if(room.players.size>=4) return error(ws,'Sala cheia! Máximo de quatro jogadores.');
+    if(room&&ws.roomCode===room.code){send(ws,{type:'joined',code:room.code,playerId:ws.playerId,skinIndex:room.players.get(ws.playerId)?.skinIndex});broadcast(room);return;}
+    if(room&&(room.phase==='playing'||room.phase==='countdown'))return error(ws,'A partida está em andamento. Aguarde a próxima rodada para escolher seu personagem.');
+    if(room)removeBots(room);
+    if(room&&room.players.size>=4)return error(ws,'Sala cheia: quatro jogadores conectados. Aguarde uma vaga.');
+    const explicit=Object.hasOwn(message,'skinIndex');
+    if(explicit&&(!Number.isInteger(message.skinIndex)||message.skinIndex<0||message.skinIndex>=4))return error(ws,'Escolha um dos quatro personagens.');
+    const skinIndex=explicit?message.skinIndex:room?availableSkin(room,message.name):preferredSkin(message.name)??0;
+    if(room&&[...room.players.values()].some(p=>p.skinIndex===skinIndex))return error(ws,'Esse personagem já está em uso. Escolha outro personagem livre.');
+    if(!room)room=newRoom(randomCode(),ws,SKINS[skinIndex]);
+    else{
       leaveRoom(ws);
-      if(room.players.size===0) room.hostId=ws.playerId;
+      if(room.players.size===0)room.hostId=ws.playerId;
       const slot=[0,1,2,3].find(n=>![...room.players.values()].some(p=>p.slot===n));
-      room.players.set(ws.playerId,newPlayer(ws,message.name,slot,availableSkin(room,message.name)));
+      room.players.set(ws.playerId,newPlayer(ws,SKINS[skinIndex],slot,skinIndex));
       ws.roomCode=room.code;room.lastActivity=now();
     }
-    send(ws,{type:'joined',code:room.code,playerId:ws.playerId});broadcast(room);return;
-  }
-  if (message.type === 'create') {
-    if(ws.roomCode && rooms.has(ws.roomCode)) {
-      const room=rooms.get(ws.roomCode);send(ws,{type:'joined',code:room.code,playerId:ws.playerId});broadcast(room);return;
-    }
-    for (const [code, room] of rooms) {
-      if (room.players.size === 0) rooms.delete(code);
-    }
-    if (rooms.size > 0) return error(ws, 'Já existe uma sala. Use Entrar na sala para jogar com seus amigos.');
-    leaveRoom(ws);
-    const code = randomCode();
-    const room = newRoom(code, ws, message.name);
-    send(ws, { type: 'joined', code, playerId: ws.playerId });
-    broadcast(room);
-    return;
-  }
-  if (message.type === 'join') {
-    const code = String(message.code || '').replace(/[^a-z0-9]/gi, '').toUpperCase().slice(0, 5);
-    const room = rooms.get(code);
-    if (!room) return error(ws, 'Essa sala não existe mais. Peça um novo convite.');
-    if (ws.roomCode === code) return broadcast(room);
-    if (room.phase !== 'lobby') return error(ws, 'A partida já começou. Aguarde uma nova sala.');
-    removeBots(room);
-    if (room.players.size >= 4) return error(ws, 'Sala cheia! Máximo de quatro jogadores.');
-    leaveRoom(ws);
-    if (room.players.size === 0) room.hostId = ws.playerId;
-    const slot = [0, 1, 2, 3].find(n => ![...room.players.values()].some(p => p.slot === n));
-    room.players.set(ws.playerId, newPlayer(ws, message.name, slot, availableSkin(room, message.name)));
-    ws.roomCode = code;
-    room.lastActivity = now();
-    send(ws, { type: 'joined', code, playerId: ws.playerId });
-    broadcast(room);
-    return;
+    send(ws,{type:'joined',code:room.code,playerId:ws.playerId,skinIndex});broadcast(room);return;
   }
   const room = getRoom(ws);
   if (!room) return;
@@ -411,6 +393,7 @@ function onMessage(ws, raw) {
     if ([...room.players.values()].some(p => p.id !== player.id && p.skinIndex === skinIndex)) {
       return error(ws, 'Esse personagem já foi escolhido por outro jogador.');
     }
+    player.name = SKINS[skinIndex];
     player.skinIndex = skinIndex;
     player.skin = SKINS[skinIndex];
     player.color = COLORS[skinIndex];
@@ -497,6 +480,7 @@ wss.on('connection', ws => {
   ws.isAlive = true;
   clients.add(ws);
   send(ws, { type: 'hello', playerId: ws.playerId });
+  send(ws,availability());
   ws.on('pong', () => { ws.isAlive = true; });
   ws.on('message', raw => onMessage(ws, raw));
   ws.on('close', () => { leaveRoom(ws, true); clients.delete(ws); });

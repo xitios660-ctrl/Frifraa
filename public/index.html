@@ -58,10 +58,11 @@
           <div class="card-top"><span class="card-chip">SALA ÚNICA</span><span class="card-decor">● ● ●</span></div>
           <h2>Entrar na batalha</h2>
           <p class="card-subtitle">Arena para você e mais três amigos. Mary, Kaique, Jheniffer e Gustavo esperam por você.</p>
-          <label class="input-label" for="nameInput">SEU APELIDO</label>
-          <input id="nameInput" maxlength="18" autocomplete="nickname" placeholder="Como quer ser chamado?" value="" />
+          <div class="input-label">ESCOLHA SEU PERSONAGEM</div>
+          <div id="entryCharacters" class="skin-picker entry-characters" aria-label="Escolha seu personagem para entrar"></div>
+          <p id="entryStatus" class="small-hint" role="status">Conectando à sala...</p>
           <button id="createBtn" class="primary-btn" type="button"><span>Entrar na sala</span><span class="btn-arrow">↗</span></button>
-          <div class="help-note"><span class="note-icon">i</span> Uma única sala para todos. Escolha seu apelido e entre, sem código e sem senha. O jogo abre em modo imersivo automaticamente; no iPhone, instale na tela inicial para remover as barras do Safari.</div>
+          <div class="help-note"><span class="note-icon">i</span> Uma única sala para todos. Escolha um personagem e entre. Não precisa de nome, código nem senha. O jogo abre em modo imersivo automaticamente; no iPhone, instale na tela inicial para remover as barras do Safari.</div>
           <div id="installCard" class="install-card" hidden>
             <span class="install-icon">📲</span>
             <div><strong>Quer jogar como aplicativo?</strong><p id="installInstructions">Adicione o Bomberman à tela inicial para abrir sem a barra do navegador.</p></div>

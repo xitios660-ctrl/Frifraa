@@ -64,3 +64,5 @@ footer{display:flex;align-items:center;justify-content:space-between;gap:16px;bo
 #spectateBtn{max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}body.spectating .mobile-hud{display:none!important}body.spectating .touch-controls{display:none!important}
 
 body.eliminated .touch-controls{display:none!important}
+
+.entry-characters{margin-top:10px}.entry-characters .player-avatar{width:64px;height:76px}.entry-characters .skin-choice{min-height:118px}

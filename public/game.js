@@ -24,8 +24,11 @@
   let savedRoom = (() => {
     try { return JSON.parse(sessionStorage.getItem(storedRoomKey)); } catch { return null; }
   })();
-  const nameInput = $('nameInput');
-  nameInput.value = localStorage.getItem('arena-name') || '';
+  let selectedSkin=Number(localStorage.getItem('arena-skin')||0);
+  if(!Number.isInteger(selectedSkin)||selectedSkin<0||selectedSkin>3)selectedSkin=0;
+  if(savedRoom&&!Number.isInteger(savedRoom.skinIndex)&&typeof savedRoom.name==='string'){const old=SKIN_LABELS.indexOf(savedRoom.name.toUpperCase());if(old>=0){savedRoom.skinIndex=old;selectedSkin=old;}}
+  let selectionLocked=false;
+  let roomAvailability={phase:'lobby',taken:[]};
   localStorage.removeItem('bomba-party-pin');
 
   let socket = null;
@@ -80,10 +83,31 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => node.classList.remove('show'), 3200);
   }
-  function getName() {
-    const name = nameInput.value.trim().slice(0, 18) || 'Jogador';
-    localStorage.setItem('arena-name', name);
-    return name;
+  function renderEntryCharacters(){
+    const busy=['countdown','playing'].includes(roomAvailability.phase);
+    const taken=roomAvailability.taken;
+    const preferred=Number(localStorage.getItem('arena-skin'));
+    if(!currentCode&&!selectionLocked&&Number.isInteger(preferred)&&preferred>=0&&preferred<4&&!taken.includes(preferred))selectedSkin=preferred;
+    if(!currentCode&&!selectionLocked&&taken.includes(selectedSkin)){const free=[0,1,2,3].find(i=>!taken.includes(i));if(free!==undefined)selectedSkin=free;}
+    const picker=$('entryCharacters');picker.replaceChildren();
+    for(let index=0;index<4;index++){
+      const option=document.createElement('button');option.type='button';option.className=`skin-choice${selectedSkin===index?' selected':''}`;
+      option.dataset.skinIndex=index;option.disabled=busy||taken.includes(index);
+      option.setAttribute('aria-pressed',String(selectedSkin===index));option.append(makeAvatar(index));
+      const label=document.createElement('span');label.textContent=SKIN_LABELS[index];option.append(label);
+      if(taken.includes(index)){const tag=document.createElement('small');tag.textContent='EM USO';option.append(tag);}
+      option.addEventListener('click',()=>{selectedSkin=index;selectionLocked=true;localStorage.setItem('arena-skin',index);renderEntryCharacters();});
+      picker.append(option);
+    }
+    const connected=socket?.readyState===WebSocket.OPEN;
+    $('createBtn').disabled=!connected||busy||taken.includes(selectedSkin)||taken.length>=4;
+    $('createBtn').textContent=`Entrar com ${SKIN_LABELS[selectedSkin]} →`;
+    $('entryStatus').textContent=!connected?'Conectando à sala...':busy?'Partida em andamento. Aguarde a próxima rodada.':taken.length===4?'Sala cheia. Aguarde um personagem ficar livre.':taken.includes(selectedSkin)?'Este personagem está em uso. Escolha outro personagem livre.':'Escolha um personagem livre e entre na mesma sala da turma.';
+  }
+  function enterAsSelected(){
+    selectionLocked=true;
+    localStorage.setItem('arena-skin',selectedSkin);
+    entering=safeSend({type:'enter',skinIndex:selectedSkin});
   }
   function connect() {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -92,15 +116,15 @@
       $('serverDot').classList.add('live');
       $('serverText').textContent = 'Servidor online';
       if ((disconnected && currentCode) || savedRoom?.code) {
-        nameInput.value=savedRoom?.name||nameInput.value;
-        entering=safeSend({type:'enter',name:getName()});
+        if(Number.isInteger(savedRoom?.skinIndex))selectedSkin=savedRoom.skinIndex;
+        enterAsSelected();
       }
-      disconnected = false;
+      disconnected = false;renderEntryCharacters();
     });
     socket.addEventListener('close', () => {
       $('serverDot').classList.remove('live');
       $('serverText').textContent = 'Reconectando...';
-      disconnected = true;
+      disconnected = true;renderEntryCharacters();
       toast('Conexão perdida. Tentando reconectar...');
       setTimeout(connect, 1800);
     });
@@ -112,6 +136,7 @@
     });
   }
   function handleMessage(msg) {
+    if(msg.type==='availability'){roomAvailability=msg;renderEntryCharacters();return;}
     if (msg.type === 'hello') {
       meId = msg.playerId;
       return;
@@ -133,7 +158,9 @@
       state = null;
       displayPositions.clear();
       lastPhase = null;
-      savedRoom = { code: currentCode, name: getName() };
+      if(Number.isInteger(msg.skinIndex))selectedSkin=msg.skinIndex;
+      localStorage.setItem('arena-skin',selectedSkin);
+      savedRoom = { code: currentCode, skinIndex:selectedSkin };
       sessionStorage.setItem(storedRoomKey, JSON.stringify(savedRoom));
       history.replaceState(null, '', location.pathname);
       // Algumas plataformas permitem abrir a tela cheia sem outro toque;
@@ -154,6 +181,7 @@
       return;
     }
     if (msg.type === 'state') {
+      const own=msg.players.find(p=>p.id===meId);if(own&&own.skinIndex!==selectedSkin){selectedSkin=own.skinIndex;localStorage.setItem('arena-skin',selectedSkin);if(savedRoom){savedRoom.skinIndex=selectedSkin;sessionStorage.setItem(storedRoomKey,JSON.stringify(savedRoom));}}
       if (currentCode && msg.code !== currentCode) return;
       currentCode = msg.code;
       const previousPhase=state?.phase;
@@ -398,8 +426,7 @@
     }
   }
   // Enter the one shared room on the same gesture that unlocks audio/fullscreen.
-  $('createBtn').addEventListener('click', () => {requestImmersive();entering=safeSend({type:'enter',name:getName()});});
-  nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') $('createBtn').click(); });
+  $('createBtn').addEventListener('click', () => {requestImmersive();enterAsSelected();});
   function watchNext(){
     if(!state||state.phase!=='playing'||state.players.find(p=>p.id===meId)?.alive)return;
     const alive=state.players.filter(p=>p.alive&&p.id!==meId);
@@ -802,6 +829,7 @@
   }
 
   $('soundLabel').textContent = soundOn ? 'LIGADO' : 'SOM';
+  renderEntryCharacters();
   show('homePanel');
   drawEmpty();
   connect();

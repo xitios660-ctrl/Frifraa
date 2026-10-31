@@ -109,7 +109,7 @@ test('limita a sala a quatro pessoas e inicia uma partida real', async () => {
   assert.match(rejected.message, /cheia/);
 
   write(p5, { type: 'create', name: 'Outra sala' });
-  await message(p5, m => m.type === 'error' && /Já existe uma sala/.test(m.message));
+  await message(p5, m => m.type === 'error' && /quatro jogadores/.test(m.message));
 
   write(p1, {type:'create',name:'Mary'});
   await new Promise(resolve=>setTimeout(resolve,60));
@@ -205,4 +205,28 @@ test('one shared room waits for an active round and releases bots when humans le
  await message(late,m=>m.type==='joined');
  write(late,{type:'leave'});
  await message(late,m=>m.type==='left');
+});
+
+
+test('character-only entry joins the existing host, rejects taken characters, and releases their slots',async()=>{
+ const host=await client(),guest=await client(),third=await client(),fourth=await client();
+ write(host,{type:'enter',skinIndex:3});const joined=await message(host,m=>m.type==='joined');
+ assert.equal(joined.skinIndex,3);
+ const first=await message(host,m=>m.type==='state');assert.equal(first.players[0].name,'Gustavo');
+ write(guest,{type:'create',skinIndex:0});
+ await message(guest,m=>m.type==='joined'&&m.code===joined.code);
+ write(third,{type:'enter',skinIndex:3});
+ await message(third,m=>m.type==='error'&&/personagem.*uso/.test(m.message));
+ write(third,{type:'join',skinIndex:1});await message(third,m=>m.type==='joined'&&m.code===joined.code);
+ write(fourth,{type:'enter',skinIndex:2,name:'Should be ignored'});await message(fourth,m=>m.type==='joined');
+ const full=await message(host,m=>m.type==='state'&&m.players.length===4);
+ assert.deepEqual(full.players.map(p=>p.name).sort(),['Gustavo','Jheniffer','Kaique','Mary']);
+ assert.equal(full.hostId,joined.playerId);
+ assert.equal((await(await fetch(`${BASE}/health`)).json()).rooms,1);
+ const waiting=await client();await message(waiting,m=>m.type==='availability'&&m.taken.length===4);
+ write(host,{type:'leave'});await message(host,m=>m.type==='left');
+ await message(waiting,m=>m.type==='availability'&&!m.taken.includes(3));
+ write(waiting,{type:'enter',skinIndex:3});await message(waiting,m=>m.type==='joined'&&m.code===joined.code);
+ for(const p of [guest,third,fourth,waiting])write(p,{type:'leave'});
+ await message(waiting,m=>m.type==='left');
 });

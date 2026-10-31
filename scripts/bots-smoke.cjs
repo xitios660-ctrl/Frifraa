@@ -10,7 +10,7 @@ async function until(fn,timeout=10000){const start=Date.now();while(Date.now()-s
   page.on('pageerror',e=>errors.push(e.message));
   page.on('websocket',ws=>ws.on('framereceived',e=>{try{const m=JSON.parse(e.payload);if(m.type==='state')states.push(m);}catch{}}));
   await page.goto(base);await page.waitForFunction(()=>document.querySelector('#serverDot').classList.contains('live'));
-  await page.fill('#nameInput','Gustavo');await page.click('#createBtn');
+  await page.locator('#entryCharacters [data-skin-index="3"]').click();await page.click('#createBtn');
   await page.locator('#roomPanel').waitFor({state:'visible'});
   await page.click('#startBtn');
   await until(()=>states.some(s=>s.phase==='countdown'));

@@ -58,12 +58,13 @@ for(let i=0;i<4;i++) {
  const page=await context.newPage();pages.push(page);page.on('pageerror',e=>errors.push(e.message));
  await page.goto(process.env.BOMBA_BASE || 'http://127.0.0.1:3000');
  await page.waitForFunction(()=>document.querySelector('#serverDot').classList.contains('live'));
- await page.fill('#nameInput',['Mary','Kaique','Jheniffer','Gustavo'][i]);
+ await page.locator(`#entryCharacters [data-skin-index="${i}"]`).click();
  assert.equal(await page.locator('#codeInput').count(),0);
+ assert.equal(await page.locator('#nameInput').count(),0);
  await page.click('#createBtn');
  await page.waitForSelector('#roomPanel:not([hidden])');
 }
-assert.equal(await pages[3].locator('.skin-choice.selected > span').textContent(),'GUSTAVO');
+assert.equal(await pages[3].locator('#skinPicker .skin-choice.selected > span').textContent(),'GUSTAVO');
 const animated=await pages[0].evaluate(()=>{
  const canvas=document.createElement('canvas');canvas.width=160;canvas.height=160;
  const ctx=canvas.getContext('2d');
