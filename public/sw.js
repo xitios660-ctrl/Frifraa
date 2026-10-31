@@ -1,5 +1,5 @@
-const CACHE = 'bomba-party-v20-sudden-death-items';
-const SHELL = ['/', '/items.js', '/joystick.js', '/maps.js', '/camera.js', '/effects.js', '/skins/gustavo-walk-v1.png', '/netcode.js', '/animation.js', '/skins/mary-walk-v1.png', '/skins/kaique-walk-v1.png', '/skins/jheniffer-walk-v1.png', '/physics.js', '/styles.css', '/game.js', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/icon-180.png', '/skins/mary.webp', '/skins/kaique.webp', '/skins/jheniffer.webp'];
+const CACHE = 'bomba-party-v21-four-friends-icon';
+const SHELL = ['/', '/items.js', '/joystick.js', '/maps.js', '/camera.js', '/effects.js', '/skins/gustavo-walk-v1.png', '/netcode.js', '/animation.js', '/skins/mary-walk-v1.png', '/skins/kaique-walk-v1.png', '/skins/jheniffer-walk-v1.png', '/physics.js', '/styles.css', '/game.js', '/manifest.webmanifest', '/icons/party-four-v1-192.png', '/icons/party-four-v1-512.png', '/icons/party-four-v1-180.png', '/skins/mary.webp', '/skins/kaique.webp', '/skins/jheniffer.webp'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL.map(url=>new Request(url,{cache:'reload'})))).then(() => self.skipWaiting()));
