@@ -72,7 +72,7 @@ function newPlayer(ws, name, slot, skinIndex) {
     speed: 170, baseSpeed:170, slowedUntil:0, kick:false, shield:0, invulnerableUntil:0, push:false, piercing:false,
     lastMove: 0,
     inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false,
-    motion: { x: 0, y: 0 },
+    motion: { x: 0, y: 0 }, moveTarget:null,
     kills: 0,
     place: null
   };
@@ -103,8 +103,8 @@ function newRoom(code, ws, name) {
 }
 function playerView(p) {
   return {
-    id: p.id, name: p.name, bot:!!p.bot, botSpeech:p.botSpeech?.until>now()?p.botSpeech:null, botAllyId:p.botMind?.allyId||null, slot: p.slot, skinIndex: p.skinIndex, color: p.color, skin: p.skin,
-    x: p.x, y: p.y, ack: p.ack, motion: p.motion, facing: p.facing, alive: p.alive, bombs: p.bombs,
+    id: p.id, name: p.name, bot:!!p.bot, botSpeech:p.botSpeech?.until>now()?p.botSpeech:null, botAllyId:p.botMind?.allyId||null, botPlan:p.bot?{source:p.botMind?.planSource||'local',goal:p.botMind?.goal||'collect',destination:p.botMind?.destination||null,bombMode:p.botMind?.bombMode||'auto'}:null, slot: p.slot, skinIndex: p.skinIndex, color: p.color, skin: p.skin,
+    x: p.x, y: p.y, ack: p.ack, motion: p.motion, moveTarget:p.moveTarget, facing: p.facing, alive: p.alive, bombs: p.bombs,
     range: p.range, speed: p.speed, slowedUntil:p.slowedUntil, kick:p.kick, shield:p.shield, invulnerableUntil:p.invulnerableUntil, push:p.push, piercing:p.piercing, kills: p.kills, place: p.place
   };
 }
@@ -217,7 +217,7 @@ function startGame(room) {
     const pos = SPAWNS[p.slot];
     Object.assign(p, {
       x: pos.x, y: pos.y, facing: 'down', alive: true, bombs: 1, activeBombs: 0,
-      range: 2, speed: 170, baseSpeed:170, slowedUntil:0, kick:false, shield:0, invulnerableUntil:0, push:false, piercing:false, lastMove: 0, inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false, motion: { x: 0, y: 0 }, kills: 0, place: null, botTarget:null, botThinkAt:0, botCooldown:0, botStall:0
+      range: 2, speed: 170, baseSpeed:170, slowedUntil:0, kick:false, shield:0, invulnerableUntil:0, push:false, piercing:false, lastMove: 0, inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false, motion: { x: 0, y: 0 }, moveTarget:null, kills: 0, place: null, botTarget:null, botThinkAt:0, botCooldown:0, botStall:0, botIdleFor:0, botReplanAt:0, botRecent:[]
     });
   }
   botMinds.reset(room,now());
@@ -244,11 +244,11 @@ function movePlayers(room, t) {
         if(command.type==='bomb') {p.inputQueue.shift();putBomb(room,p);continue;}
         if(p.inputBudget+1e-9<STEP) break;
         p.inputQueue.shift();p.inputBudget-=STEP;p.motion={x:command.x,y:command.y};
-        bombMotion.tryKick(room,p,p.motion,t);physics.move(p,p.motion,STEP,room.board,room.bombs,contact);p.ack=command.seq;
+        bombMotion.tryKick(room,p,p.motion,t);physics.move(p,p.motion,STEP,room.board,room.bombs,contact,[...room.players.values()]);p.ack=command.seq;
       }
     } else {
       if (t - (p.lastInput || 0) > 1200) p.motion = { x: 0, y: 0 };
-      bombMotion.tryKick(room,p,p.motion,t);physics.move(p, p.motion, dt, room.board, room.bombs,contact);
+      bombMotion.tryKick(room,p,p.motion,t);physics.move(p, p.motion, dt, room.board, room.bombs,contact,[...room.players.values()]);
     }
     const key = tileKey(Math.round(p.x), Math.round(p.y));
     const bonus = room.powerups.get(key);

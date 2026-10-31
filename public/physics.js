@@ -5,7 +5,12 @@
   function overlaps(p, b) {
     return Math.abs(p.x-b.x) < .5+RADIUS-EPSILON && Math.abs(p.y-b.y) < .5+RADIUS-EPSILON;
   }
-  function canOccupy(p, x, y, board, bombs) {
+  function playerBlocked(p,x,y,players=[]){
+    return players.some(q=>q.alive&&q!==p&&(p.id===undefined||q.id!==p.id)&&(
+      overlaps({x,y},q)||q.moveTarget&&overlaps({x,y},q.moveTarget)));
+  }
+  function canOccupy(p, x, y, board, bombs, players=[]) {
+    if(playerBlocked(p,x,y,players))return false;
     for (const ox of [-RADIUS+EPSILON,RADIUS-EPSILON]) {
       for (const oy of [-RADIUS+EPSILON,RADIUS-EPSILON]) {
         const tx=Math.floor(x+ox+.5),ty=Math.floor(y+oy+.5);
@@ -22,16 +27,18 @@
   }
   const ALIGN_EPSILON=1e-5;
   function canonical(value){return Math.abs(value-Math.round(value))<ALIGN_EPSILON?Math.round(value):value;}
-  function move(p,direction,dt,board,bombs,onStep) {
+  function move(p,direction,dt,board,bombs,onStep,players=[]) {
     p.x=canonical(p.x);p.y=canonical(p.y);revokePassage(p,bombs);
     const dx=direction.x,dy=direction.y;
-    if(!dx&&!dy)return;
+    if(!dx&&!dy){if(Number.isInteger(p.x)&&Number.isInteger(p.y))p.moveTarget=null;return;}
     p.facing=dx<0?'left':dx>0?'right':dy<0?'up':'down';
     let budget=Math.max(0,Math.min(dt,.05))*1000/p.speed;
-    const free=(x,y)=>canOccupy(p,x,y,board,bombs);
+    const free=(x,y)=>canOccupy(p,x,y,board,bombs,players);
     function travel(axis,target,amount){
       const origin=p[axis],distance=Math.abs(target-origin),length=Math.min(distance,amount);
       if(length<1e-12)return 0;
+      const destination={x:axis==='x'?target:p.x,y:axis==='y'?target:p.y};
+      if(Number.isInteger(destination.x)&&Number.isInteger(destination.y))p.moveTarget=destination;
       const sign=Math.sign(target-origin),steps=Math.ceil(length/.025);
       for(let i=1;i<=steps;i++){
         const next=i===steps&&length>=distance-1e-12?target:origin+sign*length*i/steps;
@@ -84,6 +91,7 @@
       if(spent<available-1e-9||spent<1e-10)break;
     }
     p.x=canonical(p.x);p.y=canonical(p.y);revokePassage(p,bombs);
+    if(Number.isInteger(p.x)&&Number.isInteger(p.y))p.moveTarget=null;
   }
   function flameShapes(f,tiles) {
     const shapes=[{x:f.x,y:f.y,hx:18/48,hy:18/48,r:10/48}];
@@ -101,7 +109,7 @@
       return dx*dx+dy*dy<=s.r*s.r+EPSILON;
     });
   }
-  const api={move,canOccupy,overlaps,flameShapes,touchesFlame,RADIUS};
+  const api={move,canOccupy,playerBlocked,overlaps,flameShapes,touchesFlame,RADIUS};
   if(typeof module!=='undefined') module.exports=api;
   else root.BombaPhysics=api;
 })(typeof window!=='undefined'?window:globalThis);

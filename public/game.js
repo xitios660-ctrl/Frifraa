@@ -192,10 +192,10 @@
       const authoritative = msg.players.find(p => p.id === meId);
       if(authoritative) {
         if(msg.phase!=='playing'||previousPhase!=='playing'||!prediction) {
-          prediction=BombaNetcode.create(authoritative,msg.board,msg.bombs);
+          prediction=BombaNetcode.create(authoritative,msg.board,msg.bombs,msg.players);
           inputAccumulator=0;localPlayer=prediction.player;
           if(previousPhase!==msg.phase) {displayPositions.clear();snapshotHistory.length=0;camera=null;}
-        } else localPlayer=BombaNetcode.acknowledge(prediction,authoritative,msg.board,msg.bombs);
+        } else localPlayer=BombaNetcode.acknowledge(prediction,authoritative,msg.board,msg.bombs,msg.players);
       }
       snapshotHistory.push({time:performance.now(),players:msg.players});
       if(snapshotHistory.length>30) snapshotHistory.shift();

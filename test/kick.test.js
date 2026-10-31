@@ -22,12 +22,13 @@ test('glove kicks a bomb smoothly along a corridor without resetting its fuse or
  assert.equal(bomb.explodeAt,3250);
 });
 test('kick respects walls, crates, other bombs, sliding reservations and player footprints',()=>{
- for(const obstacle of ['wall','crate','bomb','moving-bomb','player','rider']){
+ for(const obstacle of ['wall','crate','bomb','moving-bomb','player','rider','reservation']){
   const {p,bomb,room}=fixture();
   if(obstacle==='wall')room.board[3][4]=1;
   if(obstacle==='crate')room.board[3][4]=2;
   if(obstacle==='bomb')room.bombs.push({x:4,y:3});
   if(obstacle==='moving-bomb')room.bombs.push({x:5,y:3,slide:{fromX:4,fromY:3}});
+  if(obstacle==='reservation')room.players.set('other',{id:'other',x:5,y:4,alive:true,moveTarget:{x:4,y:3}});
   if(obstacle==='rider')room.players.set('other',{id:'other',x:3,y:3,alive:true});
   if(obstacle==='player')room.players.set('other',{id:'other',x:4.7,y:3,alive:true});
   assert.equal(motion.tryKick(room,p,{x:1,y:0},1000),false,obstacle);assert.equal(bomb.x,3);assert.ok(!bomb.rolling);

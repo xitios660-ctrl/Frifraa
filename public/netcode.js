@@ -3,20 +3,20 @@
   const physics=typeof module!=='undefined'?require('./physics'):root.BombaPhysics;
   const STEP=1/60,MAX_PENDING=120;
   function worldBombs(bombs){return bombs.map(b=>({...b,passThrough:[...(b.passThrough||[])]}));}
-  function create(player,board,bombs=[]) {
-    return {player:{...player},board,bombs:worldBombs(bombs),pending:[],outbound:[],sequence:0};
+  function create(player,board,bombs=[],players=[]) {
+    return {player:{...player},others:players.filter(p=>p.id!==player.id).map(p=>({...p})),board,bombs:worldBombs(bombs),pending:[],outbound:[],sequence:0};
   }
   function advance(model,direction) {
     if(model.pending.length>=MAX_PENDING) return false;
     const command={seq:++model.sequence,x:direction.x,y:direction.y};
-    physics.move(model.player,command,STEP,model.board,model.bombs);
+    physics.move(model.player,command,STEP,model.board,model.bombs,undefined,model.others);
     model.pending.push(command);model.outbound.push(command);
     return true;
   }
-  function acknowledge(model,player,board,bombs) {
+  function acknowledge(model,player,board,bombs,players=[]) {
     model.pending=model.pending.filter(command=>command.seq>(player.ack||0));
-    model.board=board;model.bombs=worldBombs(bombs);model.player={...player};
-    for(const command of model.pending) physics.move(model.player,command,STEP,board,model.bombs);
+    model.others=players.filter(p=>p.id!==player.id).map(p=>({...p}));model.board=board;model.bombs=worldBombs(bombs);model.player={...player};
+    for(const command of model.pending) physics.move(model.player,command,STEP,board,model.bombs,undefined,model.others);
     return model.player;
   }
   function lanePoint(a,b,amount){

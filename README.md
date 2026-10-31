@@ -384,3 +384,34 @@ e a data da última resposta, sem credenciais. `scripts/live-gemini-smoke.cjs`
 é uma verificação opcional contra a API real: inicia uma partida, confirma
 respostas Gemini de três bots e uma fala desenhada na tela móvel. Ela consome
 consultas da conta configurada. Captura em `/tmp/bomba-gemini-live-mobile.png`.
+
+
+### Jogadores sólidos e ordens de movimento da IA
+
+Personagens vivos bloqueiam o espaço do corpo e reservam a próxima casa durante
+um passo. Humanos e bots usam a mesma verificação no servidor, na previsão do
+cliente e na repetição de comandos confirmados. Mortos não bloqueiam casas.
+Bombas chutadas ou empurradas também respeitam reservas de personagens. Não há
+teletransporte para separar personagens: o movimento é impedido antes da colisão.
+A revanche limpa as reservas.
+
+O Gemini pode escolher `destination: {x,y}` e `bombMode` (`auto`, `hold`, `attack`
+ou `break`), além de objetivo, adversário e aliado. Um destino ocupado, reservado,
+fora do mapa ou dentro de parede é rejeitado. O navegador local de rotas executa
+a ordem com a velocidade normal, contorna pessoas e continua priorizando a fuga
+de explosões. A ordem de destino/bomba vale por até 20 segundos; o objetivo
+estratégico continua até a próxima decisão. Os limites da API e o fallback local
+continuam os mesmos. `botPlan` no estado permite verificar a origem e as ordens
+aplicadas sem expor prompts ou credenciais.
+
+Os bots acompanham casas recentes, replanejam quando bloqueados e deixam de
+preferir ficar parados ou oscilar entre duas casas quando existe uma rota segura.
+Proteger um aliado não autoriza ocupar a casa dele.
+
+`test/player-collision.test.js` cobre disputa da mesma casa, cruzamentos, 20 mil
+comandos, previsão com confirmação atrasada, desvio de pessoas, destino/política
+de bombas da IA e quatro bots escolhendo um único destino.
+`node scripts/solid-players-smoke.cjs` testa quatro navegadores móveis disputando
+uma casa com atraso de rede; as posições e o mapa controlados existem apenas
+no processo de teste. O smoke Gemini real também verifica as ordens recebidas
+e a ausência de sobreposição nos estados da partida.

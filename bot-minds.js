@@ -1,6 +1,7 @@
 'use strict';
 const tactics=require('./bots');
 const crypto=require('node:crypto');
+const physics=require('./public/physics');
 const providers=require('./bot-providers');
 const GOALS=new Set(['attack','collect','break','protect']);
 const clean=text=>String(text||'').replace(/[<>\x00-\x1f]/g,' ').replace(/\s+/g,' ').trim().slice(0,90);
@@ -28,7 +29,7 @@ function createController(options={}){
  }
  function ensure(room,p,t){
   if(p.botMind)return p.botMind;
-  p.botMind={personality:['ousado','estrategista','colecionador','protetor'][p.slot%4],goal:'collect',targetId:null,allyId:null,relations:{},memory:[],seenBombs:new Set(),nextObserve:0,nextPlan:0,nextCall:t+p.slot*600,calls:0,spokeAt:0};
+  p.botMind={personality:['ousado','estrategista','colecionador','protetor'][p.slot%4],goal:'collect',destination:null,bombMode:'auto',directiveUntil:0,planSource:'local',targetId:null,allyId:null,relations:{},memory:[],seenBombs:new Set(),nextObserve:0,nextPlan:0,nextCall:t+p.slot*600,calls:0,spokeAt:0};
   return p.botMind;
  }
  function cancelPlayer(p){const pending=p.botMind?.pending;if(pending){pending.cancelled=true;pending.abort();}}
@@ -59,6 +60,7 @@ function createController(options={}){
  }
  function localPlan(room,p,t){
   const m=p.botMind,alive=[...room.players.values()].filter(o=>o.alive&&o.id!==p.id);
+  m.planSource='local';m.destination=null;m.bombMode='auto';
   const candidates=alive.filter(o=>o.id!==m.allyId);
   candidates.sort((a,b)=>((m.relations[a.id]||0)-(m.relations[b.id]||0))||((Math.abs(a.x-p.x)+Math.abs(a.y-p.y))-(Math.abs(b.x-p.x)+Math.abs(b.y-p.y))));
   m.targetId=candidates[0]?.id||null;
@@ -74,8 +76,8 @@ function createController(options={}){
  }
  function snapshot(room,p,t){
   const m=p.botMind;
-  return{you:{id:p.id,name:p.name,personality:m.personality,x:p.x,y:p.y,bombs:p.bombs,range:p.range,goal:m.goal,targetId:m.targetId,allyId:m.allyId},
-   players:[...room.players.values()].map(o=>({id:o.id,name:o.name,bot:!!o.bot,alive:o.alive,x:Math.round(o.x),y:Math.round(o.y),range:o.range,kills:o.kills,relation:m.relations[o.id]||0})),
+  return{you:{id:p.id,name:p.name,personality:m.personality,x:p.x,y:p.y,bombs:p.bombs,activeBombs:p.activeBombs||0,range:p.range,speedMs:p.speed,kick:!!p.kick,push:!!p.push,piercing:!!p.piercing,shield:p.shield||0,slowRemainingMs:Math.max(0,(p.slowedUntil||0)-t),goal:m.goal,targetId:m.targetId,allyId:m.allyId,destination:m.destination,bombMode:m.bombMode},
+   players:[...room.players.values()].map(o=>({id:o.id,name:o.name,bot:!!o.bot,alive:o.alive,x:Math.round(o.x),y:Math.round(o.y),reserved:o.moveTarget||null,range:o.range,kills:o.kills,relation:m.relations[o.id]||0})),
    board:room.board.map(row=>row.join('')).join('\n'),legend:'0=livre,1=parede,2=caixa',
    bombs:room.bombs.map(b=>({x:b.x,y:b.y,ownerId:b.ownerId,range:b.range,remainingMs:Math.max(0,b.explodeAt-t)})),
    items:[...room.powerups].slice(0,20).map(([tile,type])=>({tile,type})),
@@ -85,6 +87,10 @@ function createController(options={}){
   if(!raw||typeof raw!=='object'||!GOALS.has(raw.goal))return false;
   const m=p.botMind,valid=id=>id!==p.id&&room.players.get(id)?.alive;
   m.goal=raw.goal;m.targetId=valid(raw.targetId)?raw.targetId:null;
+  const d=raw.destination;
+  m.destination=d&&Number.isInteger(d.x)&&Number.isInteger(d.y)&&physics.canOccupy(p,d.x,d.y,room.board,room.bombs,[...room.players.values()])?{x:d.x,y:d.y}:null;
+  m.bombMode=['auto','hold','attack','break'].includes(raw.bombMode)?raw.bombMode:'auto';m.directiveUntil=t+20000;m.planSource=provider;
+
   if(raw.relation==='friend'&&valid(raw.relationId))friendship(room,p,raw.relationId,t);
   if(raw.relation==='rival'&&valid(raw.relationId)){m.relations[raw.relationId]=-60;m.targetId=raw.relationId;if(m.allyId===raw.relationId)m.allyId=null;}
   if(m.targetId===m.allyId)m.targetId=null;

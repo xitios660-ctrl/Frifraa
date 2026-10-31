@@ -4,11 +4,11 @@ const {buildRequest,parseResponse,createBudget}=require('../bot-providers');
 const {createController}=require('../bot-minds');
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
 function room(){const players=new Map();for(let i=0;i<4;i++)players.set('p'+i,{id:'p'+i,name:i?'Bot '+i:'Mary',bot:i>0,slot:i,x:i+1,y:1,alive:true,bombs:1,range:2,speed:170});return{phase:'playing',players,board:[[1,1,1,1,1,1],[1,0,0,0,0,1],[1,1,1,1,1,1]],bombs:[],flames:[],powerups:new Map()};}
-const plan=id=>({goal:'attack',targetId:'p0',relation:'none',relationId:null,kind:'say',toId:'p0',message:id+', vou ganhar!'});
+const plan=id=>({goal:'attack',targetId:'p0',relation:'none',relationId:null,kind:'say',toId:'p0',message:id+', vou ganhar!',destination:null,bombMode:'auto'});
 test('Gemini keeps the credential in a server-side header, uses JSON schema and ignores thought parts',()=>{
  const spec=buildRequest('gemini','test-secret','gemini-3.1-flash-lite',{you:{id:'p1'}});
  assert.ok(spec.url.endsWith('gemini-3.1-flash-lite:generateContent'));assert.equal(spec.headers['x-goog-api-key'],'test-secret');assert.ok(!spec.url.includes('test-secret'));assert.ok(!JSON.stringify(spec.body).includes('test-secret'));assert.equal(spec.body.generationConfig.responseMimeType,'application/json');
- assert.equal(spec.body.generationConfig.responseJsonSchema.additionalProperties,false);
+ assert.equal(spec.body.generationConfig.responseJsonSchema.additionalProperties,false);assert.ok(spec.body.generationConfig.responseJsonSchema.required.includes('destination'));assert.ok(spec.body.generationConfig.responseJsonSchema.required.includes('bombMode'));
  const value=plan('p1');assert.deepEqual(parseResponse('gemini',{candidates:[{content:{parts:[{thought:true,text:'private reasoning'},{text:JSON.stringify(value)}]}}]}),value);
  assert.throws(()=>parseResponse('gemini',{candidates:[]}));
 });

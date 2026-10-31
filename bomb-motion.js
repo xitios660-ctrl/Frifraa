@@ -4,7 +4,7 @@ const STEP_MS=100;
 function occupies(b,x,y){return b.x===x&&b.y===y||b.slide?.fromX===x&&b.slide?.fromY===y;}
 function clear(room,b,x,y){
  return room.board[y]?.[x]===0&&!room.bombs.some(other=>other!==b&&occupies(other,x,y))&&
-  ![...room.players.values()].some(p=>p.alive&&physics.overlaps(p,{x,y}));
+  ![...room.players.values()].some(p=>p.alive&&(physics.overlaps(p,{x,y})||p.moveTarget&&physics.overlaps(p.moveTarget,{x,y})));
 }
 function step(room,b,t){
  const dx=b.rolling.x,dy=b.rolling.y,x=b.x+dx,y=b.y+dy;
