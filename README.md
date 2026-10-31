@@ -206,3 +206,18 @@ A chama sólida é definida pelas mesmas formas arredondadas no servidor e no
 renderizador: proximidade, brilho e cantos vazios não causam dano. O trajeto de
 cada movimento também é verificado para não atravessar fogo entre dois estados.
 O escudo continua absorvendo uma explosão conforme a regra do poder.
+
+
+### Movimento por centros de casas
+
+O deslocamento mantém uma coordenada alinhada ao centro da faixa. Viradas entre
+casas ficam pendentes até uma junção livre, e reversões respondem imediatamente.
+Os segmentos terminam exatamente nos centros; não há busca binária contra paredes
+nem zonas fracionárias em que o personagem fique preso. A interpolação visual
+segue o mesmo trajeto em L nas curvas, sem cortar diagonalmente os blocos.
+
+O joystick mantém a direção com pequenas oscilações perto da diagonal, mudando
+quando o gesto é intencional. Perda de foco, cancelamento do toque e eliminação
+liberam a captura e recentralizam o controle. A suíte inclui os desvios mínimos que
+reproduziam o travamento, 16 mil mudanças rápidas e todas as junções abertas dos
+quatro mapas, além da repetição com confirmações de rede atrasadas.

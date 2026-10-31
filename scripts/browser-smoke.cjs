@@ -23,6 +23,9 @@ for(let i=0;i<4;i++) {
        }
      };
    }
+   window.sentDirections=[];
+   const send=window.WebSocket.prototype.send;
+   window.WebSocket.prototype.send=function(data){try{const m=JSON.parse(data);if(m.type==='input'){window.sentDirections.push(...m.steps);if(window.sentDirections.length>500)window.sentDirections.splice(0,250);}}catch{}return send.call(this,data);};
    window.playerPoints=[];
    const ellipse=CanvasRenderingContext2D.prototype.ellipse;
    CanvasRenderingContext2D.prototype.ellipse=function(...args) {
@@ -96,6 +99,21 @@ for (const [direction,row] of [['ArrowRight',2],['ArrowLeft',1],['ArrowDown',0],
  await pages[3].keyboard.up(direction);
 }
 await pages[0].bringToFront();
+const stick=await pages[0].locator('#joystick').boundingBox();
+const cx=stick.x+stick.width/2,cy=stick.y+stick.height/2;
+await pages[0].mouse.move(cx+stick.width*.23,cy+stick.height*.22);await pages[0].mouse.down();
+await pages[0].waitForTimeout(120);await pages[0].evaluate(()=>{window.sentDirections=[];});
+await pages[0].mouse.move(cx+stick.width*.22,cy+stick.height*.23);await pages[0].waitForTimeout(150);
+const stable=await pages[0].evaluate(()=>window.sentDirections.filter(d=>d.x||d.y));
+assert.ok(stable.length>2&&stable.every(d=>d.x===1&&d.y===0),'diagonal thumb jitter must not flip direction');
+await pages[0].mouse.move(cx+stick.width*.05,cy+stick.height*.32);await pages[0].waitForTimeout(150);
+assert.ok(await pages[0].evaluate(()=>window.sentDirections.some(d=>d.x===0&&d.y===1)),'intentional joystick turn must remain responsive');
+await pages[0].evaluate(()=>window.dispatchEvent(new Event('blur')));
+assert.ok(!(await pages[0].locator('#joystick').evaluate(node=>node.classList.contains('active'))),'losing focus must release the joystick');
+await pages[0].mouse.up();
+await pages[0].mouse.move(cx+stick.width*.3,cy);await pages[0].mouse.down();
+assert.ok(await pages[0].locator('#joystick').evaluate(node=>node.classList.contains('active')),'joystick must accept a new touch after focus loss');
+await pages[0].mouse.up();
 for (const [direction,row] of [['ArrowRight',2],['ArrowLeft',1],['ArrowDown',0],['ArrowUp',3]]) {
  await pages[0].evaluate(()=>{window.skinDraws=[];});
  await pages[0].keyboard.down(direction);
@@ -135,6 +153,6 @@ await pages[0].screenshot({path:'/tmp/bomba-party-mobile.png'});
 await pages[0].setViewportSize({width:390,height:844});
 await pages[0].locator('#rotateOverlay').waitFor({state:'visible'});
 assert.deepEqual(errors,[]);
-console.log('PASS: one room without codes, large scrolling arena/map selection, animated bombs/debris, four browser clients, mobile landscape controls, bomb, portrait warning, four sprite sheets, four directions, idle animation, music playback/mute/resume, no teleports or reverse corrections, no JS errors');
+console.log('PASS: one room without codes, large scrolling arena/map selection, animated bombs/debris, four browser clients, mobile landscape controls, bomb, portrait warning, four sprite sheets, four directions, idle animation, music playback/mute/resume, stable joystick, no teleports or reverse corrections, no JS errors');
 }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exit(1)});

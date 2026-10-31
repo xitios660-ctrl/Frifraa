@@ -392,7 +392,7 @@
     const winner=state.phase==='finished'?state.players.find(p=>p.id===state.winnerId):null;
     $('overlayText').textContent=`VAI TER QUE BEBER! 😂${place}${winner?` ${winner.name} venceu.`:''}`;
     if (!penaltyNotified) {
-      penaltyNotified = true;heldKeys.clear();touchDirection=null;lastDirection='0,0';
+      penaltyNotified = true;heldKeys.clear();resetJoystick();lastDirection='0,0';
       if (soundOn) beep(165, .35, 'sawtooth');
       if (navigator.vibrate) navigator.vibrate([100, 60, 100]);
     }
@@ -542,7 +542,7 @@
   function sendBomb() {flushInputs();safeSend({type:'bomb'});}
   setInterval(flushInputs,33);
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { stopMusic(); heldKeys.clear(); touchDirection = null; lastDirection = '0,0'; flushInputs(); audioCtx?.suspend(); }
+    if (document.hidden) { stopMusic(); heldKeys.clear(); resetJoystick(); lastDirection = '0,0'; flushInputs(); audioCtx?.suspend(); }
     else if (soundOn) audioCtx?.resume();
   });
   const keyToDirection = {
@@ -585,12 +585,13 @@
   });
   window.addEventListener('blur', () => {
     heldKeys.clear();
-    touchDirection = null;
+    resetJoystick();
     syncDirection();
   });
   const joystick = $('joystick');
   const knob = $('joystickKnob');
   let joystickPointer = null;
+  let joystickAxis = null;
   function moveJoystick(event) {
     if (joystickPointer !== event.pointerId) return;
     const rect = joystick.getBoundingClientRect();
@@ -601,22 +602,29 @@
     const x = distance ? (dx / distance) * radius : 0;
     const y = distance ? (dy / distance) * radius : 0;
     knob.style.transform = `translate(${x}px, ${y}px)`;
-    if (distance < 15) touchDirection = [0, 0];
-    else touchDirection = Math.abs(dx) >= Math.abs(dy) ? [Math.sign(dx), 0] : [0, Math.sign(dy)];
+    if(distance<15){touchDirection=[0,0];joystickAxis=null;}
+    else{
+      if(!joystickAxis)joystickAxis=Math.abs(dx)>=Math.abs(dy)?'x':'y';
+      if(joystickAxis==='x'&&Math.abs(dy)>Math.abs(dx)*1.3)joystickAxis='y';
+      else if(joystickAxis==='y'&&Math.abs(dx)>Math.abs(dy)*1.3)joystickAxis='x';
+      touchDirection=joystickAxis==='x'?[Math.sign(dx),0]:[0,Math.sign(dy)];
+    }
     syncDirection();
   }
+  function resetJoystick(){
+    const pointer=joystickPointer;
+    joystickPointer=null;joystickAxis=null;touchDirection=null;
+    if(pointer!==null&&joystick.hasPointerCapture(pointer))joystick.releasePointerCapture(pointer);
+    joystick.classList.remove('active');knob.style.transform='translate(0,0)';
+  }
   function releaseJoystick(event) {
-    if (joystickPointer !== event.pointerId) return;
-    joystickPointer = null;
-    joystick.classList.remove('active');
-    knob.style.transform = 'translate(0,0)';
-    touchDirection = null;
-    syncDirection();
+    if(joystickPointer!==event.pointerId)return;
+    resetJoystick();syncDirection();
   }
   joystick.addEventListener('pointerdown', event => {
     event.preventDefault();
     if (joystickPointer !== null) return;
-    joystickPointer = event.pointerId;
+    joystickPointer = event.pointerId;joystickAxis=null;
     joystick.setPointerCapture(event.pointerId);
     joystick.classList.add('active');
     moveJoystick(event);
