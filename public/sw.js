@@ -1,4 +1,4 @@
-const CACHE = 'bomba-party-v8-walking';
+const CACHE = 'bomba-party-v9-collisions-music';
 const SHELL = ['/', '/animation.js', '/skins/mary-walk-v1.png', '/skins/kaique-walk-v1.png', '/skins/jheniffer-walk-v1.png', '/physics.js', '/styles.css', '/game.js', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/icon-180.png', '/skins/mary.webp', '/skins/kaique.webp', '/skins/jheniffer.webp'];
 
 self.addEventListener('install', event => {

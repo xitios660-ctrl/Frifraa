@@ -116,6 +116,7 @@ test('limita a sala a quatro pessoas e inicia uma partida real', async () => {
   write(p1, { type: 'bomb' });
   const withBomb = await message(p1, m => m.type === 'state' && m.bombs.length > 0);
   assert.equal(withBomb.bombs.length, 1);
+  assert.deepEqual(withBomb.bombs[0].passThrough,[joined.playerId]);
   assert.equal(withBomb.board.length, 13);
   assert.equal(withBomb.board[0].length, 15);
   assert.deepEqual(withBomb.players.map(p => p.skin).sort(), ['Jheniffer', 'Kaique', 'Mary', 'Solar']);

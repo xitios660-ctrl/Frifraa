@@ -7,6 +7,16 @@ try {
 for(let i=0;i<4;i++) {
  const context=await browser.newContext({viewport:{width:844,height:390},isMobile:true,hasTouch:true});
  await context.addInitScript(() => {
+   window.audioContexts=[];window.audioStarts=[];
+   const Base=window.AudioContext;
+   if(Base) window.AudioContext=class extends Base {
+     constructor(...args){super(...args);window.audioContexts.push(this);}
+     createOscillator(){
+       const voice=super.createOscillator(),start=voice.start.bind(voice);
+       voice.start=(time)=>{window.audioStarts.push({frequency:voice.frequency.value,type:voice.type,time,now:this.currentTime});return start(time);};
+       return voice;
+     }
+   };
    window.skinDraws=[];
    const original=CanvasRenderingContext2D.prototype.drawImage;
    CanvasRenderingContext2D.prototype.drawImage=function(image,...args) {
@@ -48,12 +58,21 @@ await pages[0].evaluate(()=>{window.skinDraws=[];});
 await pages[0].waitForTimeout(150);
 const idleFrames=await pages[0].evaluate(()=>window.skinDraws.filter(d=>d.src.includes('mary-walk')).map(d=>d.frame));
 assert.ok(idleFrames.length>2 && idleFrames.every(frame=>frame===1),'walking must settle to neutral on release');
+await pages[0].bringToFront();
+await pages[0].waitForFunction(()=>window.audioContexts.some(c=>c.state==='running') && window.audioStarts.some(n=>n.time-n.now>.01));
+await pages[0].click('#soundBtn');
+await pages[0].waitForFunction(()=>window.audioContexts.every(c=>c.state==='suspended'));
+const mutedCount=await pages[0].evaluate(()=>window.audioStarts.length);
+await pages[0].waitForTimeout(220);
+assert.equal(await pages[0].evaluate(()=>window.audioStarts.length),mutedCount,'mute must stop the music');
+await pages[0].click('#soundBtn');
+await pages[0].waitForFunction(()=>window.audioContexts.some(c=>c.state==='running'));
 await pages[0].locator('#touchBomb').dispatchEvent('pointerdown',{pointerId:2});
 await pages[0].waitForTimeout(2600);
 await pages[0].screenshot({path:'/tmp/bomba-party-mobile.png'});
 await pages[0].setViewportSize({width:390,height:844});
 await pages[0].locator('#rotateOverlay').waitFor({state:'visible'});
 assert.deepEqual(errors,[]);
-console.log('PASS: four browser clients, mobile landscape controls, bomb, portrait warning, three sprite sheets, four directions, idle animation, no JS errors');
+console.log('PASS: four browser clients, mobile landscape controls, bomb, portrait warning, three sprite sheets, four directions, idle animation, music playback/mute/resume, no JS errors');
 }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exit(1)});

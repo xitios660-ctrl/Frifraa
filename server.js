@@ -111,7 +111,7 @@ function stateFor(room) {
     phase: room.phase,
     players: [...room.players.values()].map(playerView),
     board: room.board,
-    bombs: room.bombs.map(b => ({ x: b.x, y: b.y, fuse: Math.max(0, b.explodeAt - now()) })),
+    bombs: room.bombs.map(b => ({ x: b.x, y: b.y, passThrough: b.passThrough, fuse: Math.max(0, b.explodeAt - now()) })),
     flames: room.flames.map(f => ({ x: f.x, y: f.y })),
     powerups: [...room.powerups.entries()].map(([key, type]) => {
       const [x, y] = key.split(',').map(Number);
@@ -213,7 +213,8 @@ function putBomb(room, player) {
   if (room.bombs.some(b => b.x === Math.round(player.x) && b.y === Math.round(player.y))) return;
   room.bombs.push({
     x: Math.round(player.x), y: Math.round(player.y), ownerId: player.id,
-    range: player.range, explodeAt: now() + 2250
+    range: player.range, explodeAt: now() + 2250,
+    passThrough: [...room.players.values()].filter(p => p.alive && physics.overlaps(p, {x:Math.round(player.x),y:Math.round(player.y)})).map(p => p.id)
   });
   player.activeBombs++;
   broadcast(room);

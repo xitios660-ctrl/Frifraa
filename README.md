@@ -85,3 +85,18 @@ com o servidor local ativo e Playwright/Chromium instalados, execute
 `node scripts/browser-smoke.cjs`; `BOMBA_CHROME` permite indicar o navegador.
 O smoke abre quatro contextos móveis, verifica joystick/bomba, rotação, carregamento das três folhas, quatro direções de caminhada, parada dos passos e erros JS.
 Testes em aparelhos físicos e a audição humana da trilha continuam necessários.
+
+
+### Colisões e música
+
+As quinas usam assistência gradual para alinhar o personagem ao corredor aberto,
+sem teletransporte para o centro. Ao colocar uma bomba, jogadores que já a
+sobrepõem recebem passagem apenas até sair completamente dela. Essa permissão
+é sincronizada pelo servidor, e estados atrasados não puxam o jogador de volta
+para dentro de uma bomba. As mesmas regras são usadas na previsão local.
+
+A partida tem uma composição original de quatro compassos, com melodia, baixo,
+acordes e pulsação, agendada pelo relógio do Web Audio. O primeiro toque/tecla
+libera o áudio, inclusive para convidados. SOM silencia e retoma a música; ao
+ocultar a página ou terminar a rodada, a trilha para. O navegador pode exigir um
+novo toque ao retornar de uma interrupção de áudio no iPhone.

@@ -38,6 +38,8 @@
   let state = null;
   let soundOn = true;
   let musicStep = 0;
+  let nextMusicTime = 0;
+  const musicVoices = new Set();
   let lastFrame = 0;
   let frameDt = 1 / 60;
   let localPlayer = null;
@@ -145,15 +147,17 @@
     if (msg.type === 'state') {
       if (currentCode && msg.code !== currentCode) return;
       currentCode = msg.code;
+      if(state?.phase==='playing' && msg.phase==='playing') {
+        for(const bomb of msg.bombs) {
+          const prior=state.bombs.find(b=>b.x===bomb.x && b.y===bomb.y);
+          if(prior && !prior.passThrough?.includes(meId) && bomb.passThrough) bomb.passThrough=bomb.passThrough.filter(id=>id!==meId);
+        }
+      }
       state = msg;
       const authoritative = msg.players.find(p => p.id === meId);
       if (authoritative) {
-        if (!localPlayer || msg.phase !== 'playing' || Math.hypot(localPlayer.x-authoritative.x,localPlayer.y-authoritative.y) > .8) localPlayer = {...authoritative};
-        else {
-          localPlayer.x += (authoritative.x-localPlayer.x)*.25;
-          localPlayer.y += (authoritative.y-localPlayer.y)*.25;
-          localPlayer.speed = authoritative.speed;
-        }
+        if (!localPlayer || msg.phase !== 'playing') localPlayer = {...authoritative};
+        else BombaPhysics.reconcile(localPlayer,authoritative,msg.board,msg.bombs);
       }
       updateUi();
     }
@@ -448,20 +452,56 @@
     soundOn = !soundOn;
     $('soundLabel').textContent = soundOn ? 'LIGADO' : 'SOM';
     if (soundOn) beep(660, .12);
-    else audioCtx?.suspend();
+    else { stopMusic(); audioCtx?.suspend(); }
   });
 
   function fanfare(won) {
     (won ? [523,659,784,1047] : [392,349,294,196]).forEach((f,i) => setTimeout(() => { if(soundOn) beep(f,.23,'square'); },i*180));
   }
-  // Original arpeggiated chiptune, scheduled only after a browser audio gesture.
+  function unlockAudio() {
+    if (!soundOn || document.hidden) return;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state !== 'running') audioCtx.resume().catch(()=>{});
+    } catch { /* The next user gesture can retry audio. */ }
+  }
+  document.addEventListener('pointerdown', unlockAudio, {capture:true,passive:true});
+  document.addEventListener('keydown', unlockAudio, {capture:true});
+  function stopMusic() {
+    for(const voice of musicVoices) { try { voice.stop(); } catch {} }
+    musicVoices.clear();nextMusicTime=0;musicStep=0;
+  }
+  function musicTone(note,start,duration,volume,type='triangle') {
+    const voice=audioCtx.createOscillator(),gain=audioCtx.createGain();
+    voice.type=type;voice.frequency.value=440*2**((note-69)/12);
+    gain.gain.setValueAtTime(0,start);
+    gain.gain.linearRampToValueAtTime(volume,start+.008);
+    gain.gain.exponentialRampToValueAtTime(.0001,start+duration);
+    voice.connect(gain).connect(audioCtx.destination);
+    musicVoices.add(voice);
+    voice.onended=()=>{musicVoices.delete(voice);voice.disconnect();gain.disconnect();};
+    voice.start(start);voice.stop(start+duration+.01);
+  }
+  // Original four-bar arcade tune. Schedule ahead on the audio clock for steady rhythm.
   setInterval(() => {
-    if (!soundOn || audioCtx?.state !== 'running' || state?.phase !== 'playing') return;
-    const melody = [64,67,71,76,71,67,62,67,65,69,72,77,72,69,62,69];
-    const note = melody[musicStep++ % melody.length];
-    beep(440 * 2 ** ((note-69)/12), .10, 'square');
-    if (musicStep % 4 === 0) beep(110 * (musicStep % 8 ? 1 : 1.5), .16, 'triangle');
-  }, 150);
+    if (!soundOn || document.hidden || audioCtx?.state !== 'running' || state?.phase !== 'playing') {
+      if(nextMusicTime) stopMusic();
+      return;
+    }
+    if(!nextMusicTime || nextMusicTime<audioCtx.currentTime-.2) nextMusicTime=audioCtx.currentTime+.035;
+    const melody=[76,79,81,79,76,74,72,74,76,0,79,76,74,72,74,79,
+      76,81,84,81,79,76,74,76,81,0,79,76,74,76,79,81,
+      77,81,84,81,79,77,76,74,77,0,81,77,76,74,72,74,
+      79,83,86,83,81,79,77,74,79,0,77,74,72,74,76,79];
+    while(nextMusicTime<audioCtx.currentTime+.12) {
+      const step=musicStep%64,root=[48,45,41,43][Math.floor(step/16)];
+      if(melody[step]) musicTone(melody[step],nextMusicTime,.14,.025,'square');
+      if(step%4===0) musicTone(root+(step%8===4?7:0),nextMusicTime,.23,.065);
+      if(step%16===0) for(const interval of (step===16?[12,15,19]:[12,16,19])) musicTone(root+interval,nextMusicTime,.65,.012);
+      if(step%4===0) musicTone(step%8===4?45:33,nextMusicTime,.055,.055,'triangle');
+      nextMusicTime+=60/132/4;musicStep++;
+    }
+  },25);
   setInterval(() => {
     if (isPlaying()) {
       const [x,y] = lastDirection.split(',').map(Number);
@@ -469,7 +509,7 @@
     }
   }, 250);
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { heldKeys.clear(); touchDirection = null; lastDirection = '0,0'; if (isPlaying()) safeSend({type:'move',x:0,y:0}); audioCtx?.suspend(); }
+    if (document.hidden) { stopMusic(); heldKeys.clear(); touchDirection = null; lastDirection = '0,0'; if (isPlaying()) safeSend({type:'move',x:0,y:0}); audioCtx?.suspend(); }
     else if (soundOn) audioCtx?.resume();
   });
   const keyToDirection = {
