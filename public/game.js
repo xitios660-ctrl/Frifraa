@@ -24,11 +24,7 @@
   let savedRoom = (() => {
     try { return JSON.parse(sessionStorage.getItem(storedRoomKey)); } catch { return null; }
   })();
-  const params = new URLSearchParams(location.search);
-  const prefill = (params.get('sala') || '').replace(/[^a-z0-9]/gi, '').slice(0, 5).toUpperCase();
   const nameInput = $('nameInput');
-  const codeInput = $('codeInput');
-  codeInput.value = prefill;
   nameInput.value = localStorage.getItem('arena-name') || '';
   localStorage.removeItem('bomba-party-pin');
 
@@ -47,8 +43,10 @@
   let inputAccumulator = 0;
   const snapshotHistory = [];
   let rosterKey = '';
+  let stateReceivedAt=0;
   let audioCtx = null;
   let disconnected = false;
+  let entering = false;
   let toastTimer;
   let lastPhase = null;
   let lastSoundKey = '';
@@ -87,11 +85,9 @@
     socket.addEventListener('open', () => {
       $('serverDot').classList.add('live');
       $('serverText').textContent = 'Servidor online';
-      if (disconnected && currentCode) {
-        safeSend({ type: 'join', code: currentCode, name: getName() });
-      } else if (!currentCode && savedRoom?.code && savedRoom.code === prefill) {
-        nameInput.value = savedRoom.name || nameInput.value;
-        safeSend({ type: 'join', code: savedRoom.code, name: getName() });
+      if ((disconnected && currentCode) || savedRoom?.code) {
+        nameInput.value=savedRoom?.name||nameInput.value;
+        entering=safeSend({type:'enter',name:getName()});
       }
       disconnected = false;
     });
@@ -120,10 +116,12 @@
         sessionStorage.removeItem(storedRoomKey);
         savedRoom = null;
       }
-      if (disconnected && currentCode) leave(false);
+      if (entering) {entering=false;leave(false);}
+      else if (disconnected && currentCode) leave(false);
       return;
     }
     if (msg.type === 'joined') {
+      entering=false;
       currentCode = msg.code;
       meId = msg.playerId;
       state = null;
@@ -131,7 +129,7 @@
       lastPhase = null;
       savedRoom = { code: currentCode, name: getName() };
       sessionStorage.setItem(storedRoomKey, JSON.stringify(savedRoom));
-      history.replaceState(null, '', `${location.pathname}?sala=${currentCode}`);
+      history.replaceState(null, '', location.pathname);
       // Algumas plataformas permitem abrir a tela cheia sem outro toque;
       // no iPhone a versão instalada já funciona sem barras do navegador.
       if (!triedAutoFullscreen) requestImmersive();
@@ -153,6 +151,7 @@
       currentCode = msg.code;
       const previousPhase=state?.phase;
       state = msg;
+      stateReceivedAt=performance.now();
       const authoritative = msg.players.find(p => p.id === meId);
       if(authoritative) {
         if(msg.phase!=='playing'||previousPhase!=='playing'||!prediction) {
@@ -309,8 +308,6 @@
   }
   function updateUi() {
     if (!state) return;
-    $('roomCode').textContent = currentCode;
-    $('gameCode').textContent = currentCode;
     $('playerCount').textContent = `${state.players.length} / 4`;
     const isHost = state.hostId === meId;
     const me = state.players.find(p => p.id === meId);
@@ -385,16 +382,8 @@
       if (navigator.vibrate) navigator.vibrate([100, 60, 100]);
     }
   }
-  function joinFromInput() {
-    const code = codeInput.value.replace(/[^a-z0-9]/gi, '').slice(0, 5).toUpperCase();
-    if (code.length !== 5) return toast('Digite o código de cinco caracteres da sala.');
-    safeSend({ type: 'join', code, name: getName() });
-  }
-  // Pedir tela cheia no mesmo toque em que a pessoa entra: é a única janela
-  // permitida pelos navegadores que exigem uma interação do usuário.
-  $('createBtn').addEventListener('click', () => { requestImmersive(); safeSend({ type: 'create', name: getName() }); });
-  $('joinBtn').addEventListener('click', () => { requestImmersive(); joinFromInput(); });
-  codeInput.addEventListener('keydown', e => { if (e.key === 'Enter') { requestImmersive(); joinFromInput(); } });
+  // Enter the one shared room on the same gesture that unlocks audio/fullscreen.
+  $('createBtn').addEventListener('click', () => {requestImmersive();entering=safeSend({type:'enter',name:getName()});});
   nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') $('createBtn').click(); });
   $('startBtn').addEventListener('click', () => {
     requestImmersive();
@@ -409,12 +398,12 @@
   $('leaveBtn').addEventListener('click', () => leave());
   $('exitGameBtn').addEventListener('click', () => leave());
   $('shareBtn').addEventListener('click', async () => {
-    const link = `${location.origin}/?sala=${currentCode}`;
+    const link = `${location.origin}/`;
     try {
       await navigator.clipboard.writeText(link);
       toast('Link copiado! Envie para seus amigos.');
     } catch {
-      toast(`Copie o código da sala: ${currentCode}`);
+      toast(`Abra o jogo neste endereço: ${location.origin}`);
     }
   });
 
@@ -641,15 +630,17 @@
       circle(x + 37, y + 15, 1.5, '#5f4e80');
     }
   }
-  function drawWall(x, y) {
+  function drawWall(x, y, time) {
     rectangle(x, y, SIZE, SIZE, '#1a1730');
     roundRect(x + 2, y + 2, SIZE - 4, SIZE - 5, 6, '#61518c');
     roundRect(x + 4, y + 4, SIZE - 8, SIZE - 10, 5, '#544579');
     rectangle(x + 7, y + 7, SIZE - 14, 3, '#8473ab');
     rectangle(x + 7, y + SIZE - 11, SIZE - 14, 3, '#382e58');
     rectangle(x + 23, y + 14, 2, 17, '#382f5a');
+    const shine=((time/30+x+y)%300)/300;
+    if(shine<.12) rectangle(x+7+shine*220,y+7,6,2,'#c5b0e5');
   }
-  function drawCrate(x, y) {
+  function drawCrate(x, y, time) {
     roundRect(x + 3, y + 4, 42, 40, 5, '#a85b69');
     roundRect(x + 5, y + 5, 38, 34, 4, '#cf7b70');
     rectangle(x + 11, y + 7, 26, 29, '#a95c67');
@@ -659,11 +650,14 @@
     ctx.beginPath();ctx.moveTo(x + 13, y + 11);ctx.lineTo(x + 35, y + 33);ctx.moveTo(x + 35, y + 11);ctx.lineTo(x + 13, y + 33);ctx.stroke();
     rectangle(x + 8, y + 8, 5, 5, '#f9d69d');
     rectangle(x + 35, y + 8, 5, 5, '#f9d69d');
+    if(Math.sin(time/700+x+y)>.92) rectangle(x+8,y+8,5,2,'#fff1c1');
   }
   function drawPowerup(p, time) {
     const x = p.x * SIZE + 24, y = p.y * SIZE + 25 + Math.sin(time / 230 + p.x) * 2;
     const color = p.type === 'range' ? '#ffbb73' : p.type === 'bomb' ? '#c29aff' : '#72f0e1';
     circle(x, y + 3, 18, '#140f29');
+    ctx.save();ctx.strokeStyle=color;ctx.globalAlpha=.4;ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(x,y,19+Math.sin(time/180)*2,time/500,time/500+Math.PI*1.4);ctx.stroke();ctx.restore();
     roundRect(x - 14, y - 14, 28, 28, 7, color);
     circle(x - 6, y - 6, 3, '#ffffff99');
     ctx.fillStyle = '#31203f';
@@ -671,29 +665,6 @@
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(p.type === 'range' ? '✹' : p.type === 'bomb' ? '+' : '»', x, y + 1);
-  }
-  function drawBomb(b, time) {
-    const x = b.x * SIZE + 24, y = b.y * SIZE + 27;
-    const pulse = .95 + .07 * Math.sin(time / 85);
-    const radius = 18 * pulse;
-    circle(x, y + 4, radius + 3, '#07071188');
-    circle(x, y, radius, b.fuse < 600 ? '#f65f91' : '#1b1538');
-    circle(x - 6, y - 6, 5, b.fuse < 600 ? '#ffc4d9' : '#7f72b2');
-    rectangle(x - 4, y - radius - 5, 8, 8, '#bba5d5');
-    rectangle(x - 1, y - radius - 12, 5, 8, '#ffd97a');
-    if (b.fuse < 900) circle(x + 11, y + 11, 3, '#f8e59e');
-  }
-  function drawFlame(f, time) {
-    const x = f.x * SIZE + 24, y = f.y * SIZE + 24;
-    const wobble = 1 + Math.sin(time / 90 + f.x * 7) * .075;
-    ctx.save();ctx.translate(x, y);ctx.scale(wobble, wobble);
-    ctx.shadowBlur = 24;ctx.shadowColor = '#ff8653';
-    roundRect(-20, -12, 40, 24, 8, '#ff684f');
-    roundRect(-12, -20, 24, 40, 8, '#ff684f');
-    ctx.shadowBlur = 0;
-    roundRect(-14, -14, 28, 28, 8, '#ffd071');
-    roundRect(-6, -6, 12, 12, 4, '#fff2c4');
-    ctx.restore();
   }
   function drawPlayer(p, time) {
     const position = p.id===meId && localPlayer && state.phase==='playing'
@@ -740,18 +711,21 @@
       localPlayer=prediction.player;
     }
     if (!state?.board || $('gamePanel').hidden) return;
+    const worldTime=(state.serverTime||Date.now())+(performance.now()-stateReceivedAt);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     for (let y = 0; y < state.height; y++) {
       for (let x = 0; x < state.width; x++) {
         const px = x * SIZE, py = y * SIZE;
         drawFloor(px, py, x, y);
-        if (state.board[y][x] === 1) drawWall(px, py);
-        else if (state.board[y][x] === 2) drawCrate(px, py);
+        if (state.board[y][x] === 1) drawWall(px, py, worldTime);
+        else if (state.board[y][x] === 2) drawCrate(px, py, worldTime);
       }
     }
-    for (const p of state.powerups || []) drawPowerup(p, time);
-    for (const b of state.bombs || []) drawBomb(b, time);
-    for (const f of state.flames || []) drawFlame(f, time);
+    for (const p of state.powerups || []) drawPowerup(p, worldTime);
+    for (const b of state.bombs || []) BombaEffects.bomb(ctx,b,worldTime);
+    const flameTiles=new Set((state.flames||[]).filter(f=>f.expiresAt>worldTime).map(f=>`${f.x},${f.y}`));
+    for (const f of state.flames || []) BombaEffects.flame(ctx,f,worldTime,flameTiles);
+    for (const effect of state.effects||[]) BombaEffects.debris(ctx,effect,worldTime);
     for (const p of [...(state.players || [])].sort((a,b)=>a.y-b.y || a.slot-b.slot)) drawPlayer(p, time);
   }
 

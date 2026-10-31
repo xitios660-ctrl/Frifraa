@@ -13,6 +13,7 @@
   <link rel="apple-touch-icon" href="/icon-180.png" />
   <link rel="icon" type="image/png" href="/icon-192.png" />
   <link rel="stylesheet" href="/styles.css" />
+  <script src="/effects.js"></script>
   <script src="/animation.js"></script>
   <script src="/physics.js"></script>
   <script src="/netcode.js"></script>
@@ -52,19 +53,13 @@
         </div>
 
         <div class="entry-card">
-          <div class="card-top"><span class="card-chip">NOVO JOGO</span><span class="card-decor">● ● ●</span></div>
+          <div class="card-top"><span class="card-chip">SALA ÚNICA</span><span class="card-decor">● ● ●</span></div>
           <h2>Entrar na batalha</h2>
-          <p class="card-subtitle">Arena para você e mais três amigos. Mary, Kaique e Jheniffer já têm personagens exclusivos!</p>
+          <p class="card-subtitle">Arena para você e mais três amigos. Mary, Kaique, Jheniffer e Gustavo esperam por você.</p>
           <label class="input-label" for="nameInput">SEU APELIDO</label>
           <input id="nameInput" maxlength="18" autocomplete="nickname" placeholder="Como quer ser chamado?" value="" />
-          <button id="createBtn" class="primary-btn" type="button"><span>Criar sala</span><span class="btn-arrow">↗</span></button>
-          <div class="separator"><span>OU ENTRE COM UM CÓDIGO</span></div>
-          <label class="input-label" for="codeInput">CÓDIGO DA SALA</label>
-          <div class="join-line">
-            <input id="codeInput" class="code-input" maxlength="5" autocomplete="off" autocapitalize="characters" placeholder="ABCDE" />
-            <button id="joinBtn" class="secondary-btn" type="button">Entrar <span>→</span></button>
-          </div>
-          <div class="help-note"><span class="note-icon">i</span> Sem senha: basta criar a sala e convidar seus amigos. O jogo abre em modo imersivo automaticamente; no iPhone, instale na tela inicial para remover as barras do Safari.</div>
+          <button id="createBtn" class="primary-btn" type="button"><span>Entrar na sala</span><span class="btn-arrow">↗</span></button>
+          <div class="help-note"><span class="note-icon">i</span> Uma única sala para todos. Escolha seu apelido e entre, sem código e sem senha. O jogo abre em modo imersivo automaticamente; no iPhone, instale na tela inicial para remover as barras do Safari.</div>
           <div id="installCard" class="install-card" hidden>
             <span class="install-icon">📲</span>
             <div><strong>Quer jogar como aplicativo?</strong><p id="installInstructions">Adicione o Bomberman à tela inicial para abrir sem a barra do navegador.</p></div>
@@ -74,20 +69,20 @@
       </section>
 
       <section id="roomPanel" class="room-panel" hidden>
-        <div class="section-head"><span class="section-eyebrow">SUA SALA POR CONVITE</span><h2>Monte sua equipe<span class="accent-dot">.</span></h2><p>Compartilhe seu código com até três amigos. O anfitrião decide quando a partida começa.</p></div>
+        <div class="section-head"><span class="section-eyebrow">A SALA DA TURMA</span><h2>Monte sua equipe<span class="accent-dot">.</span></h2><p>Todos entram neste mesmo endereço. O anfitrião inicia quando a turma estiver pronta.</p></div>
         <div class="room-grid">
           <div class="room-card">
-            <div class="room-card-header"><span class="input-label">CÓDIGO DA SUA SALA</span><span class="room-open"><span class="status-dot live"></span> POR CONVITE</span></div>
-            <div id="roomCode" class="room-code">-----</div>
-            <button id="shareBtn" class="primary-btn" type="button"><span>Copiar link do convite</span><span>↗</span></button>
-            <p class="room-tip">Envie o link no WhatsApp aos seus três amigos. Quem tiver o código pode entrar enquanto houver vaga.</p>
+            <div class="room-card-header"><span class="input-label">TODOS NO MESMO LUGAR</span><span class="room-open"><span class="status-dot live"></span> SALA ÚNICA</span></div>
+            <div class="room-code" style="font-size:32px">BOMBA PARTY</div>
+            <button id="shareBtn" class="primary-btn" type="button"><span>Copiar link do jogo</span><span>↗</span></button>
+            <p class="room-tip">Abra este mesmo site nos quatro celulares. Ninguém precisa digitar código.</p>
           </div>
           <div class="player-card">
             <div class="player-card-head"><h3>Jogadores conectados</h3><span id="playerCount" class="count-badge">0 / 4</span></div>
             <div id="lobbyPlayers" class="lobby-players"></div>
             <div class="picker-heading">🎭 ESCOLHA SEU PERSONAGEM <span>um por jogador</span></div>
             <div id="skinPicker" class="skin-picker" aria-label="Escolher personagem da partida"></div>
-            <p class="skin-tip">💙 Mary · 👓 Kaique · 🌸 Jheniffer · 👑 Solar (quarta skin temporária). Cada jogador pode escolher a sua.</p>
+            <p class="skin-tip">💙 Mary · 👓 Kaique · 🌸 Jheniffer · 😎 Gustavo. Cada jogador pode escolher a sua.</p>
             <div class="room-buttons"><button id="startBtn" class="primary-btn" type="button">Iniciar partida <span>▶</span></button><button id="leaveBtn" class="ghost-btn" type="button">Sair da sala</button></div>
             <p id="hostHint" class="small-hint"></p>
           </div>
@@ -97,7 +92,7 @@
       <section id="gamePanel" class="game-panel" hidden>
         <div class="game-header">
           <div><span class="section-eyebrow">ARENA EM TEMPO REAL</span><h2>Que vença o melhor<span class="accent-dot">.</span></h2></div>
-          <div class="game-room-tag">SALA <strong id="gameCode">-----</strong></div>
+          <div class="game-room-tag"><strong>SALA ÚNICA</strong></div>
         </div>
         <div class="game-layout">
           <div class="board-card">

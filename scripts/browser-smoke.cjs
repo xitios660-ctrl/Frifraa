@@ -56,11 +56,22 @@ for(let i=0;i<4;i++) {
  await page.goto(process.env.BOMBA_BASE || 'http://127.0.0.1:3000');
  await page.waitForFunction(()=>document.querySelector('#serverDot').classList.contains('live'));
  await page.fill('#nameInput',['Mary','Kaique','Jheniffer','Gustavo'][i]);
- if(!i) await page.click('#createBtn');
- else { await page.fill('#codeInput',await pages[0].locator('#roomCode').textContent());await page.click('#joinBtn'); }
+ assert.equal(await page.locator('#codeInput').count(),0);
+ await page.click('#createBtn');
  await page.waitForSelector('#roomPanel:not([hidden])');
 }
 assert.equal(await pages[3].locator('.skin-choice.selected > span').textContent(),'GUSTAVO');
+const animated=await pages[0].evaluate(()=>{
+ const canvas=document.createElement('canvas');canvas.width=160;canvas.height=160;
+ const ctx=canvas.getContext('2d');
+ function fingerprint(draw,time){ctx.clearRect(0,0,160,160);draw(time);const data=ctx.getImageData(0,0,160,160).data;let value=0;for(let i=0;i<data.length;i++)value=(value*31+data[i])>>>0;return value;}
+ const bomb={x:1,y:1,placedAt:1000,explodeAt:3250};
+ const crate={x:1,y:1,kind:'crate',startedAt:1000,expiresAt:1650};
+ return {bomb:fingerprint(t=>BombaEffects.bomb(ctx,bomb,t),1200)!==fingerprint(t=>BombaEffects.bomb(ctx,bomb,t),2900),
+ debris:fingerprint(t=>BombaEffects.debris(ctx,crate,t),1100)!==fingerprint(t=>BombaEffects.debris(ctx,crate,t),1500)};
+});
+assert.ok(animated.bomb&&animated.debris,'bomb and destruction frames must animate');
+
 await pages[0].click('#startBtn');
 await pages[0].waitForFunction(()=>document.querySelector('#roundStatus').textContent==='PARTIDA EM ANDAMENTO');
 for(const page of pages) {
@@ -119,6 +130,6 @@ await pages[0].screenshot({path:'/tmp/bomba-party-mobile.png'});
 await pages[0].setViewportSize({width:390,height:844});
 await pages[0].locator('#rotateOverlay').waitFor({state:'visible'});
 assert.deepEqual(errors,[]);
-console.log('PASS: four browser clients, mobile landscape controls, bomb, portrait warning, four sprite sheets, four directions, idle animation, music playback/mute/resume, no teleports or reverse corrections, no JS errors');
+console.log('PASS: one room without codes, animated bombs/debris, four browser clients, mobile landscape controls, bomb, portrait warning, four sprite sheets, four directions, idle animation, music playback/mute/resume, no teleports or reverse corrections, no JS errors');
 }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exit(1)});

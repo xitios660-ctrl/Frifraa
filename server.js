@@ -86,6 +86,7 @@ function newRoom(code, ws, name) {
     board: null,
     bombs: [],
     flames: [],
+    effects: [],
     powerups: new Map(),
     countdownUntil: 0,
     winnerId: null,
@@ -109,13 +110,15 @@ function playerView(p) {
 function stateFor(room) {
   return {
     type: 'state',
+    serverTime: now(),
+    effects: room.effects,
     code: room.code,
     hostId: room.hostId,
     phase: room.phase,
     players: [...room.players.values()].map(playerView),
     board: room.board,
-    bombs: room.bombs.map(b => ({ x: b.x, y: b.y, passThrough: b.passThrough, fuse: Math.max(0, b.explodeAt - now()) })),
-    flames: room.flames.map(f => ({ x: f.x, y: f.y })),
+    bombs: room.bombs.map(b => ({ id:b.id, placedAt:b.placedAt, explodeAt:b.explodeAt, x: b.x, y: b.y, passThrough: b.passThrough, fuse: Math.max(0, b.explodeAt - now()) })),
+    flames: room.flames.map(f => ({ x: f.x, y: f.y, startedAt:f.startedAt, expiresAt:f.expiresAt })),
     powerups: [...room.powerups.entries()].map(([key, type]) => {
       const [x, y] = key.split(',').map(Number);
       return { x, y, type };
@@ -178,6 +181,7 @@ function startGame(room) {
   room.board = makeBoard();
   room.bombs = [];
   room.flames = [];
+  room.effects = [];
   room.powerups.clear();
   room.winnerId = null;
   room.phase = 'countdown';
@@ -217,6 +221,7 @@ function movePlayers(room, t) {
       if (bonus === 'range') p.range = Math.min(6, p.range + 1);
       if (bonus === 'bomb') p.bombs = Math.min(5, p.bombs + 1);
       if (bonus === 'speed') p.speed = Math.max(100, p.speed - 20);
+      room.effects.push({kind:'pickup',x:Math.round(p.x),y:Math.round(p.y),startedAt:t,expiresAt:t+600});
       room.powerups.delete(key);
       send(p.ws, { type: 'pickup', bonus });
     }
@@ -226,6 +231,7 @@ function putBomb(room, player) {
   if (room.phase !== 'playing' || !player.alive || player.activeBombs >= player.bombs) return;
   if (room.bombs.some(b => b.x === Math.round(player.x) && b.y === Math.round(player.y))) return;
   room.bombs.push({
+    id:crypto.randomUUID(), placedAt:now(),
     x: Math.round(player.x), y: Math.round(player.y), ownerId: player.id,
     range: player.range, explodeAt: now() + 2250,
     passThrough: [...room.players.values()].filter(p => p.alive && physics.overlaps(p, {x:Math.round(player.x),y:Math.round(player.y)})).map(p => p.id)
@@ -245,10 +251,12 @@ function explodeBomb(room, bomb, t) {
       const x = bomb.x + dx * step;
       const y = bomb.y + dy * step;
       const cell = room.board[y]?.[x];
-      if (cell === undefined || cell === 1) break;
+      if (cell === undefined) break;
+      if (cell === 1) {room.effects.push({kind:'wall',x,y,startedAt:t,expiresAt:t+360});break;}
       tiles.push({ x, y });
       if (cell === 2) {
         room.board[y][x] = 0;
+        room.effects.push({kind:'crate',x,y,startedAt:t,expiresAt:t+650});
         if (Math.random() < 0.25) {
           const types = ['range', 'range', 'bomb', 'speed'];
           room.powerups.set(tileKey(x, y), types[crypto.randomInt(types.length)]);
@@ -258,7 +266,7 @@ function explodeBomb(room, bomb, t) {
     }
   }
   for (const { x, y } of tiles) {
-    room.flames.push({ x, y, expiresAt: t + 500, ownerId: bomb.ownerId });
+    room.flames.push({ x, y, startedAt:t, expiresAt: t + 500, ownerId: bomb.ownerId });
     for (const chained of room.bombs) {
       if (chained.x === x && chained.y === y) chained.explodeAt = t;
     }
@@ -296,6 +304,7 @@ function checkWinner(room) {
 function tick() {
   const t = now();
   for (const room of rooms.values()) {
+    room.effects=room.effects.filter(e=>e.expiresAt>t);
     if (room.phase === 'countdown' && t >= room.countdownUntil) {
       room.phase = 'playing';
       broadcast(room);
@@ -319,11 +328,30 @@ function onMessage(ws, raw) {
   let message;
   try { message = JSON.parse(String(raw)); } catch { return; }
   if (!message || typeof message !== 'object') return;
+  if (message.type === 'enter') {
+    let room=rooms.values().next().value;
+    if(!room) {
+      room=newRoom(randomCode(),ws,message.name);
+    } else {
+      if(ws.roomCode===room.code) {send(ws,{type:'joined',code:room.code,playerId:ws.playerId});broadcast(room);return;}
+      if(room.players.size>=4) return error(ws,'Sala cheia! Máximo de quatro jogadores.');
+      if(room.phase==='playing'||room.phase==='countdown') return error(ws,'A partida está em andamento. Aguarde terminar e entre para a revanche.');
+      leaveRoom(ws);
+      if(room.players.size===0) room.hostId=ws.playerId;
+      const slot=[0,1,2,3].find(n=>![...room.players.values()].some(p=>p.slot===n));
+      room.players.set(ws.playerId,newPlayer(ws,message.name,slot,availableSkin(room,message.name)));
+      ws.roomCode=room.code;room.lastActivity=now();
+    }
+    send(ws,{type:'joined',code:room.code,playerId:ws.playerId});broadcast(room);return;
+  }
   if (message.type === 'create') {
+    if(ws.roomCode && rooms.has(ws.roomCode)) {
+      const room=rooms.get(ws.roomCode);send(ws,{type:'joined',code:room.code,playerId:ws.playerId});broadcast(room);return;
+    }
     for (const [code, room] of rooms) {
       if (room.players.size === 0) rooms.delete(code);
     }
-    if (rooms.size > (ws.roomCode ? 1 : 0)) return error(ws, 'Já existe uma sala. Entre pelo convite enviado pela Mary.');
+    if (rooms.size > 0) return error(ws, 'Já existe uma sala. Use Entrar na sala para jogar com seus amigos.');
     leaveRoom(ws);
     const code = randomCode();
     const room = newRoom(code, ws, message.name);
@@ -399,6 +427,7 @@ const FILES = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/index.html': ['index.html', 'text/html; charset=utf-8'],
   '/styles.css': ['styles.css', 'text/css; charset=utf-8'],
+  '/effects.js': ['effects.js', 'text/javascript; charset=utf-8'],
   '/animation.js': ['animation.js', 'text/javascript; charset=utf-8'],
   '/skins/gustavo-walk-v1.png': ['skins/gustavo-walk-v1.png', 'image/png'],
   '/skins/mary-walk-v1.png': ['skins/mary-walk-v1.png', 'image/png'],
@@ -429,7 +458,7 @@ const server = http.createServer((req, res) => {
     return res.end('Não encontrado');
   }
   const [file, contentType] = entry;
-  res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': ['index.html', 'sw.js', 'manifest.webmanifest', 'game.js', 'physics.js', 'animation.js', 'netcode.js', 'styles.css'].includes(file) ? 'no-cache' : 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
+  res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': ['index.html', 'sw.js', 'manifest.webmanifest', 'game.js', 'physics.js', 'animation.js', 'effects.js', 'netcode.js', 'styles.css'].includes(file) ? 'no-cache' : 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
   if (req.method === 'HEAD') return res.end();
   fs.createReadStream(path.join(PUBLIC, file)).on('error', () => res.destroy()).pipe(res);
 });

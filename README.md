@@ -4,8 +4,8 @@ Jogo **original inspirado no estilo de batalhas com bombas**, feito para jogar e
 
 ## Como jogar
 
-1. Abra o site, escolha seu apelido e crie uma sala — sem senha. Se você digitar **Mary**, **Kaique** ou **Jheniffer**, o jogo já sugere a sua skin.
-2. Compartilhe o link ou o código de cinco letras com até três amigos.
+1. Abra o site, escolha seu apelido e entre na sala — sem código e sem senha. Se você digitar **Mary**, **Kaique** ou **Jheniffer**, o jogo já sugere a sua skin.
+2. Todos abrem o mesmo endereço e tocam em Entrar na sala; não é preciso código.
 3. Na sala, cada pessoa pode escolher uma das quatro skins (nenhuma pode ser repetida). O anfitrião inicia quando todos entrarem (ou sozinho para treinar).
 4. Vire o celular na horizontal para ver apenas a arena. Use o joystick à esquerda e o botão de bomba à direita. No computador, use setas/WASD e espaço.
 5. O primeiro eliminado fica em último e recebe a mensagem brincalhona de bebida na própria tela.
@@ -15,7 +15,7 @@ Jogo **original inspirado no estilo de batalhas com bombas**, feito para jogar e
 - **Android/Chrome:** toque em **Instalar** quando o convite aparecer.
 - **iPhone/Safari:** abra o menu **Compartilhar** e escolha **Adicionar à Tela de Início**.
 - O atalho abre o site em modo aplicativo, sem a barra normal do navegador. As partidas ainda exigem internet.
-- O site solicita tela cheia automaticamente **quando você toca em Criar sala ou Entrar** e novamente ao iniciar a partida. O jogo ocupa o viewport horizontal sem exigir o botão de tela cheia.
+- O site solicita tela cheia automaticamente **quando você toca em Entrar na sala** e novamente ao iniciar a partida. O jogo ocupa o viewport horizontal sem exigir o botão de tela cheia.
 - **Limitação do iPhone:** o Safari não oferece a API de tela cheia para páginas normais; para abrir sem barras, instale o app pela Tela de Início. A rotação da tela pode exigir que a pessoa vire o aparelho e desative o bloqueio de rotação.
 - Se a página recarregar, tentará voltar à sala anterior automaticamente; o servidor reserva a sala vazia por até 90 segundos para permitir a reconexão.
 
@@ -49,7 +49,7 @@ Salas, mapas e resultados ficam apenas na memória do servidor. Ao reiniciar o p
 
 ## Recursos
 
-- Uma única sala por vez, com convite por URL e sem senha. Quem tiver o código pode entrar enquanto houver vaga.
+- Uma única sala compartilhada, com entrada pelo apelido e sem código ou senha. Máximo de quatro pessoas; quem chegar durante a rodada aguarda a revanche.
 - Limite rigoroso de quatro jogadores na arena inteira.
 - Tabuleiro diferente a cada rodada, poderes de alcance, bombas extras e velocidade.
 - Bombas com efeito em cruz, caixas destrutíveis e explosões em cadeia.
@@ -82,7 +82,7 @@ Validação: `npm test` cobre quatro clientes WebSocket, movimento fracionário,
 colisão, bombas, classificação, vencedor, revanche e skins. Para o smoke visual,
 com o servidor local ativo e Playwright/Chromium instalados, execute
 `node scripts/browser-smoke.cjs`; `BOMBA_CHROME` permite indicar o navegador.
-O smoke abre quatro contextos móveis, verifica joystick/bomba, rotação, carregamento das três folhas, quatro direções de caminhada, parada dos passos e erros JS.
+O smoke abre quatro contextos móveis, verifica joystick/bomba, rotação, carregamento das quatro folhas, quatro direções de caminhada, parada dos passos e erros JS.
 Testes em aparelhos físicos e a audição humana da trilha continuam necessários.
 
 
@@ -122,3 +122,18 @@ O ZIP fornecido para referência contém uma ROM SNES HiROM de 512 KiB, título
 `SUPER BOMBERMAN`, com checksum e complemento válidos. A ROM não foi incluída no
 repositório nem distribuída no site. A versão web continua usando o motor original
 do Bomba Party para preservar as skins e o multiplayer online.
+
+
+### Sala única e animação dos objetos
+
+O fluxo público usa `enter`: o servidor cria a sala se ela não existir ou junta o
+jogador à mesma sala existente. A interface não solicita nem exibe códigos. O link
+compartilhado é o endereço principal. Clientes antigos ainda podem usar o protocolo
+de convite, mas não conseguem criar uma segunda sala, nem como anfitrião.
+
+Bombas usam horário de colocação/explosão do servidor para o pulso, pavio que
+encurta e faíscas. Explosões se conectam em cruz e apagam ao fim do alcance real.
+A destruição emite fragmentos de caixas; impactos nas paredes emitem brilho sem
+alterar as colisões. Itens têm aro giratório e partículas ao serem coletados.
+Os eventos de efeito são compartilhados e expiram no servidor; a renderização
+respeita a validade mesmo quando a rodada já terminou.

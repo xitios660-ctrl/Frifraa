@@ -78,7 +78,7 @@ test('serve página, skins personalizadas e endpoint de saúde', async () => {
 
 test('limita a sala a quatro pessoas e inicia uma partida real', async () => {
   const p1 = await client();
-  write(p1, { type: 'create', name: 'Mary' });
+  write(p1, { type: 'enter', name: 'Mary' });
   const joined = await message(p1, m => m.type === 'joined');
   assert.match(joined.code, /^[A-Z2-9]{5}$/);
   const code = joined.code;
@@ -88,8 +88,9 @@ test('limita a sala a quatro pessoas e inicia uma partida real', async () => {
   for (let n = 2; n <= 4; n++) {
     const p = await client();
     others.push(p);
-    write(p, { type: 'join', code, name: names[n - 2] });
-    await message(p, m => m.type === 'joined');
+    write(p, { type: 'enter', name: names[n - 2] });
+    const entry=await message(p, m => m.type === 'joined');
+    assert.equal(entry.code,code);
   }
   const lobby = await message(p1, m => m.type === 'state' && m.players.length === 4);
   assert.equal(lobby.players.length, 4);
@@ -103,19 +104,25 @@ test('limita a sala a quatro pessoas e inicia uma partida real', async () => {
   assert.match(deniedSkin.message, /outro jogador/);
 
   const p5 = await client();
-  write(p5, { type: 'join', code, name: 'Excesso' });
+  write(p5, { type: 'enter', name: 'Excesso' });
   const rejected = await message(p5, m => m.type === 'error');
   assert.match(rejected.message, /cheia/);
 
   write(p5, { type: 'create', name: 'Outra sala' });
   await message(p5, m => m.type === 'error' && /Já existe uma sala/.test(m.message));
 
+  write(p1, {type:'create',name:'Mary'});
+  await new Promise(resolve=>setTimeout(resolve,60));
+  assert.equal((await (await fetch(`${BASE}/health`)).json()).rooms,1);
   write(p1, { type: 'start' });
   await message(p1, m => m.type === 'state' && m.phase === 'countdown');
   await message(p1, m => m.type === 'state' && m.phase === 'playing');
   write(p1, { type: 'bomb' });
   const withBomb = await message(p1, m => m.type === 'state' && m.bombs.length > 0);
   assert.equal(withBomb.bombs.length, 1);
+  assert.ok(withBomb.bombs[0].id);
+  assert.equal(withBomb.bombs[0].explodeAt-withBomb.bombs[0].placedAt,2250);
+  assert.ok(Number.isFinite(withBomb.serverTime));
   assert.deepEqual(withBomb.bombs[0].passThrough,[joined.playerId]);
   assert.equal(withBomb.board.length, 13);
   assert.equal(withBomb.board[0].length, 15);
@@ -123,6 +130,11 @@ test('limita a sala a quatro pessoas e inicia uma partida real', async () => {
   const firstOut = await message(p1, m => m.type === 'state' && m.players.find(p => p.name === 'Mary')?.place === 4);
   assert.equal(firstOut.players.find(p => p.name === 'Mary').alive, false);
   assert.equal(firstOut.participantsAtStart, 4);
+  assert.ok(firstOut.flames.every(f=>f.expiresAt-f.startedAt===500));
+  for(const other of others) {
+    const shared=await message(other,m=>m.type==='state'&&m.flames.length>0);
+    assert.deepEqual(shared.flames,firstOut.flames);
+  }
   assert.equal((await (await fetch(`${BASE}/health`)).json()).rooms, 1);
 
   // The remaining clients see the same authoritative positions and explosions.
@@ -145,7 +157,7 @@ test('limita a sala a quatro pessoas e inicia uma partida real', async () => {
   for (const p of [p1, ...others]) p.close();
   await waitUntil(async () => (await (await fetch(`${BASE}/health`)).json()).players === 1);
   const returning = await client();
-  write(returning, { type: 'join', code, name: 'Mary' });
+  write(returning, { type: 'enter', name: 'Mary' });
   await message(returning, m => m.type === 'joined' && m.code === code);
   const restored = await message(returning, m => m.type === 'state' && m.phase === 'lobby');
   assert.equal(restored.hostId, restored.players[0].id);
@@ -156,7 +168,7 @@ test('limita a sala a quatro pessoas e inicia uma partida real', async () => {
 });
 
 test('numbered movement is acknowledged once and a bomb follows its queued movement',async()=>{
- const p=await client();write(p,{type:'create',name:'Gustavo'});
+ const p=await client();write(p,{type:'enter',name:'Gustavo'});
  await message(p,m=>m.type==='joined');
  const lobby=await message(p,m=>m.type==='state'&&m.phase==='lobby');
  assert.equal(lobby.players[0].skin,'Gustavo');
@@ -176,4 +188,20 @@ test('numbered movement is acknowledged once and a bomb follows its queued movem
  assert.equal(latest.players[0].ack,8);
  assert.equal(latest.players[0].x,x);
  write(p,{type:'leave'});await message(p,m=>m.type==='left');
+});
+
+test('one shared room waits for an active round and accepts direct entry for the rematch',async()=>{
+ const host=await client(),second=await client(),late=await client();
+ write(host,{type:'enter',name:'Mary'});const joined=await message(host,m=>m.type==='joined');
+ write(second,{type:'enter',name:'Gustavo'});await message(second,m=>m.type==='joined'&&m.code===joined.code);
+ write(host,{type:'start'});await message(host,m=>m.type==='state'&&m.phase==='playing');
+ write(late,{type:'enter',name:'Kaique'});
+ await message(late,m=>m.type==='error'&&/andamento/.test(m.message));
+ assert.equal((await(await fetch(`${BASE}/health`)).json()).rooms,1);
+ write(second,{type:'leave'});await message(second,m=>m.type==='left');
+ await message(host,m=>m.type==='state'&&m.phase==='finished');
+ write(late,{type:'enter',name:'Kaique'});
+ await message(late,m=>m.type==='joined'&&m.code===joined.code);
+ write(host,{type:'leave'});write(late,{type:'leave'});
+ await message(late,m=>m.type==='left');
 });
