@@ -83,9 +83,13 @@ async function refresh({ quiet = false } = {}) {
     const data = await fetchJSON('/api/state');
     for (const state of data.people) if (people.has(state.character)) people.set(state.character, state);
     initialized = true;
+    el('syncState').classList.remove('offline');
+    el('syncLabel').textContent = 'DADOS SALVOS ONLINE';
     render();
     if (!quiet) setStatus('✅ Banco conectado. Todas as marcações são salvas e compartilhadas entre os celulares.', 'success');
   } catch (err) {
+    el('syncState').classList.add('offline');
+    el('syncLabel').textContent = 'AGUARDANDO BANCO';
     if (!quiet || !initialized) setStatus(`⚠️ ${err.message} Nenhum depósito será marcado sem confirmação do servidor.`, 'error');
   }
 }
