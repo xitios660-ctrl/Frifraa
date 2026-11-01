@@ -157,10 +157,13 @@ async function handleMessage(message) {
   if (!seen.upsertedCount) return;
   const authorName = await getVerifiedGroupSenderName(message, jid).catch(() => null);
   if (stopGame) {
-    const participant = [message.key?.participantAlt, message.key?.participant, message.participant]
-      .find(p => typeof p === 'string' && p.endsWith('@s.whatsapp.net')) ||
-      message.key?.participantAlt || message.key?.participant || '';
-    const handled = await stopGame.handle({ text, sender: participant, senderName: authorName });
+    const senderJids = [
+      message.key?.participantAlt, message.key?.participantPn, message.key?.participant,
+      message.participantAlt, message.participant, message.participantPn
+    ].filter(p => typeof p === 'string');
+    const handled = await stopGame.handle({
+      text, senderJids, senderName: authorName, displayName: message.pushName || ''
+    });
     if (handled) { status.received++; return; }
   }
   if (!shouldAnswerGroupMessage(text) || !rateAllowed(jid)) return;
@@ -500,8 +503,16 @@ async function main() {
     isActive: () => botEnabled && status.connected && isSelectedGroup(selectedGroupId),
     send: async ({text, mentions = []}) => {
       if (!sock || !botEnabled || !isSelectedGroup(selectedGroupId) || !status.connected) return;
-      await sock.sendMessage(selectedGroupId,{text,mentions});
-      status.sent++;
+      const socket = sock;
+      try {
+        await socket.sendPresenceUpdate('composing', selectedGroupId).catch(() => {});
+        await sleep(850);
+        if (!botEnabled || !status.connected || socket !== sock || !isSelectedGroup(selectedGroupId)) return;
+        await socket.sendMessage(selectedGroupId,{text,mentions});
+        status.sent++;
+      } finally {
+        await socket.sendPresenceUpdate('paused', selectedGroupId).catch(() => {});
+      }
     }
   });
   gameClock = setInterval(() => { stopGame?.tick().catch(e => console.error('[stop] Timer:', e.message)); },1000);
