@@ -2,13 +2,18 @@
 const crypto = require('node:crypto');
 const { GoogleGenAI } = require('@google/genai');
 
-const THINK_MS = 75_000, ANSWER_MS = 35_000;
+const THINK_MS = 75_000, ANSWER_MS = 5_000;
 const LETTERS = 'ABCDEFGIJLMNOPRSTUV'.split('');
-const CATEGORIES = ['Animal', 'País', 'Lugar'];
+const CATEGORIES = ['Animal', 'Lugar', 'Comida', 'Cor', 'Objeto', 'Nome'];
 const lexicon = {
   animal: 'abelha aguia alce anta aranha arara avestruz baleia barata bode boi borboleta bufalo cachorro camaleao camelo canario capivara caranguejo carneiro cavalo cobra coelho coruja crocodilo cutia elefante ema escorpiao foca formiga galinha galo gato gaviao girafa golfinho gorila grilo hipopotamo hiena iguana jacare jaguar javali jiboia lagarta lagartixa leao lebre leopardo lobo lontra macaco mariposa morcego mosca mosquito mula onca ornitorrinco ovelha panda pantera papagaio pato peixe pinguim pirarucu polvo porco preguiça raposa rato rinoceronte sapo serpente tamandua tatu tigre toupeira tubarao urso vaca vespa zebra'.split(' '),
   pais: ['afeganistao','africa do sul','albania','alemanha','andorra','angola','arabia saudita','argelia','armenia','australia','austria','bahamas','bangladesh','barbados','belgica','belize','benin','bolivia','botsuana','brasil','bulgaria','camaroes','canada','catar','chile','china','chipre','colombia','congo','coreia do sul','coreia do norte','costa rica','croacia','cuba','dinamarca','egito','emirados arabes unidos','equador','eslovaquia','eslovenia','espanha','estados unidos','estonia','etiopia','filipinas','finlandia','franca','gana','georgia','grecia','guatemala','guine','haiti','honduras','hungria','india','indonesia','ira','iraque','irlanda','islandia','israel','italia','jamaica','japao','jordania','kuwait','libano','liberia','libia','luxemburgo','madagascar','malasia','maldivas','mali','malta','marrocos','mexico','mocambique','monaco','mongolia','namibia','nepal','nicaragua','nigeria','noruega','nova zelandia','oma','panama','paraguai','peru','polonia','portugal','quenia','reino unido','republica dominicana','romenia','russia','senegal','servia','singapura','siria','somalia','sudao','suecia','suica','tailandia','taiwan','tanzania','timor leste','togo','tunisia','turquia','ucrania','uganda','uruguai','uzbequistao','venezuela','vietna','zambia','zimbabue'],
-  lugar: 'aeroporto academia acougue adega aquario armazem avenida banco bar biblioteca bosque cafeteria campo canteiro casa castelo catedral cinema circo clube colegio condominio consultorio creche delegacia deserto escola escritorio estadio estacao fazenda feira farmacia floresta garagem hospital hotel igreja jardim laboratorio lago lanchonete livraria loja mercado mercearia montanha motel museu padaria parque patio praia praca predio restaurante rio rua sala salao supermercado teatro templo universidade vila zoologico'.split(' ')
+  lugar: 'aeroporto academia acougue adega aquario armazem avenida banco bar biblioteca bosque cafeteria campo canteiro casa castelo catedral cinema circo clube colegio condominio consultorio creche delegacia deserto escola escritorio estadio estacao fazenda feira farmacia floresta garagem hospital hotel igreja jardim laboratorio lago lanchonete livraria loja mercado mercearia montanha motel museu padaria parque patio praia praca predio restaurante rio rua sala salao supermercado teatro templo universidade vila zoologico'.split(' '),
+  cidade: ['londres','lisboa','liverpool','las vegas','los angeles','leiria','limeira','londrina','mogi das cruzes','marilia','manaus','maceio','marraquexe','marrakech','nova york','natal','niteroi','osasco','paris','porto','recife','roma','rio de janeiro','salvador','santos','sao paulo','sao jose dos campos','toquio','teresina','uberlândia','veneza','vitoria','washington','zurique'],
+  comida: 'abacate abacaxi acai arroz acaraje almôndega almondega banana batata bolo brigadeiro broa carne coxinha chocolate churros canjica cenoura empada esfiha feijao frango feijoada goiabada hamburguer iogurte lasanha leite lentilha limao macarrao mandioca manga maracuja mel melancia mingau milho nhoque omelete pao panqueca pastel peixe pizza pipoca pudim queijo quibe quindim risoto rabanada salada sanduiche sopa sorvete tapioca tomate torta uva vatapa vitamina waffle'.split(' ').concat(['arroz doce','batata frita','doce de leite']),
+  cor: 'amarelo azul anil branco bege bordô bordo caramelo castanho ciano cinza coral creme dourado fucsia grafite grená grena indigo jade laranja lavanda lilas magenta marrom mostarda nude ocre oliva ouro prata preto rosa roxo rubi salmao turquesa verde vermelho violeta vinho'.split(' ').concat(['azul marinho','azul claro']),
+  objeto: 'agulha alicate almofada anel armario bolsa bola boneca boneco balde balanca bicicleta bota caderno cadeira cama caneca caneta capacete carro chave chinelo cobertor colher computador copo cortina dado escada espelho faca fogao garfo geladeira janela lanterna lapis livro mala martelo mesa microfone mochila moeda monitor oculos panela papel pente prato quadro radio relogio sapato sofa telefone tesoura teclado travesseiro vaso violao xicara'.split(' ').concat(['guarda chuva']),
+  nome: 'ana alice amanda andre antonio arthur beatriz bruna bruno bianca caio camila carla carlos carolina clara daniel davi diego eduarda emilia felipe fernanda flavia gabriel gabi gustavo guilherme helena henrique isabela joao julia juliana kaique kaike karina laura larissa leonardo leticia lucas luiza maria mariana mariany marcos marina mateus matheus miguel nathalia natalia nicole olivia paulo pedro rafael raquel renata ricardo roberto samuel sofia thiago valentina vitoria yasmin'.split(' ')
 };
 const norm = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/\s+/g,' ');
 const cmd = value => norm(value).replace(/[!?.]+$/g,'').trim();
@@ -18,11 +23,30 @@ const scoreCommand = text => /^bot\s+(?:stop\s+)?(?:placar|pontuacao|pontos|rank
 const rulesCommand = text => /^bot\s+(?:(?:stop|adedonha|adedanha)\s+)?(?:regras|ajuda)$/i.test(cmd(text));
 const stopCommand = text => startsGame(text) || endGame(text) || scoreCommand(text) || rulesCommand(text);
 const activeState = state => ['thinking','collecting','scoring'].includes(state);
+// Answers follow Animal, Lugar, Comida, Cor, Objeto, Nome.
+// Empty slots and unfinished submissions are accepted and score only for valid cells.
+// Named fields can be submitted in any order; plain comma-separated fields use positional order.
 const parseAnswers = text => {
-  const fields = String(text || '').trim().replace(/^bot[,!:]?\s*/i,'').split(/[,;\n]+/).map(x => x.trim()).filter(Boolean);
-  if (fields.length !== 3 || fields.some(x => x.length > 65)) return null;
-  return fields.map((x,i) => x.replace(new RegExp('^(?:' + ['animal','pa[ií]s','lugar'][i] + ')\\s*[:=]\\s*','i'),'').trim());
+  const raw = String(text || '').trim().replace(/^bot[,!:]?\s*/i,'').trim();
+  if (!raw || raw.length > 600) return null;
+  const tokens = raw.split(/[,;\n]/);
+  if (tokens.length > CATEGORIES.length) return null;
+  const labels = ['animal','lugar','comida','cor','objeto','nome'];
+  const labelled = tokens.some(x => /^(animal|lugar|comida|cor|objeto|nome)\s*[:=]/i.test(norm(x)));
+  if (tokens.length === 1 && !labelled) return null; // Ignore casual group chat during a round.
+  if (tokens.some(x=>x.trim().length > 65)) return null;
+  const answers = Array(CATEGORIES.length).fill('');
+  if (labelled) {
+    for (const cell of tokens) {
+      if (!cell.trim()) continue;
+      const match = norm(cell).match(/^(animal|lugar|comida|cor|objeto|nome)\s*[:=]\s*(.*)$/);
+      if (!match) return null; // Never guess which category an unlabelled fragment belongs to.
+      answers[labels.indexOf(match[1])] = cell.trim().replace(/^[^:=]+[:=]\s*/, '').trim();
+    }
+  } else tokens.forEach((cell,i)=>{ answers[i] = cell.trim(); });
+  return answers.some(Boolean) ? answers : null;
 };
+
 function draw(used) {
   const remain = LETTERS.filter(x => !used.includes(x));
   return remain[crypto.randomInt(remain.length || LETTERS.length)] || LETTERS[crypto.randomInt(LETTERS.length)];
@@ -30,14 +54,19 @@ function draw(used) {
 const phone = jid => { const m=String(jid || '').match(/^(\d+)@s\.whatsapp\.net$/); return m ? '+' + (m[1].startsWith('55') ? m[1] : '55' + m[1]) : ''; };
 const mentioned = person => person.phone ? person.phone.replace(/\D/g,'') + '@s.whatsapp.net' : '';
 const letterValid = (text,letter) => norm(text).charAt(0) === letter.toLowerCase();
-const cached = (cat,word) => lexicon[['animal','pais','lugar'][cat]].includes(norm(word));
+const cached = (cat,word) => {
+  const value=norm(word);
+  if(cat===0) return lexicon.animal.includes(value);
+  if(cat===1) return lexicon.pais.includes(value) || lexicon.lugar.includes(value) || lexicon.cidade.includes(value);
+  return (lexicon[['animal','lugar','comida','cor','objeto','nome'][cat]] || []).includes(value);
+};
 const nowDate = () => new Date().toISOString();
 function formatScores(people) {
   const sorted=[...people].sort((a,b)=>b.total-a.total || a.name.localeCompare(b.name,'pt-BR'));
   return sorted.map((p,i)=> (i+1)+'º '+p.name+': *'+p.total+' pontos*').join('\n');
 }
 function beginMessage(game) {
-  return '🎲 *STOP — RODADA '+game.round+'*\n🔤 Letra: *'+game.letter+'*\n📝 Categorias na ordem: *Animal, País, Lugar*\n⏳ *75 segundos* para pensar e responder.\nEscrevam três respostas separadas por vírgulas. Com a letra M: *macaco, Marrocos, mercado*.\nEu vou mandar *PRONTO* ao fim do tempo e dar mais 35 segundos para quem não enviou. Respostas não precisam ter “bot”.\n🏁 A partida só termina quando alguém disser *bot encerrar jogo*.';
+  return '🎲 *STOP — RODADA '+game.round+'*\n🔤 Letra: *'+game.letter+'*\n📝 Categorias na ordem: *Animal, Lugar, Comida, Cor, Objeto, Nome*\n⏳ *75 segundos* para pensar e responder.\nRespondam na ordem, separados por vírgulas. Com M: *macaco, Marrocos, macarrão, marrom, martelo, Maria*. Respostas incompletas também valem! Ex.: *macaco, Marrocos,* pontua nas categorias certas. Lugar vale qualquer país, cidade ou lugar real.\nEu vou mandar *PRONTO* ao fim do tempo e dar só mais *5 segundos* para quem não enviou. Respostas não precisam ter “bot”.\n🏁 A partida só termina quando alguém disser *bot encerrar jogo*.';
 }
 async function checkWords(rows, letter, key) {
   const output=new Map();
@@ -50,7 +79,7 @@ async function checkWords(rows, letter, key) {
   }
   if(pending.length && key) {
     const ai=new GoogleGenAI({apiKey:key});
-    const prompt='Você é juiz de STOP. Cheque se estes termos realmente existem, se começam com a letra '+letter+' e se pertencem à categoria: Animal (animal real), País (Estado soberano reconhecido), Lugar (tipo real de estabelecimento ou lugar físico, ex. mercado). Não confunda cidade com país, marca com animal ou invente fatos. Se tiver dúvida, use valid=false. Devolva SOMENTE JSON {"results":[{"id":0,"valid":true}]}, com exatamente um objeto por item. Entrada: '+JSON.stringify(pending.map(x=>({id:x.id,category:CATEGORIES[x.cat],answer:x.word})));
+    const prompt='Você é juiz de STOP. Cheque se estes termos realmente existem, se começam com a letra '+letter+' e se pertencem à categoria: Animal (espécie/animal real), Lugar (qualquer país, cidade, região ou tipo de lugar físico real, como Londres, Marrocos, mercado), Comida (alimento real), Cor (cor existente), Objeto (objeto real), Nome (nome próprio de pessoa existente). Não invente fatos nem valide termos ambíguos que não se encaixem. Se tiver dúvida, use valid=false. Devolva SOMENTE JSON {"results":[{"id":0,"valid":true}]}, com exatamente um objeto por item. Entrada: '+JSON.stringify(pending.map(x=>({id:x.id,category:CATEGORIES[x.cat],answer:x.word})));
     for(const model of ['gemini-3.5-flash-lite','gemini-3.8-flash','gemini-3.6-flash']) {
       try {
         const response=await ai.models.generateContent({model,contents:prompt,config:{responseMimeType:'application/json',temperature:0,maxOutputTokens:1100}});
@@ -88,9 +117,9 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
     const scores=await players();
     if(scores.length===0) { await output('Ainda não encontrei os participantes cadastrados para esse grupo.'); return; }
     const letter=draw([]);
-    const game={_id:groupId,gameId:crypto.randomUUID(),status:'thinking',round:1,letter,used:[letter],deadline:Date.now()+THINK_MS,
+    const game={gameId:crypto.randomUUID(),status:'thinking',round:1,letter,used:[letter],deadline:Date.now()+THINK_MS,
       answers:[],scores,history:[],endRequested:false,updatedAt:nowDate()};
-    const result=await collection.updateOne({_id:groupId,status:{$nin:['thinking','collecting','scoring']}},{$set:game},{upsert:!current});
+    const result=await collection.updateOne({_id:groupId,status:{$nin:['thinking','collecting','scoring']}},{$set:game,$setOnInsert:{_id:groupId}},{upsert:!current});
     if(result.matchedCount||result.upsertedCount) await output('🎉 *Partida iniciada!* A pontuação ficará salva até *bot encerrar jogo*.\n\n'+beginMessage(game));
     else await output('Já existe um jogo em andamento.');
   }
@@ -103,7 +132,7 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
   async function handle({text,sender,senderName}) {
     const msg=String(text||'').trim();
     if(rulesCommand(msg)) {
-      await output('📖 *REGRAS DO STOP*\nCada rodada sorteia uma letra e usa a ordem *Animal, País, Lugar*. São 75 segundos para pensar e mais 35 após eu anunciar *PRONTO*. Respondam com 3 palavras separadas por vírgulas. Ex.: *macaco, Marrocos, mercado* (letra M).\n✅ Palavra existente e exclusiva: 10 pontos; válida repetida por alguém: 5; inválida ou em branco: 0.\n🎯 As rodadas continuam até *bot encerrar jogo*, que mostra o placar e marca o vencedor. Para iniciar: *bot stop*.');
+      await output('📖 *REGRAS DO STOP*\nCada rodada sorteia uma letra e usa a ordem *Animal, Lugar, Comida, Cor, Objeto, Nome*. Lugar aceita qualquer país, cidade ou lugar de verdade. São 75 segundos e apenas 5 depois de *PRONTO*. Respondam com vírgulas, podendo deixar categorias vazias. Ex. com M: *macaco, Marrocos,* vale pelos dois acertos. Em branco vale 0, mas os outros acertos pontuam.\n✅ Palavra existente e exclusiva: 10 pontos; válida repetida por alguém: 5; inválida ou em branco: 0.\n🎯 As rodadas continuam até *bot encerrar jogo*, que mostra o placar e marca o vencedor. Para iniciar: *bot stop*.');
       return true;
     }
     if(scoreCommand(msg)) {
@@ -133,7 +162,7 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
   }
   async function score(game) {
     const rows=[];
-    for(const answer of game.answers) for(let cat=0;cat<3;cat++) rows.push({id:rows.length,owner:answer.id,cat,word:answer.words[cat]});
+    for(const answer of game.answers) for(let cat=0;cat<CATEGORIES.length;cat++) rows.push({id:rows.length,owner:answer.id,cat,word:answer.words[cat]});
     const valid=await checkWords(rows,game.letter,getGeminiKey());
     const frequency=new Map();
     for(const row of rows) if(valid.get(row.id)?.valid) {
@@ -169,17 +198,18 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
     const written=await collection.updateOne({_id:groupId,gameId:game.gameId,status:'scoring'},{$set:next});
     if(!written.modifiedCount) return;
     const notes=details.length?details.join('\n'):'Ninguém enviou respostas nesta rodada.';
-    await output('📋 *RESULTADOS — RODADA '+game.round+' (letra '+game.letter+')*\n'+notes+'\n\n🏆 *PLACAR*\n'+formatScores(scores));
     if(completed) await final(scores,game.round);
+    else await output('📋 *RESULTADOS — RODADA '+game.round+' (letra '+game.letter+')*\n'+notes+'\n\n🏆 *PLACAR ACUMULADO*\n'+formatScores(scores));
     else await output(beginMessage({...game,...next}));
   }
   async function final(scores,rounds) {
     if(!scores?.length) { await output('🏁 Jogo encerrado, sem pontuação registrada.');return; }
     const highest=Math.max(...scores.map(p=>p.total));
+    if(highest===0) { await output('🏁 *FIM DO STOP — '+rounds+' rodadas!*\n\n🏆 *PLACAR FINAL ACUMULADO*\n'+formatScores(scores)+'\n\nNinguém marcou pontos nesta partida, então ficou sem vencedor.');return; }
     const winners=scores.filter(p=>p.total===highest);
     const mentions=winners.map(mentioned).filter(Boolean);
     const tagged=winners.map(p=>p.phone?'@'+p.phone.replace(/\D/g,''):p.name).join(' e ');
-    await output('🏁 *FIM DO JOGO STOP!* Foram '+rounds+' rodadas.\n\n🏆 *PLACAR FINAL*\n'+formatScores(scores)+'\n\n'+
+    await output('🏁 *FIM DO JOGO STOP!* Foram '+rounds+' rodadas.\n\n🏆 *PLACAR FINAL ACUMULADO*\n'+formatScores(scores)+'\n\n'+
       (winners.length===1?'🥇 *VENCEDOR(A):* ':'🥇 *EMPATE ENTRE:* ')+tagged+' — *'+highest+' pontos*! 🎉', mentions);
   }
   async function tick() {
@@ -190,7 +220,7 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
       if(!g || !activeState(g.status)) return;
       if(g.status==='thinking' && g.deadline<=Date.now() && !g.endRequested) {
         const changed=await collection.updateOne({_id:groupId,gameId:g.gameId,status:'thinking'},{$set:{status:'collecting',deadline:Date.now()+ANSWER_MS,updatedAt:nowDate()}});
-        if(changed.modifiedCount) await output('📣 *PRONTO!* O tempo de pensar acabou! ⏳ Quem ainda não mandou, tem *35 segundos* para enviar *Animal, País, Lugar*, separados por vírgulas.');
+        if(changed.modifiedCount) await output('📣 *PRONTO!* ⏳ Quem ainda não respondeu tem apenas *5 segundos*! Pode enviar respostas incompletas; cada acerto válido vale ponto.');
         return;
       }
       if(g.status==='collecting' && g.deadline>Date.now() && !g.endRequested) return;
