@@ -174,7 +174,7 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
     const letter=draw([]);
     const game={gameId:crypto.randomUUID(),status:'thinking',round:1,letter,used:[letter],deadline:Date.now()+THINK_MS,
       answers:[],scores,history:[],endRequested:false,updatedAt:nowDate()};
-    const result=await collection.updateOne({_id:groupId,status:{$nin:['thinking','collecting','scoring']}},{$set:game,$setOnInsert:{_id:groupId}},{upsert:!current});
+    const result=await collection.updateOne({_id:groupId,status:{$nin:['thinking','collecting','scoring','intermission']}},{$set:game,$setOnInsert:{_id:groupId}},{upsert:!current});
     if(result.matchedCount||result.upsertedCount) await output('🎉 *Partida iniciada!* A pontuação ficará salva até *bot encerrar jogo*.\n\n'+beginMessage(game));
     else await output('Já existe um jogo em andamento.');
   }
