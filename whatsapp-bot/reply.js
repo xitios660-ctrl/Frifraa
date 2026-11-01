@@ -65,7 +65,7 @@ function isTemporaryModelError(err) {
   return [404, 429, 500, 502, 503, 504].includes(code) || /\b(UNAVAILABLE|RESOURCE_EXHAUSTED)\b/i.test(message);
 }
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-async function reply({ key, text, history = [], model = 'gemini-3.5-flash-lite' }) {
+async function reply({ key, text, history = [], model = 'gemini-3.5-flash-lite', authorName = null }) {
   const ranking = await liveRanking(text);
   if (ranking) return ranking;
   if (!key) return fallback(text);
@@ -74,7 +74,7 @@ async function reply({ key, text, history = [], model = 'gemini-3.5-flash-lite' 
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: String(m.text || '').slice(0, 650) }]
   }));
-  const contents = [...context, { role: 'user', parts: [{ text: String(text).slice(0, 850) }] }];
+  const contents = [...context, { role: 'user', parts: [{ text: (authorName ? 'Mensagem de ' + authorName + ': ' : '') + String(text).slice(0, 850) }] }];
   const models = [...new Set([model, 'gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.8-flash'])].slice(0, 3);
   let lastError;
   for (let i = 0; i < models.length; i++) {
