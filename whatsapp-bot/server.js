@@ -304,6 +304,7 @@ async function main() {
   const record = await db.collection('settings').findOne({ _id: 'bot' });
   botEnabled = typeof record?.enabled === 'boolean' ? record.enabled : true;
   if (record && record.geminiKey) try { geminiKey = authStore.codec.decrypt(record.geminiKey); } catch { console.error('[settings] Chave Gemini indisponível; recadastre-a.'); }
+  if (!geminiKey && process.env.GEMINI_API_KEY) geminiKey = process.env.GEMINI_API_KEY.trim();
   ready = true;
   console.log('[bot] MongoDB conectado; configurações e sessão persistidas.');
   await startWhatsApp();
