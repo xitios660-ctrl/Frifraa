@@ -155,7 +155,8 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
       details.push('• '+person.name+': '+cells.join(' | '));
     }
     const result={round:game.round,letter:game.letter,details,closedAt:nowDate()};
-    const completed=!!game.endRequested;
+    const latest=await collection.findOne({_id:groupId,gameId:game.gameId},{projection:{endRequested:1}});
+    const completed=!!(game.endRequested || latest?.endRequested);
     const nextLetter=completed ? game.letter : draw(game.used);
     const nextUsed=completed ? game.used : game.used.length>=LETTERS.length ? [nextLetter] : [...game.used,nextLetter];
     const next={
@@ -187,7 +188,7 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
     try {
       let g=await collection.findOne({_id:groupId});
       if(!g || !activeState(g.status)) return;
-      if(g.status==='thinking' && g.deadline<=Date.now()) {
+      if(g.status==='thinking' && g.deadline<=Date.now() && !g.endRequested) {
         const changed=await collection.updateOne({_id:groupId,gameId:g.gameId,status:'thinking'},{$set:{status:'collecting',deadline:Date.now()+ANSWER_MS,updatedAt:nowDate()}});
         if(changed.modifiedCount) await output('📣 *PRONTO!* O tempo de pensar acabou! ⏳ Quem ainda não mandou, tem *35 segundos* para enviar *Animal, País, Lugar*, separados por vírgulas.');
         return;
@@ -209,6 +210,6 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
     } catch(error) { console.error('[stop] Problema no relógio/placar:',String(error.stack||error).slice(0,350)); }
     finally {running=false;}
   }
-  return {handle,tick};
+  return {handle,tick,setGroupId(next) { groupId=next; }};
 }
 module.exports={createStopGame,parseAnswers,startsGame,endGame,stopCommand,letterValid,knownValid:cached};
