@@ -6,7 +6,7 @@ const THINK_MS = 75_000, ANSWER_MS = 5_000;
 const LETTERS = 'ABCDEFGIJLMNOPRSTUV'.split('');
 const CATEGORIES = ['Animal', 'Lugar', 'Comida', 'Cor', 'Objeto', 'Nome'];
 const lexicon = {
-  animal: 'abelha aguia alce anta aranha arara avestruz baleia barata bode boi borboleta bufalo cachorro camaleao camelo canario capivara caranguejo carneiro cavalo cobra coelho coruja crocodilo cutia elefante ema escorpiao foca formiga galinha galo gato gaviao girafa golfinho gorila grilo hipopotamo hiena iguana jacare jaguar javali jiboia lagarta lagartixa leao lebre leopardo lobo lontra macaco mariposa morcego mosca mosquito mula onca ornitorrinco ovelha panda pantera papagaio pato peixe pinguim pirarucu polvo porco preguiça raposa rato rinoceronte sapo serpente tamandua tatu tigre toupeira tubarao urso vaca vespa zebra'.split(' '),
+  animal: 'abelha aguia alce anta aranha arara avestruz baleia barata bode boi borboleta bufalo cachorro camaleao camelo canario capivara caranguejo carneiro cavalo cobra coelho coruja crocodilo cutia elefante ema escorpiao foca formiga galinha galo gato gaviao girafa golfinho gorila grilo hipopotamo hiena iguana jacare jaguar javali jiboia lagarta lagartixa lagarto leao lebre leopardo lobo lontra macaco mariposa morcego mosca mosquito mula onca ornitorrinco ovelha panda pantera papagaio pato peixe pinguim pirarucu polvo porco preguiça raposa rato rinoceronte sapo serpente tamandua tatu tigre toupeira tubarao urso vaca vespa zebra'.split(' '),
   pais: ['afeganistao','africa do sul','albania','alemanha','andorra','angola','arabia saudita','argelia','armenia','australia','austria','bahamas','bangladesh','barbados','belgica','belize','benin','bolivia','botsuana','brasil','bulgaria','camaroes','canada','catar','chile','china','chipre','colombia','congo','coreia do sul','coreia do norte','costa rica','croacia','cuba','dinamarca','egito','emirados arabes unidos','equador','eslovaquia','eslovenia','espanha','estados unidos','estonia','etiopia','filipinas','finlandia','franca','gana','georgia','grecia','guatemala','guine','haiti','honduras','hungria','india','indonesia','ira','iraque','irlanda','islandia','israel','italia','jamaica','japao','jordania','kuwait','libano','liberia','libia','luxemburgo','madagascar','malasia','maldivas','mali','malta','marrocos','mexico','mocambique','monaco','mongolia','namibia','nepal','nicaragua','nigeria','noruega','nova zelandia','oma','panama','paraguai','peru','polonia','portugal','quenia','reino unido','republica dominicana','romenia','russia','senegal','servia','singapura','siria','somalia','sudao','suecia','suica','tailandia','taiwan','tanzania','timor leste','togo','tunisia','turquia','ucrania','uganda','uruguai','uzbequistao','venezuela','vietna','zambia','zimbabue'],
   lugar: 'aeroporto academia acougue adega aquario armazem avenida banco bar biblioteca bosque cafeteria campo canteiro casa castelo catedral cinema circo clube colegio condominio consultorio creche delegacia deserto escola escritorio estadio estacao fazenda feira farmacia floresta garagem hospital hotel igreja jardim laboratorio lago lanchonete livraria loja mercado mercearia montanha motel museu padaria parque patio praia praca predio restaurante rio rua sala salao supermercado teatro templo universidade vila zoologico'.split(' '),
   cidade: ['londres','lisboa','liverpool','las vegas','los angeles','leiria','limeira','londrina','mogi das cruzes','marilia','manaus','maceio','marraquexe','marrakech','nova york','natal','niteroi','osasco','paris','porto','recife','roma','rio de janeiro','salvador','santos','sao paulo','sao jose dos campos','toquio','teresina','uberlândia','veneza','vitoria','washington','zurique'],
@@ -57,8 +57,8 @@ const letterValid = (text,letter) => norm(text).charAt(0) === letter.toLowerCase
 const cached = (cat,word) => {
   const value=norm(word);
   if(cat===0) return lexicon.animal.includes(value);
-  if(cat===1) return lexicon.pais.includes(value) || lexicon.lugar.includes(value) || lexicon.cidade.includes(value);
-  return (lexicon[['animal','lugar','comida','cor','objeto','nome'][cat]] || []).includes(value);
+  if(cat===1) return lexicon.pais.includes(value) || lexicon.lugar.includes(value) || lexicon.cidade.some(place=>norm(place)===value);
+  return (lexicon[['animal','lugar','comida','cor','objeto','nome'][cat]] || []).some(item=>norm(item)===value);
 };
 const nowDate = () => new Date().toISOString();
 function formatScores(people) {
@@ -199,8 +199,10 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
     if(!written.modifiedCount) return;
     const notes=details.length?details.join('\n'):'Ninguém enviou respostas nesta rodada.';
     if(completed) await final(scores,game.round);
-    else await output('📋 *RESULTADOS — RODADA '+game.round+' (letra '+game.letter+')*\n'+notes+'\n\n🏆 *PLACAR ACUMULADO*\n'+formatScores(scores));
-    else await output(beginMessage({...game,...next}));
+    else {
+      await output('📋 *RESULTADOS — RODADA '+game.round+' (letra '+game.letter+')*\n'+notes+'\n\n🏆 *PLACAR ACUMULADO*\n'+formatScores(scores));
+      await output(beginMessage({...game,...next}));
+    }
   }
   async function final(scores,rounds) {
     if(!scores?.length) { await output('🏁 Jogo encerrado, sem pontuação registrada.');return; }
