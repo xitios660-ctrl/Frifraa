@@ -8,6 +8,7 @@ const pino = require('pino');
 const baileys = require('@whiskeysockets/baileys');
 const { createAuthStore } = require('./auth-store');
 const { reply, shouldWebSearch } = require('./reply');
+const { getWeatherReply } = require('./weather');
 const { createStopGame } = require('./stop-game');
 const { IMAGE_MODEL, DAILY_IMAGE_LIMIT, parseImageRequest, reserveImage, generateImage, imageErrorMessage } = require('./image');
 
@@ -278,6 +279,19 @@ async function handleMessage(message) {
     status.sent++;
     return;
   }
+  // Weather comes from a free live-data provider; never consumes Gemini quota.
+  const weatherReply = await getWeatherReply(text);
+  if (weatherReply) {
+    try {
+      await socket.sendPresenceUpdate('composing', jid).catch(() => {});
+      await sleep(Math.min(2300, Math.max(850, weatherReply.length * 8)));
+      if (!botEnabled || !status.connected || !isSelectedGroup(jid) || socket !== sock) return;
+      await socket.sendMessage(jid,{text:weatherReply});
+      status.sent++;
+      history.set(jid, [...oldHistory, {role:'user',text,authorName}, {role:'assistant',text:weatherReply}].slice(-8));
+    } finally { await socket.sendPresenceUpdate('paused', jid).catch(() => {}); }
+    return;
+  }
   const imageRequest = parseImageRequest(text);
   if (imageRequest) {
     const socket = sock;
@@ -323,8 +337,16 @@ async function handleMessage(message) {
   const webSearch = shouldWebSearch(text) ? await allowWebSearch(jid) : false;
   try { answer = await reply({ key: geminiKey, model: MODEL, text, history: oldHistory, authorName, useWebSearch: webSearch }); }
   catch (error) {
-    console.error('[gemini] Resposta indisponível:', String(error.message).slice(0, 150));
-    answer = await reply({ key: '', text });
+    const msg=String(error?.message||error);
+    const statusCode=Number(error?.status||error?.code||(msg.match(/"code"\s*:\s*(\d+)/)||[])[1]);
+    console.error('[gemini] Resposta indisponível:', msg.slice(0,150));
+    if (statusCode===429 || /quota|RESOURCE_EXHAUSTED|rate limit/i.test(msg)) {
+      answer='⚠️ O limite de uso do Gemini dessa conta foi atingido. Não consigo responder essa pergunta agora, mas o clima e o STOP continuam disponíveis. Tenta mais tarde! 🤖';
+    } else if (statusCode===401 || statusCode===403 || /API_KEY_INVALID/i.test(msg)) {
+      answer='A chave do Gemini está com problema de autorização. O administrador precisa conferir a configuração no painel. 🔑';
+    } else {
+      answer=await reply({key:'',text});
+    }
   }
   if (!botEnabled || !status.connected || !isSelectedGroup(jid) || socket !== sock || !answer) return;
   try {
