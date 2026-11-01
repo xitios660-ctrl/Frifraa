@@ -134,11 +134,45 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
     const saved=await peopleCol.find({groupId},{projection:{name:1,phoneE164:1}}).toArray();
     return saved.map(p=>({id:p.phoneE164,name:p.name,phone:p.phoneE164,total:0})).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
   };
-  async function choosePlayer(sender, knownName, game) {
-    const num=phone(sender);
-    let person=num && game.scores.find(p=>p.phone===num);
+  async function choosePlayer(senders, knownName, displayName, game) {
+    // WhatsApp may identify group authors by a private @lid instead of their phone JID.
+    const jids=[...new Set((Array.isArray(senders)?senders:[senders]).filter(v=>
+      typeof v==='string' && /^(\d+)(?::\d+)?@(lid|s\.whatsapp\.net)$/.test(v)
+    ).map(jid=>jid.replace(/:\d+@/,'@')))];
+    const numbers=jids.map(phone).filter(Boolean);
+    let person=game.scores.find(p=>numbers.includes(p.phone) ||
+      (Array.isArray(p.jids)&&p.jids.some(j=>jids.includes(j))));
     if(!person && knownName) person=game.scores.find(p=>norm(p.name)===norm(knownName));
-    return person;
+    const label=norm(displayName).replace(/^[@~\s]+/,'');
+    if(!person && label.length>=4) {
+      const matches=game.scores.filter(p=>{
+        const name=norm(p.name);
+        return name.length>=4 && (label===name || label.startsWith(name+' ') ||
+          name.startsWith(label+' ') || label.startsWith(name) || name.startsWith(label));
+      });
+      if(matches.length===1) person=matches[0];
+    }
+    if(person) {
+      const fresh=jids.filter(j=>!person.jids?.includes(j));
+      if(fresh.length) {
+        await collection.updateOne({_id:groupId,gameId:game.gameId,'scores.id':person.id},
+          {$addToSet:{'scores.$.jids':{$each:fresh}}});
+      }
+      return person;
+    }
+    // Auto-enroll only a genuine WhatsApp group participant, never a guessed name.
+    if(!jids.length) return null;
+    const number=numbers[0]||'';
+    const id=number||('jid:'+jids[0]);
+    const safeName=String(displayName||'').replace(/^~/,'').trim().slice(0,45);
+    const newcomer={id,phone:number,name:safeName||'Jogador '+jids[0].split('@')[0].slice(-4),
+      total:0,jids};
+    const inserted=await collection.updateOne(
+      {_id:groupId,gameId:game.gameId,'scores.id':{$ne:id}},
+      {$push:{scores:newcomer}});
+    if(inserted.modifiedCount) return newcomer;
+    const latest=await collection.findOne({_id:groupId,gameId:game.gameId},{projection:{scores:1}});
+    return latest?.scores?.find(p=>p.id===id) || null;
   }
   async function start() {
     const current=await collection.findOne({_id:groupId});
@@ -158,7 +192,7 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
     await output('🏁 *Encerramento solicitado!* Estou fechando as respostas desta rodada e calculando o resultado final.');
     await tick();
   }
-  async function handle({text,sender,senderName}) {
+  async function handle({text,sender,senderJids,senderName,displayName}) {
     const msg=String(text||'').trim();
     if(rulesCommand(msg)) {
       await output('📖 *REGRAS DO STOP*\nCada rodada sorteia uma letra e usa a ordem *Animal, Lugar, Comida, Cor, Objeto, Nome*. Lugar aceita qualquer país, cidade ou lugar de verdade. São 75 segundos e apenas 5 depois de *PRONTO*. Respondam com vírgulas ou uma palavra por linha, mesmo sem preencher todas as categorias. Ex. com M: *macaco, Marrocos,* vale pelos dois acertos. Em branco vale 0, mas os outros acertos pontuam.\n✅ Cada resposta certa vale *1 ponto*, mesmo se outro participante repetir. Resposta errada ou em branco vale *0*.\n🎯 As rodadas continuam até *bot encerrar jogo*, que mostra o placar e marca o vencedor. Para iniciar: *bot stop*.');
@@ -179,8 +213,8 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
     if(!words) return false;
     // Late submissions never count; do not use the message's original timestamp.
     if(Date.now()>g.deadline) return true;
-    const person=await choosePlayer(sender,senderName,g);
-    if(!person) { await output('Não consegui identificar quem enviou essas respostas. Use sua conta cadastrada no grupo, por favor.');return true; }
+    const person=await choosePlayer(senderJids||[sender],senderName,displayName,g);
+    if(!person) { await output('Recebi as respostas, mas não veio a identificação de participante do WhatsApp. Envie novamente, por favor.');return true; }
     if(g.answers.some(x=>x.id===person.id)) { await output('✅ '+person.name+', suas respostas já foram recebidas nesta rodada.');return true; }
     const updated=await collection.updateOne(
       {_id:groupId,gameId:g.gameId,round:g.round,status:{$in:['thinking','collecting']},deadline:{$gte:Date.now()},'answers.id':{$ne:person.id}},
