@@ -143,6 +143,33 @@ async function getVerifiedGroupSenderName(message, groupId) {
   }
   return null;
 }
+async function resolveStopSenderJids(jids, groupId) {
+  const out=new Set((Array.isArray(jids)?jids:[]).filter(x=>typeof x==='string'));
+  if([...out].some(x=>x.endsWith('@s.whatsapp.net'))) return [...out];
+  const lids=[...out].filter(x=>x.endsWith('@lid'));
+  if(!lids.length || !sock) return [...out];
+  // Baileys uses LID identifiers for some WhatsApp group senders.
+  const store=sock.signalRepository?.lidMapping;
+  for(const lid of lids) {
+    try {
+      const pn=await store?.getPNForLID?.(lid);
+      if(typeof pn==='string' && pn.endsWith('@s.whatsapp.net')) out.add(pn);
+    } catch (_) { /* Continue with group metadata when mapping is unavailable. */ }
+  }
+  if([...out].some(x=>x.endsWith('@s.whatsapp.net'))) return [...out];
+  try {
+    const group=await sock.groupMetadata(groupId);
+    for(const participant of group.participants || []) {
+      const aliases=[participant.id,participant.lid,participant.phoneNumber,participant.pn]
+        .filter(x=>typeof x==='string');
+      if(aliases.some(x=>out.has(x))) aliases.forEach(x=>out.add(x));
+    }
+  } catch(e) {
+    console.warn('[stop] Metadados dos participantes indisponíveis:',String(e.message).slice(0,90));
+  }
+  return [...out];
+}
+
 async function handleMessage(message) {
   if (!ready || !status.connected || !botEnabled || !sock) return;
   const jid = message.key && message.key.remoteJid;
@@ -162,7 +189,8 @@ async function handleMessage(message) {
       message.participantAlt, message.participant, message.participantPn
     ].filter(p => typeof p === 'string');
     const handled = await stopGame.handle({
-      text, senderJids, senderName: authorName, displayName: message.pushName || ''
+      text, senderJids, senderName: authorName, displayName: message.pushName || '',
+      resolveSenderJids: jids => resolveStopSenderJids(jids, jid)
     });
     if (handled) { status.received++; return; }
   }
