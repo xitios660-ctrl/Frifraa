@@ -81,7 +81,7 @@ function draw(used) {
   return remain[crypto.randomInt(remain.length || LETTERS.length)] || LETTERS[crypto.randomInt(LETTERS.length)];
 }
 const phone = jid => { const m=String(jid || '').match(/^(\d+)@s\.whatsapp\.net$/); return m ? '+' + (m[1].startsWith('55') ? m[1] : '55' + m[1]) : ''; };
-const mentioned = person => person.phone ? person.phone.replace(/\D/g,'') + '@s.whatsapp.net' : '';
+const mentioned = person => person.phone ? person.phone.replace(/\D/g,'') + '@s.whatsapp.net' : (person.jids||[]).find(j=>j.endsWith('@lid')||j.endsWith('@s.whatsapp.net')) || '';
 const letterValid = (text,letter) => norm(text).charAt(0) === letter.toLowerCase();
 const cached = (cat,word) => {
   const value=norm(word);
@@ -192,7 +192,7 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
     await output('🏁 *Encerramento solicitado!* Estou fechando as respostas desta rodada e calculando o resultado final.');
     await tick();
   }
-  async function handle({text,sender,senderJids,senderName,displayName}) {
+  async function handle({text,sender,senderJids,senderName,displayName,resolveSenderJids}) {
     const msg=String(text||'').trim();
     if(rulesCommand(msg)) {
       await output('📖 *REGRAS DO STOP*\nCada rodada sorteia uma letra e usa a ordem *Animal, Lugar, Comida, Cor, Objeto, Nome*. Lugar aceita qualquer país, cidade ou lugar de verdade. São 75 segundos e apenas 5 depois de *PRONTO*. Respondam com vírgulas ou uma palavra por linha, mesmo sem preencher todas as categorias. Ex. com M: *macaco, Marrocos,* vale pelos dois acertos. Em branco vale 0, mas os outros acertos pontuam.\n✅ Cada resposta certa vale *1 ponto*, mesmo se outro participante repetir. Resposta errada ou em branco vale *0*.\n🎯 As rodadas continuam até *bot encerrar jogo*, que mostra o placar e marca o vencedor. Para iniciar: *bot stop*.');
@@ -213,7 +213,8 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
     if(!words) return false;
     // Late submissions never count; do not use the message's original timestamp.
     if(Date.now()>g.deadline) return true;
-    const person=await choosePlayer(senderJids||[sender],senderName,displayName,g);
+    const resolvedJids=typeof resolveSenderJids==='function' ? await resolveSenderJids(senderJids||[sender]) : (senderJids||[sender]);
+    const person=await choosePlayer(resolvedJids,senderName,displayName,g);
     if(!person) { await output('Recebi as respostas, mas não veio a identificação de participante do WhatsApp. Envie novamente, por favor.');return true; }
     if(g.answers.some(x=>x.id===person.id)) { await output('✅ '+person.name+', suas respostas já foram recebidas nesta rodada.');return true; }
     const updated=await collection.updateOne(
@@ -268,7 +269,7 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
     if(highest===0) { await output('🏁 *FIM DO STOP — '+rounds+' rodadas!*\n\n🏆 *PLACAR FINAL ACUMULADO*\n'+formatScores(scores)+'\n\nNinguém marcou pontos nesta partida, então ficou sem vencedor.');return; }
     const winners=scores.filter(p=>p.total===highest);
     const mentions=winners.map(mentioned).filter(Boolean);
-    const tagged=winners.map(p=>p.phone?'@'+p.phone.replace(/\D/g,''):p.name).join(' e ');
+    const tagged=winners.map(p=>{ const jid=mentioned(p); return jid?'@'+jid.split('@')[0]:p.name; }).join(' e ');
     await output('🏁 *FIM DO JOGO STOP!* Foram '+rounds+' rodadas.\n\n🏆 *PLACAR FINAL ACUMULADO*\n'+formatScores(scores)+'\n\n'+
       (winners.length===1?'🥇 *VENCEDOR(A):* ':'🥇 *EMPATE ENTRE:* ')+tagged+' — *'+highest+' pontos*! 🎉', mentions);
   }
@@ -280,7 +281,12 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
       if(!g || !activeState(g.status)) return;
       if(g.status==='thinking' && g.deadline<=Date.now() && !g.endRequested) {
         const changed=await collection.updateOne({_id:groupId,gameId:g.gameId,status:'thinking'},{$set:{status:'collecting',deadline:Date.now()+ANSWER_MS,updatedAt:nowDate()}});
-        if(changed.modifiedCount) await output('📣 *PRONTO!* ⏳ Quem ainda não respondeu tem apenas *5 segundos*! Pode enviar respostas incompletas; cada acerto válido vale ponto.');
+        if(changed.modifiedCount) {
+          await output('📣 *PRONTO!* ⏳ Quem ainda não respondeu tem apenas *5 segundos*! Pode enviar respostas incompletas; cada acerto válido vale ponto.');
+          // Count the five seconds from the WhatsApp announcement, not from composing.
+          await collection.updateOne({_id:groupId,gameId:g.gameId,status:'collecting',endRequested:{$ne:true}},
+            {$set:{deadline:Date.now()+ANSWER_MS}});
+        }
         return;
       }
       if(g.status==='collecting' && g.deadline>Date.now() && !g.endRequested) return;
