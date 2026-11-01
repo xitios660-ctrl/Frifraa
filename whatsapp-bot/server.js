@@ -124,6 +124,21 @@ function rateAllowed(jid) {
   if (counters.size > 500) { counters.clear(); lastMessageAt.clear(); }
   return true;
 }
+async function getVerifiedGroupSenderName(message, groupId) {
+  // Never identify a user by their nickname: use the phone-number JID when WhatsApp provides it.
+  const candidates = [message.key?.participantAlt, message.key?.participant, message.participant];
+  for (const candidate of candidates) {
+    const match = typeof candidate === 'string' && candidate.match(/^(\d+)@s\.whatsapp\.net$/);
+    if (!match) continue;
+    const number = match[1].startsWith('55') ? match[1] : '55' + match[1];
+    const record = await db.collection('group_contacts').findOne(
+      { groupId, phoneE164: '+' + number },
+      { projection: { name: 1 } }
+    );
+    if (record && typeof record.name === 'string') return record.name;
+  }
+  return null;
+}
 async function handleMessage(message) {
   if (!ready || !status.connected || !botEnabled || !sock) return;
   const jid = message.key && message.key.remoteJid;
@@ -139,8 +154,9 @@ async function handleMessage(message) {
   status.received++;
   const socket = sock;
   const oldHistory = history.get(jid) || [];
+  const authorName = await getVerifiedGroupSenderName(message, jid).catch(() => null);
   let answer;
-  try { answer = await reply({ key: geminiKey, model: MODEL, text, history: oldHistory }); }
+  try { answer = await reply({ key: geminiKey, model: MODEL, text, history: oldHistory, authorName }); }
   catch (error) {
     console.error('[gemini] Resposta indisponível:', String(error.message).slice(0, 150));
     answer = await reply({ key: '', text });
