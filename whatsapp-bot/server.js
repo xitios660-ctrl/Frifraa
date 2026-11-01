@@ -108,10 +108,8 @@ function extractText(msg) {
 }
 function isSelectedGroup(jid) { return typeof jid === 'string' && jid.endsWith('@g.us') && !!selectedGroupId && jid === selectedGroupId; }
 function shouldAnswerGroupMessage(text) {
-  const message = String(text || '').trim();
-  return /[?？]/.test(message) ||
-    /\b(bot|robô|robo|assistente|chat|me ajuda|me explica|me conta|alguém sabe|alguem sabe)\b/i.test(message) ||
-    /^(oi|olá|ola|bom dia|boa tarde|boa noite|e aí|eai|fala|qual|quem|como|quando|onde|porque|por que|quanto|pode|vocês|voces|você|voce)\b/i.test(message);
+  // "bot" must be a separate word, regardless of case. No unsolicited replies.
+  return /(^|[^\p{L}\p{N}_])bot(?=$|[^\p{L}\p{N}_])/iu.test(String(text || ''));
 }
 function rateAllowed(jid) {
   const now = Date.now();
