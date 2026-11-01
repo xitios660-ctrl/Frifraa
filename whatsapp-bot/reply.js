@@ -6,13 +6,14 @@ const URLS = Object.freeze({
   tv: 'https://saimo-tv.pages.dev/movies'
 });
 const SYSTEM = [
-  'Você é o Bot, um assistente de IA amigável no grupo de WhatsApp de Mary, Kaique (Kaike), Gustavo e Jheniffer. Converse em português brasileiro de modo leve, espontâneo e acolhedor. Adapte-se à conversa, tenha humor quando apropriado e varie sua forma de responder. Seja transparente de que é uma IA quando perguntarem; nunca finja ser uma pessoa real.',
+  'Você é o Bot, um assistente de IA amigável no grupo de WhatsApp de Mary, Kaike, Gustavo e Jhenife. Converse em português brasileiro de modo leve, espontâneo e acolhedor. Adapte-se à conversa, tenha humor quando apropriado e varie sua forma de responder. Seja transparente de que é uma IA quando perguntarem; nunca finja ser uma pessoa real.',
   'Pode conversar sobre qualquer assunto cotidiano e responder perguntas gerais, curiosidades, ideias, estudos e conversas da turma. Também conhece: (1) Bomba Party, jogo online de arena de bombas para até quatro pessoas; (2) Cofrinho Party, desafio digital de 200 depósitos individuais por Mary, Kaique, Jheniffer e Gustavo; (3) Saimo TV, cujo link aparece abaixo.',
   'Links oficiais exatos: Bomba Party ' + URLS.jogo + ' | Cofrinho Party ' + URLS.cofrinho + ' | Saimo TV ' + URLS.tv,
   'No Cofrinho os botões de R$1 até R$200 somam R$20.100 por participante. A marcação no site é um registro, NÃO transfere dinheiro. Não afirme conhecer valores registrados ou contas individuais sem consultá-los.',
   'Não faça alegações sobre catálogo, filmes disponíveis, preços, permissões de exibição ou funcionalidade interna do Saimo TV; indique o link para consulta.',
   'Não invente funcionalidades do jogo. Pode explicar como entrar no site, selecionar personagem, chamar amigos e jogar na arena de bombas.',
-  'Não limite a conversa aos três sites. Seja útil em perguntas gerais, mas não invente informações sobre os participantes ou fatos recentes que não possa verificar. Para saúde, direito e dinheiro, ofereça apenas orientação geral cuidadosa, sem substituir profissionais.',
+  'Você pode responder assuntos gerais e, quando a busca do Google estiver habilitada, pesquisar fatos atuais, lançamentos, preços, acontecimentos, curiosidades e notícias. Sempre diferencie resultados pesquisados de memória; não invente fontes, datas, identidade ou verificações. Se não tiver busca disponível, admita a limitação. Para saúde, direito e dinheiro, ofereça orientação geral cuidadosa.',
+  'Se a mensagem indicar Nome do participante confirmado pelo WhatsApp, você pode usar esse nome com naturalidade. Se indicar identidade não confirmada, não adivinhe quem escreveu com base no nome de exibição e não atribua dados pessoais a alguém sem prova. Quando perguntarem quem está falando, responda só com o nome confirmado, senão explique que não deu para verificar.',
   'Não peça senha, CPF, dados bancários nem códigos do WhatsApp. Não envie propaganda, cobranças nem mensagens sem que a pessoa entre em contato.',
   'Converse como em um grupo de amigos: responda ao ponto, não envie automaticamente os links, não use saudação ou introdução idêntica a cada mensagem. Prefira 1 a 4 frases, até 700 caracteres, e emojis discretos. Se houver diálogo anterior, use o contexto. Não responda com mensagens em massa.'
 ].join('\n');
@@ -64,8 +65,15 @@ function isTemporaryModelError(err) {
   const code = Number(err?.status || err?.code || (message.match(/"code"\s*:\s*(\d+)/) || [])[1]);
   return [404, 429, 500, 502, 503, 504].includes(code) || /\b(UNAVAILABLE|RESOURCE_EXHAUSTED)\b/i.test(message);
 }
+function shouldWebSearch(text) {
+  const q=String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()
+    .replace(/(^|[^\p{L}\p{N}_])bot(?=$|[^\p{L}\p{N}_])/giu,' ').trim();
+  if (!q || /^(oi|ola|ola tudo bem|eai|bom dia|boa tarde|boa noite|obrigad[oa]|valeu|tchau|conta uma piada|me anima|fala comigo)[!? .]*$/.test(q)) return false;
+  return /(?:pesquis|procura|busca|internet|google|site|notici|ultim|recent|atual|agora|hoje|amanha|ontem|semana|mes passado|202[6-9]|preco|quanto custa|cotacao|dolar|clima|temperatura|previsao|evento|resultado|lancamento|quem ganhou|quem venceu|aconteceu|qual foi|qual e|qual o|quais sao|onde fica|quando|quem e|oque e|o que e|como funciona|e verdade|sera que)/i.test(q);
+}
+
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-async function reply({ key, text, history = [], model = 'gemini-3.5-flash-lite', authorName = null }) {
+async function reply({ key, text, history = [], model = 'gemini-3.5-flash-lite', authorName = null, useWebSearch = false }) {
   const ranking = await liveRanking(text);
   if (ranking) return ranking;
   if (!key) return fallback(text);
@@ -74,7 +82,7 @@ async function reply({ key, text, history = [], model = 'gemini-3.5-flash-lite',
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: String(m.text || '').slice(0, 650) }]
   }));
-  const contents = [...context, { role: 'user', parts: [{ text: (authorName ? 'Mensagem de ' + authorName + ': ' : '') + String(text).slice(0, 850) }] }];
+  const contents = [...context, { role: 'user', parts: [{ text: (authorName ? 'Participante confirmado pelo WhatsApp: ' + authorName + '. ' : 'Participante não identificado com segurança pelo WhatsApp. ') + 'Mensagem: ' + String(text).slice(0, 850) }] }];
   const models = [...new Set([model, 'gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.8-flash'])].slice(0, 3);
   let lastError;
   for (let i = 0; i < models.length; i++) {
@@ -82,10 +90,18 @@ async function reply({ key, text, history = [], model = 'gemini-3.5-flash-lite',
       const result = await ai.models.generateContent({
         model: models[i],
         contents,
-        config: { systemInstruction: SYSTEM, maxOutputTokens: 700, thinkingConfig: { thinkingLevel: 'low' } }
+        config: { systemInstruction: SYSTEM, maxOutputTokens: 950, thinkingConfig: { thinkingLevel: 'low' }, ...(useWebSearch ? { tools: [{ googleSearch: {} }] } : {}) }
       });
       const answer = String(result.text || '').trim();
-      if (answer) return answer.slice(0, 700);
+      if (answer) {
+        const pages = useWebSearch ? (result.candidates?.[0]?.groundingMetadata?.groundingChunks || [])
+          .map(chunk => chunk.web)
+          .filter(web => web && typeof web.uri === 'string' && /^https:\/\//i.test(web.uri))
+          .filter((web,i,array) => array.findIndex(other=>other.uri===web.uri)===i)
+          .slice(0,2) : [];
+        const urls = pages.length ? '\n\n🔎 Fontes: ' + pages.map(web=>web.uri).join(' • ') : '';
+        return answer.slice(0, Math.max(400, 1100-urls.length)) + urls;
+      }
       return fallback(text);
     } catch (err) {
       lastError = err;
@@ -97,4 +113,4 @@ async function reply({ key, text, history = [], model = 'gemini-3.5-flash-lite',
   throw lastError || new Error('Gemini temporariamente indisponível');
 }
 
-module.exports = { URLS, SYSTEM, fallback, reply };
+module.exports = { URLS, SYSTEM, fallback, reply, shouldWebSearch };
