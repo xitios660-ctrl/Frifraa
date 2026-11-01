@@ -2,18 +2,18 @@
 const crypto = require('node:crypto');
 const { GoogleGenAI } = require('@google/genai');
 
-const THINK_MS = 75_000, ANSWER_MS = 5_000;
+const THINK_MS = 75_000, ANSWER_MS = 5_000, INTERMISSION_MS = 5_000;
 const LETTERS = 'ABCDEFGIJLMNOPRSTUV'.split('');
 const CATEGORIES = ['Animal', 'Lugar', 'Comida', 'Cor', 'Objeto', 'Nome'];
 const lexicon = {
   animal: 'abelha aguia alce anta aranha arara avestruz baleia barata bode boi borboleta bufalo cachorro camaleao camelo canario capivara caranguejo carneiro cavalo cobra coelho coruja crocodilo cutia elefante ema escorpiao foca formiga galinha galo gato gaviao girafa golfinho gorila grilo hipopotamo hiena iguana jacare jaguar javali jiboia lagarta lagartixa lagarto leao lebre leopardo lobo lontra macaco mariposa morcego mosca mosquito mula onca ornitorrinco ovelha panda pantera papagaio pato peixe pinguim pirarucu polvo porco preguiça raposa rato rinoceronte sapo sucuri serpente tamandua tatu tigre toupeira tubarao urso vaca vespa zebra'.split(' '),
   pais: ['afeganistao','africa do sul','albania','alemanha','andorra','angola','arabia saudita','argelia','armenia','australia','austria','bahamas','bangladesh','barbados','belgica','belize','benin','bolivia','botsuana','brasil','bulgaria','camaroes','canada','catar','chile','china','chipre','colombia','congo','coreia do sul','coreia do norte','costa rica','croacia','cuba','dinamarca','egito','emirados arabes unidos','equador','eslovaquia','eslovenia','espanha','estados unidos','estonia','etiopia','filipinas','finlandia','franca','gana','georgia','grecia','guatemala','guine','haiti','honduras','hungria','india','indonesia','ira','iraque','irlanda','islandia','israel','italia','jamaica','japao','jordania','kuwait','libano','liberia','libia','luxemburgo','madagascar','malasia','maldivas','mali','malta','marrocos','mexico','mocambique','monaco','mongolia','namibia','nepal','nicaragua','nigeria','noruega','nova zelandia','oma','panama','paraguai','peru','polonia','portugal','quenia','reino unido','republica dominicana','romenia','russia','senegal','servia','singapura','siria','somalia','sudao','suecia','suica','tailandia','taiwan','tanzania','timor leste','togo','tunisia','turquia','ucrania','uganda','uruguai','uzbequistao','venezuela','vietna','zambia','zimbabue'],
   lugar: 'aeroporto academia acougue adega aquario armazem avenida banco bar biblioteca bosque cafeteria campo canteiro casa castelo catedral cinema circo clube colegio condominio consultorio creche delegacia deserto escola escritorio estadio estacao fazenda feira farmacia floresta garagem hospital hotel igreja jardim laboratorio lago lanchonete livraria loja mercado mercearia montanha motel museu padaria parque patio praia praca predio restaurante rio rua sala salao supermercado teatro templo universidade vila zoologico'.split(' '),
-  cidade: ['orlando','londres','lisboa','liverpool','las vegas','los angeles','leiria','limeira','londrina','mogi das cruzes','marilia','manaus','maceio','marraquexe','marrakech','nova york','natal','niteroi','osasco','paris','porto','recife','roma','rio de janeiro','salvador','santos','sao paulo','sao jose dos campos','toquio','teresina','uberlândia','veneza','vitoria','washington','zurique'],
-  comida: 'abacate abacaxi acai arroz acaraje almôndega almondega banana batata bolo brigadeiro broa carne coxinha chocolate churros canjica cenoura empada esfiha feijao frango feijoada goiabada hamburguer iogurte lasanha leite lentilha limao macarrao mandioca manga maracuja mel melancia mingau milho nhoque omelete ovo pao panqueca pastel peixe pizza pipoca pudim queijo quibe quindim risoto rabanada salada sanduiche sopa sorvete tapioca tomate torta uva vatapa vitamina waffle'.split(' ').concat(['arroz doce','batata frita','doce de leite']),
+  cidade: ['orlando','londres','lisboa','liverpool','las vegas','los angeles','leiria','limeira','londrina','mogi das cruzes','marilia','manaus','maceio','marraquexe','marrakech','nova york','natal','niteroi','osasco','paris','porto','recife','roma','rio de janeiro','salvador','santos','sao paulo','sao jose dos campos','toquio','teresina','taubate','uberlândia','veneza','vitoria','washington','zurique'],
+  comida: 'abacate abacaxi acai arroz acaraje almôndega almondega banana batata bolo brigadeiro broa carne coxinha chocolate churros canjica cenoura empada esfiha feijao frango feijoada goiabada hamburguer iogurte lasanha leite lentilha limao macarrao mandioca manga maracuja mel melancia mingau milho nhoque omelete ovo pao panqueca pastel peixe pizza pipoca pudim queijo quibe quindim risoto rabanada salada sanduiche sopa sorvete tapioca tomate torresmo torta uva vatapa vitamina waffle'.split(' ').concat(['arroz doce','batata frita','doce de leite']),
   cor: 'amarelo azul anil branco bege bordô bordo caramelo castanho ciano cinza coral creme dourado fucsia grafite grená grena indigo jade laranja lavanda lilas magenta marrom mostarda nude ocre oliva ouro prata preto rosa roxo rubi salmao turquesa verde vermelho violeta vinho'.split(' ').concat(['azul marinho','azul claro']),
-  objeto: 'agulha alicate almofada anel armario bolsa bola boneca boneco balde balanca bicicleta bota caderno cadeira cama caneca caneta capacete carro chave chinelo cobertor colher computador copo cortina dado escada espelho faca fogao garfo geladeira janela oculos saco lanterna lapis livro mala martelo mesa microfone mochila moeda monitor oculos panela papel pente prato quadro radio relogio sapato sofa telefone tesoura teclado travesseiro vaso violao xicara'.split(' ').concat(['guarda chuva']),
-  nome: 'ana alice amanda andre antonio arthur beatriz bruna bruno bianca caio camila carla carlos carolina clara daniel davi diego eduarda emilia felipe fernanda flavia gabriel gabi gustavo guilherme helena henrique isabela joao julia juliana kaique kaike karina laura larissa leonardo leticia lucas luiza maria mariana mariany marcos marina mateus matheus miguel nathalia natalia nicole osvaldo orlando olivia paulo pedro rafael raquel renata ricardo roberto samuel sofia thiago valentina vitoria yasmin'.split(' ')
+  objeto: 'agulha alicate almofada anel armario bolsa bola boneca boneco balde balanca bicicleta bota caderno cadeira cama caneca caneta capacete carro chave chinelo cobertor colher computador copo cortina dado escada espelho faca fogao garfo geladeira janela oculos saco lanterna lapis livro mala martelo mesa microfone mochila moeda monitor oculos panela papel pente prato quadro radio relogio sapato sofa telefone tenis tesoura teclado travesseiro vaso violao xicara'.split(' ').concat(['guarda chuva']),
+  nome: 'ana alice amanda andre antonio arthur beatriz bruna bruno bianca caio camila carla carlos carolina clara daniel davi diego eduarda emilia felipe fernanda flavia gabriel gabi gustavo guilherme helena henrique isabela joao julia juliana kaique kaike karina laura larissa leonardo leticia lucas luiza maria mariana mariany marcos marina mateus matheus miguel nathalia natalia nicole osvaldo orlando olivia paulo pedro rafael raquel renata ricardo roberto samuel sofia thais thiago valentina vitoria yasmin'.split(' ')
 };
 const norm = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/\s+/g,' ');
 const cmd = value => norm(value).replace(/[!?.]+$/g,'').trim();
@@ -22,7 +22,7 @@ const endGame = text => /^bot\s+encerrar\s+jogo$/i.test(cmd(text));
 const scoreCommand = text => /^bot\s+(?:stop\s+)?(?:placar|pontuacao|pontos|ranking)$/i.test(cmd(text));
 const rulesCommand = text => /^bot\s+(?:(?:stop|adedonha|adedanha)\s+)?(?:regras|ajuda)$/i.test(cmd(text));
 const stopCommand = text => startsGame(text) || endGame(text) || scoreCommand(text) || rulesCommand(text);
-const activeState = state => ['thinking','collecting','scoring'].includes(state);
+const activeState = state => ['thinking','collecting','scoring','intermission'].includes(state);
 // Answers follow Animal, Lugar, Comida, Cor, Objeto, Nome.
 // Empty slots and unfinished submissions are accepted and score only for valid cells.
 // Named fields can be submitted in any order; plain comma-separated fields use positional order.
@@ -46,7 +46,7 @@ const parseAnswers = text => {
     return answers.some(Boolean)?answers:null;
   }
   // Six positions or explicit empty commas have unambiguous category slots.
-  if (parts.length===CATEGORIES.length || (raw.includes(',') && parts.some(x=>!x))) {
+  if (parts.some(x=>!x)) {
     parts.forEach((part,i)=>{answers[i]=part;});
     return answers.some(Boolean)?answers:null;
   }
@@ -180,6 +180,12 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
   }
   async function stop(game) {
     if(!game || !activeState(game.status)) { await output('Não há partida em andamento. Para começar: *bot stop*.');return; }
+    if(game.status==='intermission') {
+      const finished=await collection.updateOne({_id:groupId,gameId:game.gameId,status:'intermission'},
+        {$set:{status:'complete',endRequested:true,deadline:null,updatedAt:nowDate()}});
+      if(finished.modifiedCount) await final(game.scores,game.round-1);
+      return;
+    }
     await collection.updateOne({_id:groupId,gameId:game.gameId,status:{$in:['thinking','collecting','scoring']}},{$set:{endRequested:true,deadline:Date.now(),updatedAt:nowDate()}});
     await output('🏁 *Encerramento solicitado!* Estou fechando as respostas desta rodada e calculando o resultado final.');
     await tick();
@@ -242,9 +248,9 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
     const next={
       scores,history:[...(game.history||[]).slice(-59),result],
       answers:[],updatedAt:nowDate(),scoreLeaseUntil:null,
-      status:completed?'complete':'thinking',
+      status:completed?'complete':'intermission',
       round:completed?game.round:game.round+1,
-      letter:nextLetter,used:nextUsed,deadline:completed?null:Date.now()+THINK_MS
+      letter:nextLetter,used:nextUsed,deadline:completed?null:Date.now()+INTERMISSION_MS+1500
     };
     const written=await collection.updateOne({_id:groupId,gameId:game.gameId,status:'scoring'},{$set:next});
     if(!written.modifiedCount) return;
@@ -252,7 +258,11 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
     if(completed) await final(scores,game.round);
     else {
       await output('📋 *RESULTADOS — RODADA '+game.round+' (letra '+game.letter+')*\n'+notes+'\n\n🏆 *PLACAR ACUMULADO*\n'+formatScores(scores));
-      await output(beginMessage({...game,...next}));
+      // The intermission starts only after the full result is sent to WhatsApp.
+      await collection.updateOne({_id:groupId,gameId:game.gameId,status:'intermission'},
+        {$set:{deadline:Date.now()+INTERMISSION_MS,updatedAt:nowDate()}});
+      // The one-second clock will launch the next round after five seconds.
+
     }
   }
   async function final(scores,rounds) {
@@ -271,6 +281,16 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
     try {
       let g=await collection.findOne({_id:groupId});
       if(!g || !activeState(g.status)) return;
+      if(g.status==='intermission') {
+        if(g.deadline > Date.now()) return;
+        const launched=await collection.updateOne({_id:groupId,gameId:g.gameId,status:'intermission',endRequested:{$ne:true},deadline:{$lte:Date.now()}},
+          {$set:{status:'thinking',deadline:Date.now()+THINK_MS+2000,updatedAt:nowDate()}});
+        if(!launched.modifiedCount) return;
+        await output(beginMessage(g));
+        await collection.updateOne({_id:groupId,gameId:g.gameId,status:'thinking',endRequested:{$ne:true}},
+          {$set:{deadline:Date.now()+THINK_MS}});
+        return;
+      }
       if(g.status==='thinking' && g.deadline<=Date.now() && !g.endRequested) {
         const changed=await collection.updateOne({_id:groupId,gameId:g.gameId,status:'thinking'},{$set:{status:'collecting',deadline:Date.now()+ANSWER_MS,updatedAt:nowDate()}});
         if(changed.modifiedCount) {
