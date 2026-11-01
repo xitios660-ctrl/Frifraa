@@ -8,6 +8,7 @@ const pino = require('pino');
 const baileys = require('@whiskeysockets/baileys');
 const { createAuthStore } = require('./auth-store');
 const { reply } = require('./reply');
+const { IMAGE_MODEL, DAILY_IMAGE_LIMIT, parseImageRequest, reserveImage, generateImage, imageErrorMessage } = require('./image');
 
 const makeWASocket = baileys.default || baileys.makeWASocket;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
@@ -91,11 +92,13 @@ app.post('/api/logout', guard, (_req, res) => {
 
 const status = { phase: 'iniciando', connected: false, qr: null, lastError: '', since: null, received: 0, sent: 0, profileName: 'Pendente', profilePhoto: 'Pendente' };
 let client, db, authStore, sock, reconnectTimer, launching = false;
-let botEnabled = true, geminiKey = '', selectedGroupId = '', ready = false, stopping = false;
+let botEnabled = true, imagesEnabled = false, geminiKey = '', selectedGroupId = '', ready = false, stopping = false;
 const history = new Map();
 const queues = new Map();
 const counters = new Map();
 const lastMessageAt = new Map();
+let lastImageRequestAt = 0;
+let imagesSent = 0;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 function extractText(msg) {
   let m = msg && msg.message;
@@ -155,6 +158,47 @@ async function handleMessage(message) {
   const socket = sock;
   const oldHistory = history.get(jid) || [];
   const authorName = await getVerifiedGroupSenderName(message, jid).catch(() => null);
+  const imageRequest = parseImageRequest(text);
+  if (imageRequest) {
+    const socket = sock;
+    let resultMessage = '';
+    if (!imagesEnabled) {
+      resultMessage = 'Posso criar imagens também! 🎨 O administrador precisa ativar essa função no painel, pois a API Gemini cobra por imagem.';
+    } else if (imageRequest.needsDetail) {
+      resultMessage = 'Me conta como você quer a imagem: assunto, estilo, cores e formato. 🎨';
+    } else if (!geminiKey) {
+      resultMessage = 'Preciso da chave Gemini configurada no painel para criar imagens. 🎨';
+    } else if (Date.now() - lastImageRequestAt < 120000) {
+      resultMessage = 'Para evitar pedidos demais, espere uns 2 minutinhos antes da próxima imagem, tá? 🎨';
+    } else {
+      try {
+        const allowed = await reserveImage(db, jid);
+        if (!allowed) {
+          resultMessage = 'O grupo já usou as ' + DAILY_IMAGE_LIMIT + ' tentativas de imagem de hoje. Amanhã tem mais! 🎨';
+        } else {
+          lastImageRequestAt = Date.now();
+          await socket.sendPresenceUpdate('composing', jid).catch(() => {});
+          const generated = await generateImage({ key: geminiKey, request: imageRequest });
+          if (!botEnabled || !imagesEnabled || !status.connected || !isSelectedGroup(jid) || socket !== sock) return;
+          await socket.sendMessage(jid, { image: generated.buffer, mimetype: generated.mimetype, caption: '🎨 Prontinho! Imagem criada com o Gemini.' });
+          status.sent++;
+          imagesSent++;
+          history.set(jid, [...oldHistory, { role: 'user', text }, { role: 'assistant', text: '[Imagem gerada e enviada ao grupo]' }].slice(-6));
+          return;
+        }
+      } catch (error) {
+        console.error('[gemini-image] Falha:', String(error.message || error).slice(0, 120));
+        resultMessage = imageErrorMessage(error);
+      } finally {
+        await socket.sendPresenceUpdate('paused', jid).catch(() => {});
+      }
+    }
+    if (resultMessage && botEnabled && status.connected && isSelectedGroup(jid) && socket === sock) {
+      await socket.sendMessage(jid, { text: resultMessage });
+      status.sent++;
+    }
+    return;
+  }
   let answer;
   try { answer = await reply({ key: geminiKey, model: MODEL, text, history: oldHistory, authorName }); }
   catch (error) {
@@ -292,7 +336,8 @@ app.get('/api/health', (_req, res) => res.status(ready ? 200 : 503).json({ servi
 app.get('/api/status', guard, (_req, res) => res.json({
   phase: status.phase, connected: status.connected, since: status.since,
   lastError: status.lastError, received: status.received, sent: status.sent,
-  botEnabled, geminiConfigured: !!geminiKey, model: MODEL, groupOnly: true, selectedGroupId, profileName: status.profileName, profilePhoto: status.profilePhoto
+  botEnabled, geminiConfigured: !!geminiKey, model: MODEL, groupOnly: true, selectedGroupId, profileName: status.profileName, profilePhoto: status.profilePhoto,
+  imagesEnabled, imageModel: IMAGE_MODEL, dailyImageLimit: DAILY_IMAGE_LIMIT, imagesSent
 }));
 async function applyBotName(socket) {
   if (!socket || !socket.user || !socket.user.id) return;
@@ -367,6 +412,10 @@ app.post('/api/settings', guard, async (req, res) => {
       }
       update.groupId = groupId;
     }
+    if ('imagesEnabled' in req.body) {
+      if (typeof req.body.imagesEnabled !== 'boolean') return res.status(400).json({ error: 'Estado da geração de imagens inválido.' });
+      update.imagesEnabled = req.body.imagesEnabled;
+    }
     if ('geminiKey' in req.body) {
       const value = String(req.body.geminiKey || '').trim();
       if (value && (value.length < 15 || value.length > 500)) return res.status(400).json({ error: 'Chave Gemini inválida.' });
@@ -375,9 +424,10 @@ app.post('/api/settings', guard, async (req, res) => {
     if (!Object.keys(update).length) return res.status(400).json({ error: 'Nenhuma configuração informada.' });
     await db.collection('settings').updateOne({ _id: 'bot' }, { $set: update }, { upsert: true });
     if ('enabled' in update) botEnabled = update.enabled;
+    if ('imagesEnabled' in update) imagesEnabled = update.imagesEnabled;
     if ('groupId' in update) { selectedGroupId = update.groupId; history.clear(); queues.clear(); }
     if ('geminiKey' in update) geminiKey = String(req.body.geminiKey).trim();
-    return res.json({ ok: true, botEnabled, geminiConfigured: !!geminiKey, selectedGroupId });
+    return res.json({ ok: true, botEnabled, geminiConfigured: !!geminiKey, selectedGroupId, imagesEnabled });
   } catch (error) {
     console.error('[settings]', error.message);
     return res.status(500).json({ error: 'Não foi possível salvar a configuração.' });
@@ -429,6 +479,7 @@ async function main() {
   authStore = createAuthStore(db, SESSION_SECRET);
   const record = await db.collection('settings').findOne({ _id: 'bot' });
   botEnabled = typeof record?.enabled === 'boolean' ? record.enabled : true;
+  imagesEnabled = typeof record?.imagesEnabled === 'boolean' ? record.imagesEnabled : false;
   selectedGroupId = !GROUP_INVITE_CODE && typeof record?.groupId === 'string' && record.groupId.endsWith('@g.us') ? record.groupId : '';
   if (record && record.geminiKey) try { geminiKey = authStore.codec.decrypt(record.geminiKey); } catch { console.error('[settings] Chave Gemini indisponível; recadastre-a.'); }
   if (!geminiKey && process.env.GEMINI_API_KEY) geminiKey = process.env.GEMINI_API_KEY.trim();
