@@ -1,0 +1,22 @@
+{
+  "name": "bomba-party-whatsapp-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Painel WhatsApp Baileys + Gemini para a turma Bomba Party",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@google/genai": "^1.20.0",
+    "@whiskeysockets/baileys": "^6.7.21",
+    "express": "^4.21.2",
+    "mongodb": "^6.20.0",
+    "pino": "^9.6.0",
+    "qrcode": "^1.5.4"
+  }
+}
