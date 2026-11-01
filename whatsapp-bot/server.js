@@ -90,7 +90,7 @@ app.post('/api/logout', guard, (_req, res) => {
 
 const status = { phase: 'iniciando', connected: false, qr: null, lastError: '', since: null, received: 0, sent: 0 };
 let client, db, authStore, sock, reconnectTimer, launching = false;
-let botEnabled = true, geminiKey = '', ready = false, stopping = false;
+let botEnabled = true, geminiKey = '', selectedGroupId = '', ready = false, stopping = false;
 const history = new Map();
 const queues = new Map();
 const counters = new Map();
@@ -106,7 +106,13 @@ function extractText(msg) {
   }
   return (m && (m.conversation || (m.extendedTextMessage && m.extendedTextMessage.text) || (m.imageMessage && m.imageMessage.caption))) || '';
 }
-function isPrivate(jid) { return typeof jid === 'string' && (jid.endsWith('@s.whatsapp.net') || jid.endsWith('@lid')); }
+function isSelectedGroup(jid) { return typeof jid === 'string' && jid.endsWith('@g.us') && !!selectedGroupId && jid === selectedGroupId; }
+function shouldAnswerGroupMessage(text) {
+  const message = String(text || '').trim();
+  return /[?？]/.test(message) ||
+    /\b(bot|robô|robo|assistente|chat|me ajuda|me explica|me conta|alguém sabe|alguem sabe)\b/i.test(message) ||
+    /^(oi|olá|ola|bom dia|boa tarde|boa noite|e aí|eai|fala|qual|quem|como|quando|onde|porque|por que|quanto|pode|vocês|voces|você|voce)\b/i.test(message);
+}
 function rateAllowed(jid) {
   const now = Date.now();
   const prev = counters.get(jid) || [];
@@ -122,9 +128,9 @@ function rateAllowed(jid) {
 async function handleMessage(message) {
   if (!ready || !status.connected || !botEnabled || !sock) return;
   const jid = message.key && message.key.remoteJid;
-  if (!isPrivate(jid) || message.key.fromMe || !message.key.id) return;
+  if (!isSelectedGroup(jid) || message.key.fromMe || !message.key.id) return;
   const text = extractText(message).trim().slice(0, 1200);
-  if (!text) return;
+  if (!text || !shouldAnswerGroupMessage(text)) return;
   const sentAt = Number(message.messageTimestamp || 0);
   if (sentAt && Math.abs(Date.now() / 1000 - sentAt) > 600) return;
   const messageId = jid + ':' + message.key.id;
@@ -140,11 +146,11 @@ async function handleMessage(message) {
     console.error('[gemini] Resposta indisponível:', String(error.message).slice(0, 150));
     answer = await reply({ key: '', text });
   }
-  if (!botEnabled || !status.connected || socket !== sock || !answer) return;
+  if (!botEnabled || !status.connected || !isSelectedGroup(jid) || socket !== sock || !answer) return;
   try {
     await socket.sendPresenceUpdate('composing', jid);
     await sleep(Math.min(5000, Math.max(900, 350 + answer.length * 16)));
-    if (!botEnabled || !status.connected || socket !== sock) return;
+    if (!botEnabled || !status.connected || !isSelectedGroup(jid) || socket !== sock) return;
     await socket.sendMessage(jid, { text: answer });
     status.sent++;
     history.set(jid, [...oldHistory, { role: 'user', text }, { role: 'assistant', text: answer }].slice(-6));
@@ -153,7 +159,7 @@ async function handleMessage(message) {
 }
 function queueContact(msg) {
   const jid = msg.key && msg.key.remoteJid;
-  if (!isPrivate(jid)) return;
+  if (!isSelectedGroup(jid)) return;
   const prior = queues.get(jid) || Promise.resolve();
   const next = prior.catch(() => {}).then(() => handleMessage(msg));
   queues.set(jid, next);
@@ -228,8 +234,22 @@ app.get('/api/health', (_req, res) => res.status(ready ? 200 : 503).json({ servi
 app.get('/api/status', guard, (_req, res) => res.json({
   phase: status.phase, connected: status.connected, since: status.since,
   lastError: status.lastError, received: status.received, sent: status.sent,
-  botEnabled, geminiConfigured: !!geminiKey, model: MODEL
+  botEnabled, geminiConfigured: !!geminiKey, model: MODEL, groupOnly: true, selectedGroupId
 }));
+app.get('/api/groups', guard, async (_req, res) => {
+  if (!status.connected || !sock) return res.status(409).json({ error: 'Conecte o WhatsApp para ver os grupos.' });
+  try {
+    const joined = await sock.groupFetchAllParticipating();
+    const groups = Object.values(joined || {}).filter(g => g && typeof g.id === 'string' && g.id.endsWith('@g.us')).map(g => ({
+      id: g.id, name: String(g.subject || 'Grupo sem nome').slice(0, 100),
+      members: Array.isArray(g.participants) ? g.participants.length : null
+    })).sort((a,b) => a.name.localeCompare(b.name, 'pt-BR'));
+    return res.json({ groups, selectedGroupId });
+  } catch (e) {
+    console.error('[grupos] Consulta indisponível:', String(e.message).slice(0, 100));
+    return res.status(502).json({ error: 'Não foi possível listar os grupos. Tente atualizar.' });
+  }
+});
 app.get('/api/qr', guard, async (_req, res) => {
   if (!status.qr) return res.json({ available: false, phase: status.phase });
   try { return res.json({ available: true, image: await QRCode.toDataURL(status.qr, { margin: 2, width: 450, errorCorrectionLevel: 'M' }) }); }
@@ -242,6 +262,18 @@ app.post('/api/settings', guard, async (req, res) => {
       if (typeof req.body.enabled !== 'boolean') return res.status(400).json({ error: 'Estado inválido.' });
       update.enabled = req.body.enabled;
     }
+    if ('groupId' in req.body) {
+      const groupId = req.body.groupId;
+      if (typeof groupId !== 'string' || (groupId && (!/^\d+(?:-\d+)?@g\.us$/.test(groupId) || groupId.length > 120))) {
+        return res.status(400).json({ error: 'Grupo do WhatsApp inválido.' });
+      }
+      if (groupId) {
+        if (!status.connected || !sock) return res.status(409).json({ error: 'Conecte o WhatsApp antes de escolher o grupo.' });
+        const groups = await sock.groupFetchAllParticipating();
+        if (!Object.hasOwn(groups || {}, groupId)) return res.status(400).json({ error: 'Esse grupo não pertence ao WhatsApp conectado.' });
+      }
+      update.groupId = groupId;
+    }
     if ('geminiKey' in req.body) {
       const value = String(req.body.geminiKey || '').trim();
       if (value && (value.length < 15 || value.length > 500)) return res.status(400).json({ error: 'Chave Gemini inválida.' });
@@ -250,8 +282,9 @@ app.post('/api/settings', guard, async (req, res) => {
     if (!Object.keys(update).length) return res.status(400).json({ error: 'Nenhuma configuração informada.' });
     await db.collection('settings').updateOne({ _id: 'bot' }, { $set: update }, { upsert: true });
     if ('enabled' in update) botEnabled = update.enabled;
+    if ('groupId' in update) { selectedGroupId = update.groupId; history.clear(); queues.clear(); }
     if ('geminiKey' in update) geminiKey = String(req.body.geminiKey).trim();
-    return res.json({ ok: true, botEnabled, geminiConfigured: !!geminiKey });
+    return res.json({ ok: true, botEnabled, geminiConfigured: !!geminiKey, selectedGroupId });
   } catch (error) {
     console.error('[settings]', error.message);
     return res.status(500).json({ error: 'Não foi possível salvar a configuração.' });
@@ -303,6 +336,7 @@ async function main() {
   authStore = createAuthStore(db, SESSION_SECRET);
   const record = await db.collection('settings').findOne({ _id: 'bot' });
   botEnabled = typeof record?.enabled === 'boolean' ? record.enabled : true;
+  selectedGroupId = typeof record?.groupId === 'string' && record.groupId.endsWith('@g.us') ? record.groupId : '';
   if (record && record.geminiKey) try { geminiKey = authStore.codec.decrypt(record.geminiKey); } catch { console.error('[settings] Chave Gemini indisponível; recadastre-a.'); }
   if (!geminiKey && process.env.GEMINI_API_KEY) geminiKey = process.env.GEMINI_API_KEY.trim();
   ready = true;
