@@ -269,6 +269,7 @@ async function activateInvitedGroup(socket) {
       { _id: 'bot' }, { $set: { groupId: target, groupUpdatedAt: new Date() } }, { upsert: true }
     );
     selectedGroupId = target;
+    stopGame?.setGroupId(target);
     history.clear();
     queues.clear();
     status.lastError = '';
@@ -434,7 +435,7 @@ app.post('/api/settings', guard, async (req, res) => {
     await db.collection('settings').updateOne({ _id: 'bot' }, { $set: update }, { upsert: true });
     if ('enabled' in update) botEnabled = update.enabled;
     if ('imagesEnabled' in update) imagesEnabled = update.imagesEnabled;
-    if ('groupId' in update) { selectedGroupId = update.groupId; history.clear(); queues.clear(); }
+    if ('groupId' in update) { selectedGroupId = update.groupId; stopGame?.setGroupId(selectedGroupId); history.clear(); queues.clear(); }
     if ('geminiKey' in update) geminiKey = String(req.body.geminiKey).trim();
     return res.json({ ok: true, botEnabled, geminiConfigured: !!geminiKey, selectedGroupId, imagesEnabled });
   } catch (error) {
