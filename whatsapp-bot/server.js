@@ -8,6 +8,7 @@ const pino = require('pino');
 const baileys = require('@whiskeysockets/baileys');
 const { createAuthStore } = require('./auth-store');
 const { reply } = require('./reply');
+const { createStopGame } = require('./stop-game');
 const { IMAGE_MODEL, DAILY_IMAGE_LIMIT, parseImageRequest, reserveImage, generateImage, imageErrorMessage } = require('./image');
 
 const makeWASocket = baileys.default || baileys.makeWASocket;
@@ -91,7 +92,7 @@ app.post('/api/logout', guard, (_req, res) => {
 });
 
 const status = { phase: 'iniciando', connected: false, qr: null, lastError: '', since: null, received: 0, sent: 0, profileName: 'Pendente', profilePhoto: 'Pendente' };
-let client, db, authStore, sock, reconnectTimer, launching = false;
+let client, db, authStore, sock, reconnectTimer, launching = false, stopGame = null, gameClock = null;
 let botEnabled = true, imagesEnabled = false, geminiKey = '', selectedGroupId = '', ready = false, stopping = false;
 const history = new Map();
 const queues = new Map();
@@ -147,17 +148,25 @@ async function handleMessage(message) {
   const jid = message.key && message.key.remoteJid;
   if (!isSelectedGroup(jid) || message.key.fromMe || !message.key.id) return;
   const text = extractText(message).trim().slice(0, 1200);
-  if (!text || !shouldAnswerGroupMessage(text)) return;
+  if (!text) return;
   const sentAt = Number(message.messageTimestamp || 0);
   if (sentAt && Math.abs(Date.now() / 1000 - sentAt) > 600) return;
   const messageId = jid + ':' + message.key.id;
   const seen = await db.collection('whatsapp_seen').updateOne(
     { _id: messageId }, { $setOnInsert: { createdAt: new Date() } }, { upsert: true });
-  if (!seen.upsertedCount || !rateAllowed(jid)) return;
+  if (!seen.upsertedCount) return;
+  const authorName = await getVerifiedGroupSenderName(message, jid).catch(() => null);
+  if (stopGame) {
+    const participant = [message.key?.participantAlt, message.key?.participant, message.participant]
+      .find(p => typeof p === 'string' && p.endsWith('@s.whatsapp.net')) ||
+      message.key?.participantAlt || message.key?.participant || '';
+    const handled = await stopGame.handle({ text, sender: participant, senderName: authorName });
+    if (handled) { status.received++; return; }
+  }
+  if (!shouldAnswerGroupMessage(text) || !rateAllowed(jid)) return;
   status.received++;
   const socket = sock;
   const oldHistory = history.get(jid) || [];
-  const authorName = await getVerifiedGroupSenderName(message, jid).catch(() => null);
   const imageRequest = parseImageRequest(text);
   if (imageRequest) {
     const socket = sock;
@@ -483,6 +492,18 @@ async function main() {
   selectedGroupId = !GROUP_INVITE_CODE && typeof record?.groupId === 'string' && record.groupId.endsWith('@g.us') ? record.groupId : '';
   if (record && record.geminiKey) try { geminiKey = authStore.codec.decrypt(record.geminiKey); } catch { console.error('[settings] Chave Gemini indisponível; recadastre-a.'); }
   if (!geminiKey && process.env.GEMINI_API_KEY) geminiKey = process.env.GEMINI_API_KEY.trim();
+  stopGame = createStopGame({
+    db,
+    groupId: selectedGroupId || null,
+    getGeminiKey: () => geminiKey,
+    isActive: () => botEnabled && status.connected && isSelectedGroup(selectedGroupId),
+    send: async ({text, mentions = []}) => {
+      if (!sock || !botEnabled || !isSelectedGroup(selectedGroupId) || !status.connected) return;
+      await sock.sendMessage(selectedGroupId,{text,mentions});
+      status.sent++;
+    }
+  });
+  gameClock = setInterval(() => { stopGame?.tick().catch(e => console.error('[stop] Timer:', e.message)); },3000);
   ready = true;
   console.log('[bot] MongoDB conectado; configurações e sessão persistidas.');
   await startWhatsApp();
@@ -493,5 +514,6 @@ main().catch(error => { console.error('[bot] Não foi possível iniciar:', error
 process.on('SIGTERM', () => {
   stopping = true;
   if (reconnectTimer) clearTimeout(reconnectTimer);
+  if (gameClock) clearInterval(gameClock);
   server.close(() => { if (client) client.close().catch(() => {}); });
 });
