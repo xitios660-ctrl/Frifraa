@@ -21,7 +21,7 @@ if (DB_NAME !== 'bomba_party_whatsapp') throw new Error('Somente o banco separad
 
 const app = express();
 app.disable('x-powered-by');
-app.use(express.json({ limit: '8kb', strict: true }));
+app.use(express.json({ limit: '260kb', strict: true }));
 app.use((req, res, next) => {
   res.set('X-Frame-Options', 'DENY');
   res.set('X-Content-Type-Options', 'nosniff');
@@ -88,7 +88,7 @@ app.post('/api/logout', guard, (_req, res) => {
   res.json({ ok: true });
 });
 
-const status = { phase: 'iniciando', connected: false, qr: null, lastError: '', since: null, received: 0, sent: 0 };
+const status = { phase: 'iniciando', connected: false, qr: null, lastError: '', since: null, received: 0, sent: 0, profileName: 'Pendente', profilePhoto: 'Pendente' };
 let client, db, authStore, sock, reconnectTimer, launching = false;
 let botEnabled = true, geminiKey = '', selectedGroupId = '', ready = false, stopping = false;
 const history = new Map();
@@ -212,6 +212,7 @@ async function startWhatsApp() {
         status.since = new Date().toISOString();
         status.lastError = '';
         await socket.sendPresenceUpdate('available').catch(() => {});
+        applyBotName(socket).catch(error => console.error('[perfil] Nome:', String(error.message).slice(0, 90)));
       }
       if (update.connection === 'close') {
         status.connected = false;
@@ -234,8 +235,42 @@ app.get('/api/health', (_req, res) => res.status(ready ? 200 : 503).json({ servi
 app.get('/api/status', guard, (_req, res) => res.json({
   phase: status.phase, connected: status.connected, since: status.since,
   lastError: status.lastError, received: status.received, sent: status.sent,
-  botEnabled, geminiConfigured: !!geminiKey, model: MODEL, groupOnly: true, selectedGroupId
+  botEnabled, geminiConfigured: !!geminiKey, model: MODEL, groupOnly: true, selectedGroupId, profileName: status.profileName, profilePhoto: status.profilePhoto
 }));
+async function applyBotName(socket) {
+  if (!socket || !socket.user || !socket.user.id) return;
+  const saved = await db.collection('settings').findOne({ _id: 'whatsapp_profile' });
+  if (saved && saved.name === 'Bot') { status.profileName = 'Bot'; return; }
+  await socket.updateProfileName('Bot');
+  await db.collection('settings').updateOne({ _id: 'whatsapp_profile' }, { $set: { name: 'Bot', updatedAt: new Date() } }, { upsert: true });
+  status.profileName = 'Bot';
+  console.log('[perfil] Nome da conta WhatsApp atualizado para Bot.');
+}
+app.post('/api/profile', guard, async (req, res) => {
+  if (!status.connected || !sock || !sock.user || !sock.user.id) return res.status(409).json({ error: 'Conecte o WhatsApp antes de editar o perfil.' });
+  const socket = sock;
+  try {
+    await applyBotName(socket);
+    let imageChanged = false;
+    if (req.body && req.body.avatar) {
+      const image = String(req.body.avatar);
+      if (!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(image)) return res.status(400).json({ error: 'Envie uma imagem JPEG válida.' });
+      const bytes = Buffer.from(image.split(',')[1], 'base64');
+      if (bytes.length < 1000 || bytes.length > 150000 || bytes[0] !== 255 || bytes[1] !== 216) return res.status(400).json({ error: 'A imagem deve ser JPEG e ter no máximo 150 KB.' });
+      const jid = baileys.jidNormalizedUser ? baileys.jidNormalizedUser(socket.user.id) : socket.user.id;
+      await socket.updateProfilePicture(jid, bytes);
+      await db.collection('settings').updateOne({ _id: 'whatsapp_profile' }, { $set: { photoUpdatedAt: new Date() } }, { upsert: true });
+      imageChanged = true;
+      status.profilePhoto = 'Aplicada';
+      console.log('[perfil] Foto de perfil alterada na conta WhatsApp.');
+    }
+    res.json({ ok: true, name: 'Bot', imageChanged });
+  } catch (error) {
+    console.error('[perfil] Não foi possível atualizar:', String(error.message).slice(0, 120));
+    res.status(502).json({ error: 'O WhatsApp não aceitou a atualização do perfil. Tente novamente.' });
+  }
+});
+
 app.get('/api/groups', guard, async (_req, res) => {
   if (!status.connected || !sock) return res.status(409).json({ error: 'Conecte o WhatsApp para ver os grupos.' });
   try {
