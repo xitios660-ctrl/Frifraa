@@ -66,7 +66,7 @@ function formatScores(people) {
   return sorted.map((p,i)=> (i+1)+'º '+p.name+': *'+p.total+' pontos*').join('\n');
 }
 function beginMessage(game) {
-  return '🎲 *STOP — RODADA '+game.round+'*\n🔤 Letra: *'+game.letter+'*\n📝 Categorias na ordem: *Animal, Lugar, Comida, Cor, Objeto, Nome*\n⏳ *75 segundos* para pensar e responder.\nRespondam na ordem, separados por vírgulas. Com M: *macaco, Marrocos, macarrão, marrom, martelo, Maria*. Respostas incompletas também valem! Ex.: *macaco, Marrocos,* pontua nas categorias certas. Lugar vale qualquer país, cidade ou lugar real.\nEu vou mandar *PRONTO* ao fim do tempo e dar só mais *5 segundos* para quem não enviou. Respostas não precisam ter “bot”.\n🏁 A partida só termina quando alguém disser *bot encerrar jogo*.';
+  return '🎲 *STOP — RODADA '+game.round+'*\n🔤 Letra: *'+game.letter+'*\n📝 Categorias na ordem: *Animal, Lugar, Comida, Cor, Objeto, Nome*\n⏳ *75 segundos* para pensar e responder.\nRespondam na ordem, separados por vírgulas. Com M: *macaco, Marrocos, macarrão, marrom, martelo, Maria*. Respostas incompletas também valem! Ex.: *macaco, Marrocos,* vale *2 pontos* se ambos estiverem corretos. Cada acerto vale *1 ponto*, mesmo repetido. Lugar vale qualquer país, cidade ou lugar real.\nEu vou mandar *PRONTO* ao fim do tempo e dar só mais *5 segundos* para quem não enviou. Respostas não precisam ter “bot”.\n🏁 A partida só termina quando alguém disser *bot encerrar jogo*.';
 }
 async function checkWords(rows, letter, key) {
   const output=new Map();
@@ -132,7 +132,7 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
   async function handle({text,sender,senderName}) {
     const msg=String(text||'').trim();
     if(rulesCommand(msg)) {
-      await output('📖 *REGRAS DO STOP*\nCada rodada sorteia uma letra e usa a ordem *Animal, Lugar, Comida, Cor, Objeto, Nome*. Lugar aceita qualquer país, cidade ou lugar de verdade. São 75 segundos e apenas 5 depois de *PRONTO*. Respondam com vírgulas, podendo deixar categorias vazias. Ex. com M: *macaco, Marrocos,* vale pelos dois acertos. Em branco vale 0, mas os outros acertos pontuam.\n✅ Palavra existente e exclusiva: 10 pontos; válida repetida por alguém: 5; inválida ou em branco: 0.\n🎯 As rodadas continuam até *bot encerrar jogo*, que mostra o placar e marca o vencedor. Para iniciar: *bot stop*.');
+      await output('📖 *REGRAS DO STOP*\nCada rodada sorteia uma letra e usa a ordem *Animal, Lugar, Comida, Cor, Objeto, Nome*. Lugar aceita qualquer país, cidade ou lugar de verdade. São 75 segundos e apenas 5 depois de *PRONTO*. Respondam com vírgulas, podendo deixar categorias vazias. Ex. com M: *macaco, Marrocos,* vale pelos dois acertos. Em branco vale 0, mas os outros acertos pontuam.\n✅ Cada resposta certa vale *1 ponto*, mesmo se outro participante repetir. Resposta errada ou em branco vale *0*.\n🎯 As rodadas continuam até *bot encerrar jogo*, que mostra o placar e marca o vencedor. Para iniciar: *bot stop*.');
       return true;
     }
     if(scoreCommand(msg)) {
@@ -164,11 +164,6 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
     const rows=[];
     for(const answer of game.answers) for(let cat=0;cat<CATEGORIES.length;cat++) rows.push({id:rows.length,owner:answer.id,cat,word:answer.words[cat]});
     const valid=await checkWords(rows,game.letter,getGeminiKey());
-    const frequency=new Map();
-    for(const row of rows) if(valid.get(row.id)?.valid) {
-      const key=row.cat+':'+norm(row.word);
-      frequency.set(key,(frequency.get(key)||0)+1);
-    }
     const scores=game.scores.map(p=>({...p}));
     const details=[];
     for(const answer of game.answers) {
@@ -177,7 +172,7 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
       const cells=[];
       for(const row of rows.filter(r=>r.owner===answer.id)) {
         const check=valid.get(row.id);
-        const points=check?.valid ? (frequency.get(row.cat+':'+norm(row.word))>1 ? 5 : 10) : 0;
+        const points=check?.valid ? 1 : 0;
         person.total+=points;
         cells.push(CATEGORIES[row.cat]+': '+row.word+' ('+points+(check?.unverified?' ⚠️ não confirmada':'')+')');
       }
