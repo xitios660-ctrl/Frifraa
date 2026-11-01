@@ -6,14 +6,14 @@ const THINK_MS = 75_000, ANSWER_MS = 5_000;
 const LETTERS = 'ABCDEFGIJLMNOPRSTUV'.split('');
 const CATEGORIES = ['Animal', 'Lugar', 'Comida', 'Cor', 'Objeto', 'Nome'];
 const lexicon = {
-  animal: 'abelha aguia alce anta aranha arara avestruz baleia barata bode boi borboleta bufalo cachorro camaleao camelo canario capivara caranguejo carneiro cavalo cobra coelho coruja crocodilo cutia elefante ema escorpiao foca formiga galinha galo gato gaviao girafa golfinho gorila grilo hipopotamo hiena iguana jacare jaguar javali jiboia lagarta lagartixa lagarto leao lebre leopardo lobo lontra macaco mariposa morcego mosca mosquito mula onca ornitorrinco ovelha panda pantera papagaio pato peixe pinguim pirarucu polvo porco preguiça raposa rato rinoceronte sapo serpente tamandua tatu tigre toupeira tubarao urso vaca vespa zebra'.split(' '),
+  animal: 'abelha aguia alce anta aranha arara avestruz baleia barata bode boi borboleta bufalo cachorro camaleao camelo canario capivara caranguejo carneiro cavalo cobra coelho coruja crocodilo cutia elefante ema escorpiao foca formiga galinha galo gato gaviao girafa golfinho gorila grilo hipopotamo hiena iguana jacare jaguar javali jiboia lagarta lagartixa lagarto leao lebre leopardo lobo lontra macaco mariposa morcego mosca mosquito mula onca ornitorrinco ovelha panda pantera papagaio pato peixe pinguim pirarucu polvo porco preguiça raposa rato rinoceronte sapo sucuri serpente tamandua tatu tigre toupeira tubarao urso vaca vespa zebra'.split(' '),
   pais: ['afeganistao','africa do sul','albania','alemanha','andorra','angola','arabia saudita','argelia','armenia','australia','austria','bahamas','bangladesh','barbados','belgica','belize','benin','bolivia','botsuana','brasil','bulgaria','camaroes','canada','catar','chile','china','chipre','colombia','congo','coreia do sul','coreia do norte','costa rica','croacia','cuba','dinamarca','egito','emirados arabes unidos','equador','eslovaquia','eslovenia','espanha','estados unidos','estonia','etiopia','filipinas','finlandia','franca','gana','georgia','grecia','guatemala','guine','haiti','honduras','hungria','india','indonesia','ira','iraque','irlanda','islandia','israel','italia','jamaica','japao','jordania','kuwait','libano','liberia','libia','luxemburgo','madagascar','malasia','maldivas','mali','malta','marrocos','mexico','mocambique','monaco','mongolia','namibia','nepal','nicaragua','nigeria','noruega','nova zelandia','oma','panama','paraguai','peru','polonia','portugal','quenia','reino unido','republica dominicana','romenia','russia','senegal','servia','singapura','siria','somalia','sudao','suecia','suica','tailandia','taiwan','tanzania','timor leste','togo','tunisia','turquia','ucrania','uganda','uruguai','uzbequistao','venezuela','vietna','zambia','zimbabue'],
   lugar: 'aeroporto academia acougue adega aquario armazem avenida banco bar biblioteca bosque cafeteria campo canteiro casa castelo catedral cinema circo clube colegio condominio consultorio creche delegacia deserto escola escritorio estadio estacao fazenda feira farmacia floresta garagem hospital hotel igreja jardim laboratorio lago lanchonete livraria loja mercado mercearia montanha motel museu padaria parque patio praia praca predio restaurante rio rua sala salao supermercado teatro templo universidade vila zoologico'.split(' '),
   cidade: ['londres','lisboa','liverpool','las vegas','los angeles','leiria','limeira','londrina','mogi das cruzes','marilia','manaus','maceio','marraquexe','marrakech','nova york','natal','niteroi','osasco','paris','porto','recife','roma','rio de janeiro','salvador','santos','sao paulo','sao jose dos campos','toquio','teresina','uberlândia','veneza','vitoria','washington','zurique'],
   comida: 'abacate abacaxi acai arroz acaraje almôndega almondega banana batata bolo brigadeiro broa carne coxinha chocolate churros canjica cenoura empada esfiha feijao frango feijoada goiabada hamburguer iogurte lasanha leite lentilha limao macarrao mandioca manga maracuja mel melancia mingau milho nhoque omelete pao panqueca pastel peixe pizza pipoca pudim queijo quibe quindim risoto rabanada salada sanduiche sopa sorvete tapioca tomate torta uva vatapa vitamina waffle'.split(' ').concat(['arroz doce','batata frita','doce de leite']),
   cor: 'amarelo azul anil branco bege bordô bordo caramelo castanho ciano cinza coral creme dourado fucsia grafite grená grena indigo jade laranja lavanda lilas magenta marrom mostarda nude ocre oliva ouro prata preto rosa roxo rubi salmao turquesa verde vermelho violeta vinho'.split(' ').concat(['azul marinho','azul claro']),
-  objeto: 'agulha alicate almofada anel armario bolsa bola boneca boneco balde balanca bicicleta bota caderno cadeira cama caneca caneta capacete carro chave chinelo cobertor colher computador copo cortina dado escada espelho faca fogao garfo geladeira janela lanterna lapis livro mala martelo mesa microfone mochila moeda monitor oculos panela papel pente prato quadro radio relogio sapato sofa telefone tesoura teclado travesseiro vaso violao xicara'.split(' ').concat(['guarda chuva']),
-  nome: 'ana alice amanda andre antonio arthur beatriz bruna bruno bianca caio camila carla carlos carolina clara daniel davi diego eduarda emilia felipe fernanda flavia gabriel gabi gustavo guilherme helena henrique isabela joao julia juliana kaique kaike karina laura larissa leonardo leticia lucas luiza maria mariana mariany marcos marina mateus matheus miguel nathalia natalia nicole olivia paulo pedro rafael raquel renata ricardo roberto samuel sofia thiago valentina vitoria yasmin'.split(' ')
+  objeto: 'agulha alicate almofada anel armario bolsa bola boneca boneco balde balanca bicicleta bota caderno cadeira cama caneca caneta capacete carro chave chinelo cobertor colher computador copo cortina dado escada espelho faca fogao garfo geladeira janela oculos saco lanterna lapis livro mala martelo mesa microfone mochila moeda monitor oculos panela papel pente prato quadro radio relogio sapato sofa telefone tesoura teclado travesseiro vaso violao xicara'.split(' ').concat(['guarda chuva']),
+  nome: 'ana alice amanda andre antonio arthur beatriz bruna bruno bianca caio camila carla carlos carolina clara daniel davi diego eduarda emilia felipe fernanda flavia gabriel gabi gustavo guilherme helena henrique isabela joao julia juliana kaique kaike karina laura larissa leonardo leticia lucas luiza maria mariana mariany marcos marina mateus matheus miguel nathalia natalia nicole osvaldo orlando olivia paulo pedro rafael raquel renata ricardo roberto samuel sofia thiago valentina vitoria yasmin'.split(' ')
 };
 const norm = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/\s+/g,' ');
 const cmd = value => norm(value).replace(/[!?.]+$/g,'').trim();
@@ -29,22 +29,51 @@ const activeState = state => ['thinking','collecting','scoring'].includes(state)
 const parseAnswers = text => {
   const raw = String(text || '').trim().replace(/^bot[,!:]?\s*/i,'').trim();
   if (!raw || raw.length > 600) return null;
-  const tokens = raw.split(/[,;\n]/);
-  if (tokens.length > CATEGORIES.length) return null;
-  const labels = ['animal','lugar','comida','cor','objeto','nome'];
-  const labelled = tokens.some(x => /^(animal|lugar|comida|cor|objeto|nome)\s*[:=]/i.test(norm(x)));
-  if (tokens.length === 1 && !labelled) return null; // Ignore casual group chat during a round.
-  if (tokens.some(x=>x.trim().length > 65)) return null;
-  const answers = Array(CATEGORIES.length).fill('');
-  if (labelled) {
-    for (const cell of tokens) {
-      if (!cell.trim()) continue;
-      const match = norm(cell).match(/^(animal|lugar|comida|cor|objeto|nome)\s*[:=]\s*(.*)$/);
-      if (!match) return null; // Never guess which category an unlabelled fragment belongs to.
-      answers[labels.indexOf(match[1])] = cell.trim().replace(/^[^:=]+[:=]\s*/, '').trim();
+  const parts = raw.split(/[,;\n]/).map(x => x.trim());
+  if (parts.length > CATEGORIES.length || parts.some(x => x.length > 65)) return null;
+  const labels=['animal','lugar','comida','cor','objeto','nome'];
+  const labelRE=/^(animal|lugar|comida|cor|objeto|nome)\s*[:=]\s*/i;
+  const isLabelled=parts.some(x => labelRE.test(norm(x)));
+  if (parts.length===1 && !isLabelled) return null; // Never mistake normal group chat for STOP.
+  const answers=Array(CATEGORIES.length).fill('');
+  if (isLabelled) {
+    for(const part of parts) {
+      if(!part) continue;
+      const m=norm(part).match(labelRE);
+      if(!m) return null;
+      answers[labels.indexOf(m[1])]=part.replace(labelRE,'').trim();
     }
-  } else tokens.forEach((cell,i)=>{ answers[i] = cell.trim(); });
-  return answers.some(Boolean) ? answers : null;
+    return answers.some(Boolean)?answers:null;
+  }
+  // Six positions or explicit empty commas have unambiguous category slots.
+  if (parts.length===CATEGORIES.length || (raw.includes(',') && parts.some(x=>!x))) {
+    parts.forEach((part,i)=>{answers[i]=part;});
+    return answers.some(Boolean)?answers:null;
+  }
+  const words=parts.filter(Boolean);
+  if(words.length<2) return null;
+  // Match each item to its most likely category, even if a category was skipped.
+  // Strong dictionary hits beat original position; unknown terms keep positional order.
+  let best=null;
+  const search=(index,used,mapping,score)=>{
+    if(index===words.length) {
+      if(!best||score>best.score) best={mapping:[...mapping],score};
+      return;
+    }
+    const value=words[index];
+    const matches=CATEGORIES.map((_,cat)=>cached(cat,value));
+    const known=matches.some(Boolean);
+    for(let cat=0;cat<CATEGORIES.length;cat++) {
+      if(used&(1<<cat))continue;
+      const weight=(matches[cat]?30:(known?-30:0))-Math.abs(cat-index)*0.4;
+      // Preserve ascending order in ambiguous answers.
+      const inversions=mapping.filter(previous=>previous>cat).length;
+      search(index+1,used|(1<<cat),[...mapping,cat],score+weight-inversions*0.5);
+    }
+  };
+  search(0,0,[],0);
+  best.mapping.forEach((cat,i)=>{answers[cat]=words[i];});
+  return answers;
 };
 
 function draw(used) {
@@ -66,7 +95,7 @@ function formatScores(people) {
   return sorted.map((p,i)=> (i+1)+'º '+p.name+': *'+p.total+' pontos*').join('\n');
 }
 function beginMessage(game) {
-  return '🎲 *STOP — RODADA '+game.round+'*\n🔤 Letra: *'+game.letter+'*\n📝 Categorias na ordem: *Animal, Lugar, Comida, Cor, Objeto, Nome*\n⏳ *75 segundos* para pensar e responder.\nRespondam na ordem, separados por vírgulas. Com M: *macaco, Marrocos, macarrão, marrom, martelo, Maria*. Respostas incompletas também valem! Ex.: *macaco, Marrocos,* vale *2 pontos* se ambos estiverem corretos. Cada acerto vale *1 ponto*, mesmo repetido. Lugar vale qualquer país, cidade ou lugar real.\nEu vou mandar *PRONTO* ao fim do tempo e dar só mais *5 segundos* para quem não enviou. Respostas não precisam ter “bot”.\n🏁 A partida só termina quando alguém disser *bot encerrar jogo*.';
+  return '🎲 *STOP — RODADA '+game.round+'*\n🔤 Letra: *'+game.letter+'*\n📝 Categorias na ordem: *Animal, Lugar, Comida, Cor, Objeto, Nome*\n⏳ *75 segundos* para pensar e responder.\nPodem mandar as respostas por vírgulas *ou uma por linha*, sem precisar preencher todas as categorias. Com M: *macaco, Marrocos, macarrão, marrom, martelo, Maria*. Respostas incompletas também valem! Ex.: *macaco, Marrocos,* vale *2 pontos* se ambos estiverem corretos. Cada acerto vale *1 ponto*, mesmo repetido. Lugar vale qualquer país, cidade ou lugar real.\nEu vou mandar *PRONTO* ao fim do tempo e dar só mais *5 segundos* para quem não enviou. Respostas não precisam ter “bot”.\n🏁 A partida só termina quando alguém disser *bot encerrar jogo*.';
 }
 async function checkWords(rows, letter, key) {
   const output=new Map();
@@ -132,7 +161,7 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
   async function handle({text,sender,senderName}) {
     const msg=String(text||'').trim();
     if(rulesCommand(msg)) {
-      await output('📖 *REGRAS DO STOP*\nCada rodada sorteia uma letra e usa a ordem *Animal, Lugar, Comida, Cor, Objeto, Nome*. Lugar aceita qualquer país, cidade ou lugar de verdade. São 75 segundos e apenas 5 depois de *PRONTO*. Respondam com vírgulas, podendo deixar categorias vazias. Ex. com M: *macaco, Marrocos,* vale pelos dois acertos. Em branco vale 0, mas os outros acertos pontuam.\n✅ Cada resposta certa vale *1 ponto*, mesmo se outro participante repetir. Resposta errada ou em branco vale *0*.\n🎯 As rodadas continuam até *bot encerrar jogo*, que mostra o placar e marca o vencedor. Para iniciar: *bot stop*.');
+      await output('📖 *REGRAS DO STOP*\nCada rodada sorteia uma letra e usa a ordem *Animal, Lugar, Comida, Cor, Objeto, Nome*. Lugar aceita qualquer país, cidade ou lugar de verdade. São 75 segundos e apenas 5 depois de *PRONTO*. Respondam com vírgulas ou uma palavra por linha, mesmo sem preencher todas as categorias. Ex. com M: *macaco, Marrocos,* vale pelos dois acertos. Em branco vale 0, mas os outros acertos pontuam.\n✅ Cada resposta certa vale *1 ponto*, mesmo se outro participante repetir. Resposta errada ou em branco vale *0*.\n🎯 As rodadas continuam até *bot encerrar jogo*, que mostra o placar e marca o vencedor. Para iniciar: *bot stop*.');
       return true;
     }
     if(scoreCommand(msg)) {
