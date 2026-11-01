@@ -24,14 +24,14 @@ function fallback(text) {
   if (/^(oi|olá|ola|bom dia|boa tarde|boa noite|menu|ajuda|links|link|eai|e aí)[!?. ]*$/i.test(q.trim())) return 'Oi! 😊 Sou o assistente virtual da turma. Posso ajudar com Bomba Party 💣, Cofrinho 🐷 e Saimo TV 📺. Quer o link de qual deles?';
   return 'Sou o assistente virtual da turma e posso ajudar apenas com Bomba Party 💣, Cofrinho Party 🐷 e Saimo TV 📺. Sobre qual deles você quer conversar?';
 }
-async function reply({ key, text, history = [], model = 'gemini-2.5-flash' }) {
+async function reply({ key, text, history = [], model = 'gemini-3.8-flash' }) {
   if (!key) return fallback(text);
   const ai = new GoogleGenAI({ apiKey: key });
   const context = history.slice(-6).map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.text.slice(0, 650) }] }));
   const result = await ai.models.generateContent({
     model,
     contents: [...context, { role: 'user', parts: [{ text: String(text).slice(0, 850) }] }],
-    config: { systemInstruction: SYSTEM, temperature: 0.45, maxOutputTokens: 300 }
+    config: { systemInstruction: SYSTEM, temperature: 0.45, maxOutputTokens: 700, thinkingConfig: { thinkingLevel: 'low' } }
   });
   return String(result.text || fallback(text)).trim().slice(0, 1100);
 }
