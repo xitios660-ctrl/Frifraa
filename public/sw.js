@@ -1,4 +1,4 @@
-const CACHE = 'bomba-party-v27-cofrinho-external-link';
+const CACHE = 'bomba-party-v28-cofrinho-feature-pill';
 const SHELL = ['/', '/items/powerups-3d-v1.png', '/items.js', '/joystick.js', '/maps.js', '/camera.js', '/effects.js', '/skins/gustavo-walk-v1.png', '/netcode.js', '/animation.js', '/skins/mary-walk-v1.png', '/skins/kaique-walk-v1.png', '/skins/jheniffer-walk-v1.png', '/physics.js', '/styles.css', '/game.js', '/manifest.webmanifest', '/icons/party-four-v1-192.png', '/icons/party-four-v1-512.png', '/icons/party-four-v1-180.png', '/skins/mary.webp', '/skins/kaique.webp', '/skins/jheniffer.webp'];
 
 self.addEventListener('install', event => {
