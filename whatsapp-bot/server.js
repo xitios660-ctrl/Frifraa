@@ -504,7 +504,7 @@ async function main() {
       status.sent++;
     }
   });
-  gameClock = setInterval(() => { stopGame?.tick().catch(e => console.error('[stop] Timer:', e.message)); },3000);
+  gameClock = setInterval(() => { stopGame?.tick().catch(e => console.error('[stop] Timer:', e.message)); },1000);
   ready = true;
   console.log('[bot] MongoDB conectado; configurações e sessão persistidas.');
   await startWhatsApp();
