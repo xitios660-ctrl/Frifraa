@@ -7,7 +7,7 @@ const QRCode = require('qrcode');
 const pino = require('pino');
 const baileys = require('@whiskeysockets/baileys');
 const { createAuthStore } = require('./auth-store');
-const { reply } = require('./reply');
+const { reply, shouldWebSearch } = require('./reply');
 const { createStopGame } = require('./stop-game');
 const { IMAGE_MODEL, DAILY_IMAGE_LIMIT, parseImageRequest, reserveImage, generateImage, imageErrorMessage } = require('./image');
 
@@ -101,6 +101,23 @@ const lastMessageAt = new Map();
 let lastImageRequestAt = 0;
 let imagesSent = 0;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const MAX_WEB_SEARCH_PROMPTS_PER_DAY = 30;
+async function allowWebSearch(groupId) {
+  // Budget prompts, not raw Google queries; one prompt may invoke multiple searches.
+  const id = groupId + ':' + new Date().toISOString().slice(0,10);
+  try {
+    const updated = await db.collection('web_search_usage').findOneAndUpdate(
+      {_id:id, count:{$lt:MAX_WEB_SEARCH_PROMPTS_PER_DAY}},
+      {$inc:{count:1},$setOnInsert:{createdAt:new Date()}},
+      {upsert:true,returnDocument:'after'}
+    );
+    return !!updated;
+  } catch(e) {
+    if(e?.code===11000) return false;
+    console.warn('[busca] Não foi possível reservar pesquisa:',String(e.message).slice(0,100));
+    return false;
+  }
+}
 function extractText(msg) {
   let m = msg && msg.message;
   for (let i = 0; i < 3 && m; i++) {
@@ -303,7 +320,8 @@ async function handleMessage(message) {
     return;
   }
   let answer;
-  try { answer = await reply({ key: geminiKey, model: MODEL, text, history: oldHistory, authorName }); }
+  const webSearch = shouldWebSearch(text) ? await allowWebSearch(jid) : false;
+  try { answer = await reply({ key: geminiKey, model: MODEL, text, history: oldHistory, authorName, useWebSearch: webSearch }); }
   catch (error) {
     console.error('[gemini] Resposta indisponível:', String(error.message).slice(0, 150));
     answer = await reply({ key: '', text });
