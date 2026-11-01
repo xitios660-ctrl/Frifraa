@@ -128,20 +128,74 @@ function rateAllowed(jid) {
   if (counters.size > 500) { counters.clear(); lastMessageAt.clear(); }
   return true;
 }
-async function getVerifiedGroupSenderName(message, groupId) {
-  // Never identify a user by their nickname: use the phone-number JID when WhatsApp provides it.
-  const candidates = [message.key?.participantAlt, message.key?.participant, message.participant];
-  for (const candidate of candidates) {
-    const match = typeof candidate === 'string' && candidate.match(/^(\d+)@s\.whatsapp\.net$/);
-    if (!match) continue;
-    const number = match[1].startsWith('55') ? match[1] : '55' + match[1];
-    const record = await db.collection('group_contacts').findOne(
-      { groupId, phoneE164: '+' + number },
-      { projection: { name: 1 } }
-    );
-    if (record && typeof record.name === 'string') return record.name;
+const normalizedJid = value => typeof value === 'string' ? value.replace(/:\d+(?=@)/,'') : '';
+function participantJids(message) {
+  return [...new Set([
+    message?.key?.participantAlt, message?.key?.participantPn, message?.key?.participant,
+    message?.participantAlt, message?.participantPn, message?.participant
+  ].map(normalizedJid).filter(j=>/^\d+@(lid|s\.whatsapp\.net)$/.test(j)))];
+}
+const e164 = jid => /^\d+@s\.whatsapp\.net$/.test(jid)
+  ? '+' + (jid.split('@')[0].startsWith('55') ? jid.split('@')[0] : '55'+jid.split('@')[0]) : '';
+let lastGroupIdentitySync = 0;
+async function syncKnownGroupIdentities(socket, groupId) {
+  if (!socket || !groupId || !db) return;
+  let group;
+  try { group=await socket.groupMetadata(groupId); }
+  catch(err) { console.warn('[identidade] Metadados não disponíveis:',String(err.message).slice(0,90)); return; }
+  const contacts=await db.collection('group_contacts').find({groupId}).toArray();
+  const members=group?.participants||[];
+  const mapping=socket.signalRepository?.lidMapping;
+  let count=0;
+  for (const contact of contacts) {
+    const pn=String(contact.phoneE164||'').replace(/\D/g,'')+'@s.whatsapp.net';
+    if(!/^\d+@s\.whatsapp\.net$/.test(pn)) continue;
+    const matched=members.find(p=>[p.id,p.phoneNumber,p.pn,p.participantAlt]
+      .some(j=>normalizedJid(j)===pn));
+    const aliases=new Set([pn]);
+    if(matched) for(const alias of [matched.id,matched.lid,matched.phoneNumber,matched.pn])
+      if(/^\d+@(lid|s\.whatsapp\.net)$/.test(normalizedJid(alias))) aliases.add(normalizedJid(alias));
+    try {
+      const lid=await mapping?.getLIDForPN?.(pn);
+      if(/^\d+@lid$/.test(normalizedJid(lid))) aliases.add(normalizedJid(lid));
+    } catch(_) { /* No verified LID mapping yet. */ }
+    // Only contacts backed by a phone number supplied for this group can claim an alias.
+    const ids=[...aliases];
+    await db.collection('group_contacts').updateOne({_id:contact._id,groupId},
+      {$addToSet:{jids:{$each:ids}},$set:{identityCheckedAt:new Date()}});
+    count++;
   }
-  return null;
+  lastGroupIdentitySync=Date.now();
+  console.log('[identidade] Contatos verificados contra o grupo:',count);
+}
+async function getVerifiedGroupSender(message, groupId) {
+  const raw=participantJids(message);
+  if(!raw.length) return {name:null,jids:[]};
+  const candidates=await resolveStopSenderJids(raw,groupId);
+  const jids=[...new Set([...raw,...candidates].map(normalizedJid).filter(Boolean))];
+  const phoneNumbers=jids.map(e164).filter(Boolean);
+  const filter={$or:[
+    ...(phoneNumbers.length?[{phoneE164:{$in:phoneNumbers}}]:[]),
+    {jids:{$in:jids}}
+  ]};
+  const lookup=()=>db.collection('group_contacts').find({groupId,...filter},
+    {projection:{name:1,phoneE164:1,jids:1},limit:2}).toArray();
+  let found=await lookup();
+  if(found.length!==1 && Date.now()-lastGroupIdentitySync>120000) {
+    await syncKnownGroupIdentities(sock,groupId);
+    found=await lookup();
+  }
+  if(found.length!==1) return {name:null,jids};
+  const entry=found[0];
+  const known=new Set(entry.jids||[]);
+  for(const jid of jids) known.add(jid);
+  await db.collection('group_contacts').updateOne({_id:entry._id,groupId},
+    {$addToSet:{jids:{$each:jids}}});
+  return {name:entry.name,jids:[...known],phoneE164:entry.phoneE164};
+}
+function asksOwnIdentity(text) {
+  const q=String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  return /\b(quem sou eu|quem ta falando|quem esta falando|sabe quem eu sou|qual e meu nome|me reconhece|quem esta te chamando)\b/.test(q);
 }
 async function resolveStopSenderJids(jids, groupId) {
   const out=new Set((Array.isArray(jids)?jids:[]).filter(x=>typeof x==='string'));
@@ -182,12 +236,10 @@ async function handleMessage(message) {
   const seen = await db.collection('whatsapp_seen').updateOne(
     { _id: messageId }, { $setOnInsert: { createdAt: new Date() } }, { upsert: true });
   if (!seen.upsertedCount) return;
-  const authorName = await getVerifiedGroupSenderName(message, jid).catch(() => null);
+  const identity = await getVerifiedGroupSender(message, jid).catch(() => ({name:null,jids:participantJids(message)}));
+  const authorName = identity.name;
   if (stopGame) {
-    const senderJids = [
-      message.key?.participantAlt, message.key?.participantPn, message.key?.participant,
-      message.participantAlt, message.participant, message.participantPn
-    ].filter(p => typeof p === 'string');
+    const senderJids = identity.jids;
     const handled = await stopGame.handle({
       text, senderJids, senderName: authorName, displayName: message.pushName || '',
       resolveSenderJids: jids => resolveStopSenderJids(jids, jid)
@@ -198,6 +250,17 @@ async function handleMessage(message) {
   status.received++;
   const socket = sock;
   const oldHistory = history.get(jid) || [];
+  if (asksOwnIdentity(text)) {
+    const response = authorName ? 'Pelo WhatsApp, quem me chamou foi ' + authorName + '. 😊' :
+      'Ainda não consegui confirmar seu nome pelo identificador do WhatsApp. Não vou adivinhar. 😊';
+    await socket.sendPresenceUpdate('composing', jid).catch(()=>{});
+    await sleep(850);
+    if (sock === socket && isSelectedGroup(jid) && status.connected)
+      await socket.sendMessage(jid,{text:response});
+    await socket.sendPresenceUpdate('paused', jid).catch(()=>{});
+    status.sent++;
+    return;
+  }
   const imageRequest = parseImageRequest(text);
   if (imageRequest) {
     const socket = sock;
@@ -252,7 +315,7 @@ async function handleMessage(message) {
     if (!botEnabled || !status.connected || !isSelectedGroup(jid) || socket !== sock) return;
     await socket.sendMessage(jid, { text: answer });
     status.sent++;
-    history.set(jid, [...oldHistory, { role: 'user', text }, { role: 'assistant', text: answer }].slice(-6));
+    history.set(jid, [...oldHistory, { role: 'user', text, authorName }, { role: 'assistant', text: answer }].slice(-8));
     if (history.size > 200) history.clear();
   } finally { await socket.sendPresenceUpdate('paused', jid).catch(() => {}); }
 }
@@ -301,6 +364,7 @@ async function activateInvitedGroup(socket) {
     );
     selectedGroupId = target;
     stopGame?.setGroupId(target);
+    syncKnownGroupIdentities(socket,target).catch(error=>console.warn('[identidade] Sincronização:',String(error.message).slice(0,100)));
     history.clear();
     queues.clear();
     status.lastError = '';
