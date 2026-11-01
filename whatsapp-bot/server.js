@@ -320,7 +320,7 @@ app.get('/api/groups', guard, async (_req, res) => {
       id: g.id, name: String(g.subject || 'Grupo sem nome').slice(0, 100),
       members: Array.isArray(g.participants) ? g.participants.length : null
     })).sort((a,b) => a.name.localeCompare(b.name, 'pt-BR'));
-    return res.json({ groups, selectedGroupId });
+    return res.json({ groups, selectedGroupId, inviteManaged: !!GROUP_INVITE_CODE });
   } catch (e) {
     console.error('[grupos] Consulta indisponível:', String(e.message).slice(0, 100));
     return res.status(502).json({ error: 'Não foi possível listar os grupos. Tente atualizar.' });
