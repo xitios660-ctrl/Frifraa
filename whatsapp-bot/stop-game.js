@@ -131,8 +131,8 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
   let running=false;
   const output=async (text,mentions=[]) => { if(isActive()) await send({text,mentions}); };
   const players=async () => {
-    const saved=await peopleCol.find({groupId},{projection:{name:1,phoneE164:1}}).toArray();
-    return saved.map(p=>({id:p.phoneE164,name:p.name,phone:p.phoneE164,total:0})).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
+    const saved=await peopleCol.find({groupId},{projection:{name:1,phoneE164:1,jids:1}}).toArray();
+    return saved.map(p=>({id:p.phoneE164,name:p.name,phone:p.phoneE164,total:0,jids:p.jids||[]})).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
   };
   async function choosePlayer(senders, knownName, displayName, game) {
     // WhatsApp may identify group authors by a private @lid instead of their phone JID.
@@ -143,15 +143,7 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
     let person=game.scores.find(p=>numbers.includes(p.phone) ||
       (Array.isArray(p.jids)&&p.jids.some(j=>jids.includes(j))));
     if(!person && knownName) person=game.scores.find(p=>norm(p.name)===norm(knownName));
-    const label=norm(displayName).replace(/^[@~\s]+/,'');
-    if(!person && label.length>=4) {
-      const matches=game.scores.filter(p=>{
-        const name=norm(p.name);
-        return name.length>=4 && (label===name || label.startsWith(name+' ') ||
-          name.startsWith(label+' ') || label.startsWith(name) || name.startsWith(label));
-      });
-      if(matches.length===1) person=matches[0];
-    }
+    // Display names can be edited or impersonated; never trust them as identity proof.
     if(person) {
       const fresh=jids.filter(j=>!person.jids?.includes(j));
       if(fresh.length) {
