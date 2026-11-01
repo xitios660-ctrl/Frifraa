@@ -15,7 +15,7 @@ const SESSION_SECRET = process.env.SESSION_SECRET || '';
 const MONGODB_URI = process.env.MONGODB_URI || '';
 const DB_NAME = process.env.MONGODB_DB || 'bomba_party_whatsapp';
 const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-if (ADMIN_PASSWORD.length < 16) throw new Error('Defina ADMIN_PASSWORD de ao menos 16 caracteres no Render.');
+if (ADMIN_PASSWORD.length < 8) throw new Error('Defina ADMIN_PASSWORD de ao menos 8 caracteres no Render (16 ou mais recomendado).');
 if (!MONGODB_URI || SESSION_SECRET.length < 24) throw new Error('Defina MONGODB_URI e SESSION_SECRET no Render.');
 if (DB_NAME !== 'bomba_party_whatsapp') throw new Error('Somente o banco separado bomba_party_whatsapp é permitido.');
 
