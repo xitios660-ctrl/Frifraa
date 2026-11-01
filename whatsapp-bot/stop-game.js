@@ -95,7 +95,7 @@ function formatScores(people) {
   return sorted.map((p,i)=> (i+1)+'º '+p.name+': *'+p.total+' pontos*').join('\n');
 }
 function beginMessage(game) {
-  return '🎲 *STOP — RODADA '+game.round+'*\n🔤 Letra: *'+game.letter+'*\n📝 Categorias na ordem: *Animal, Lugar, Comida, Cor, Objeto, Nome*\n⏳ *75 segundos* para pensar e responder.\nPodem mandar as respostas por vírgulas *ou uma por linha*, sem precisar preencher todas as categorias. Com M: *macaco, Marrocos, macarrão, marrom, martelo, Maria*. Respostas incompletas também valem! Ex.: *macaco, Marrocos,* vale *2 pontos* se ambos estiverem corretos. Cada acerto vale *1 ponto*, mesmo repetido. Lugar vale qualquer país, cidade ou lugar real.\nEu vou mandar *PRONTO* ao fim do tempo e dar só mais *5 segundos* para quem não enviou. Respostas não precisam ter “bot”.\n🏁 A partida só termina quando alguém disser *bot encerrar jogo*.';
+  return '🎲 *STOP — RODADA '+game.round+'*\n🔤 *Letra: '+game.letter+'*\n📝 Animal • Lugar • Comida • Cor • Objeto • Nome\n⏱️ *75s + 5s após PRONTO*\n✍️ Respostas por vírgulas ou linhas. Pode deixar categorias vazias. *1 ponto por acerto.*\n🏁 *bot encerrar jogo* | 📖 *bot regras*';
 }
 async function checkWords(rows, letter, key) {
   const output=new Map();
