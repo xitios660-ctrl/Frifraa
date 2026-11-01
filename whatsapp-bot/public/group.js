@@ -27,9 +27,15 @@
        select.add(new Option(text, group.id));
      }
      select.value = data.selectedGroupId || '';
+     select.disabled = !!data.inviteManaged;
+     $('saveGroup').disabled = !!data.inviteManaged;
      loaded = true;
      const chosen = data.groups.find(g => g.id === data.selectedGroupId);
-     info(chosen ? '✅ Somente este grupo: ' + chosen.name : '⚠️ Nenhum grupo foi escolhido. O Bot não responde a ninguém.', !!chosen);
+     if (data.inviteManaged) {
+       info(chosen ? '✅ Grupo do convite conectado: ' + chosen.name + '. O Bot só responde quando é chamado por “bot”.' : '⏳ Aguardando a entrada no grupo do convite. Se for necessário, aprove a entrada pelo WhatsApp.', !!chosen);
+     } else {
+       info(chosen ? '✅ Somente este grupo: ' + chosen.name : '⚠️ Nenhum grupo foi escolhido. O Bot não responde a ninguém.', !!chosen);
+     }
    } catch (error) {
      loaded = false;
      info(error.message);
