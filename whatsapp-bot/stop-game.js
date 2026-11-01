@@ -2,7 +2,7 @@
 const crypto = require('node:crypto');
 const { GoogleGenAI } = require('@google/genai');
 
-const THINK_MS = 75_000, ANSWER_MS = 5_000, INTERMISSION_MS = 5_000;
+const THINK_MS = 75_000, ANSWER_MS = 10_000, INTERMISSION_MS = 5_000;
 const LETTERS = 'ABCDEFGIJLMNOPRSTUV'.split('');
 const CATEGORIES = ['Animal', 'Lugar', 'Comida', 'Cor', 'Objeto', 'Nome'];
 const lexicon = {
@@ -95,7 +95,7 @@ function formatScores(people) {
   return sorted.map((p,i)=> (i+1)+'º '+p.name+': *'+p.total+' pontos*').join('\n');
 }
 function beginMessage(game) {
-  return '🎲 *STOP — RODADA '+game.round+'*\n🔤 *Letra: '+game.letter+'*\n📝 Animal • Lugar • Comida • Cor • Objeto • Nome\n⏱️ *75s + 5s após PRONTO*\n✍️ Respostas por vírgulas ou linhas. Pode deixar categorias vazias. *1 ponto por acerto.*\n🏁 *bot encerrar jogo* | 📖 *bot regras*';
+  return '🎲 *STOP — RODADA '+game.round+'*\n🔤 *Letra: '+game.letter+'*\n📝 Animal • Lugar • Comida • Cor • Objeto • Nome\n⏱️ *Até 75s* • Primeira resposta: *STOP + 10s*\n✍️ Respostas por vírgulas ou linhas. Pode deixar categorias vazias. *1 ponto por acerto.*\n🏁 *bot encerrar jogo* | 📖 *bot regras*';
 }
 async function checkWords(rows, letter, key) {
   const output=new Map();
@@ -193,7 +193,7 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
   async function handle({text,sender,senderJids,senderName,displayName,resolveSenderJids}) {
     const msg=String(text||'').trim();
     if(rulesCommand(msg)) {
-      await output('📖 *REGRAS DO STOP*\nCada rodada sorteia uma letra e usa a ordem *Animal, Lugar, Comida, Cor, Objeto, Nome*. Lugar aceita qualquer país, cidade ou lugar de verdade. São 75 segundos e apenas 5 depois de *PRONTO*. Respondam com vírgulas ou uma palavra por linha, mesmo sem preencher todas as categorias. Ex. com M: *macaco, Marrocos,* vale pelos dois acertos. Em branco vale 0, mas os outros acertos pontuam.\n✅ Cada resposta certa vale *1 ponto*, mesmo se outro participante repetir. Resposta errada ou em branco vale *0*.\n🎯 As rodadas continuam até *bot encerrar jogo*, que mostra o placar e marca o vencedor. Para iniciar: *bot stop*.');
+      await output('📖 *REGRAS DO STOP*\nCada rodada sorteia uma letra e usa a ordem *Animal, Lugar, Comida, Cor, Objeto, Nome*. Lugar aceita qualquer país, cidade ou lugar de verdade. São até 75 segundos para pensar. Quando a primeira pessoa enviar respostas, eu aviso *STOP* e os demais têm *10 segundos* para entregar somente o que já tinham preparado. Se ninguém enviar, o STOP acontece ao final dos 75 segundos. Respondam com vírgulas ou uma palavra por linha, mesmo sem preencher todas as categorias. Ex. com M: *macaco, Marrocos,* vale pelos dois acertos. Em branco vale 0, mas os outros acertos pontuam.\n✅ Cada resposta certa vale *1 ponto*, mesmo se outro participante repetir. Resposta errada ou em branco vale *0*.\n🎯 As rodadas continuam até *bot encerrar jogo*, que mostra o placar e marca o vencedor. Para iniciar: *bot stop*.');
       return true;
     }
     if(scoreCommand(msg)) {
@@ -219,7 +219,24 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
       {_id:groupId,gameId:g.gameId,round:g.round,status:{$in:['thinking','collecting']},deadline:{$gte:Date.now()},'answers.id':{$ne:person.id}},
       {$push:{answers:{id:person.id,name:person.name,words,receivedAt:nowDate()}},$set:{updatedAt:nowDate()}}
     );
-    if(updated.modifiedCount) await output('✅ Respostas de '+person.name+' registradas! Vou conferir quando o tempo terminar.');
+    if(updated.modifiedCount && g.status==='thinking') {
+      // The first accepted answer freezes the round for everyone. Only one sender can win the transition.
+      const transitioned=await collection.updateOne(
+        {_id:groupId,gameId:g.gameId,round:g.round,status:'thinking',endRequested:{$ne:true}},
+        {$set:{status:'collecting',deadline:Date.now()+ANSWER_MS+5000,stoppedBy:person.name,
+          stopReason:'first-answer',updatedAt:nowDate()}}
+      );
+      if(transitioned.modifiedCount) {
+        await output('🛑 *STOP!* '+person.name+' enviou! ⏳ *10 segundos* para os outros mandarem apenas o que já tinham anotado. Sem acrescentar novas respostas!');
+        // Start the ten seconds after the announcement is delivered to WhatsApp.
+        await collection.updateOne(
+          {_id:groupId,gameId:g.gameId,round:g.round,status:'collecting',endRequested:{$ne:true}},
+          {$set:{deadline:Date.now()+ANSWER_MS,updatedAt:nowDate()}}
+        );
+      }
+    }
+    // Keep other submissions silent: acknowledgements would block the WhatsApp queue
+    // and consume the remaining ten seconds. Answers remain persisted in MongoDB.
     return true;
   }
   async function score(game) {
@@ -292,12 +309,16 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
         return;
       }
       if(g.status==='thinking' && g.deadline<=Date.now() && !g.endRequested) {
-        const changed=await collection.updateOne({_id:groupId,gameId:g.gameId,status:'thinking'},{$set:{status:'collecting',deadline:Date.now()+ANSWER_MS,updatedAt:nowDate()}});
+        const changed=await collection.updateOne(
+          {_id:groupId,gameId:g.gameId,round:g.round,status:'thinking',endRequested:{$ne:true}},
+          {$set:{status:'collecting',deadline:Date.now()+ANSWER_MS+5000,stopReason:'time-limit',updatedAt:nowDate()}}
+        );
         if(changed.modifiedCount) {
-          await output('📣 *PRONTO!* ⏳ Quem ainda não respondeu tem apenas *5 segundos*! Pode enviar respostas incompletas; cada acerto válido vale ponto.');
-          // Count the five seconds from the WhatsApp announcement, not from composing.
-          await collection.updateOne({_id:groupId,gameId:g.gameId,status:'collecting',endRequested:{$ne:true}},
-            {$set:{deadline:Date.now()+ANSWER_MS}});
+          await output('🛑 *STOP!* Acabaram os 75 segundos! ⏳ Todos têm *10 segundos* para mandar o que já tinham anotado. Sem novas respostas!');
+          await collection.updateOne(
+            {_id:groupId,gameId:g.gameId,round:g.round,status:'collecting',endRequested:{$ne:true}},
+            {$set:{deadline:Date.now()+ANSWER_MS,updatedAt:nowDate()}}
+          );
         }
         return;
       }
