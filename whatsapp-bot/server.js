@@ -15,6 +15,7 @@ const SESSION_SECRET = process.env.SESSION_SECRET || '';
 const MONGODB_URI = process.env.MONGODB_URI || '';
 const DB_NAME = process.env.MONGODB_DB || 'bomba_party_whatsapp';
 const MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+const GROUP_INVITE_CODE = String(process.env.WHATSAPP_GROUP_INVITE_CODE || '').trim();
 if (ADMIN_PASSWORD.length < 8) throw new Error('Defina ADMIN_PASSWORD de ao menos 8 caracteres no Render (16 ou mais recomendado).');
 if (!MONGODB_URI || SESSION_SECRET.length < 24) throw new Error('Defina MONGODB_URI e SESSION_SECRET no Render.');
 if (DB_NAME !== 'bomba_party_whatsapp') throw new Error('Somente o banco separado bomba_party_whatsapp é permitido.');
@@ -169,6 +170,47 @@ function scheduleReconnect(delay = 4500) {
   if (stopping || reconnectTimer) return;
   reconnectTimer = setTimeout(() => { reconnectTimer = null; startWhatsApp().catch(e => console.error('[whatsapp] Reconexão:', e.message)); }, delay);
 }
+async function activateInvitedGroup(socket) {
+  if (!GROUP_INVITE_CODE || !status.connected || socket !== sock || stopping) return;
+  try {
+    if (!/^[a-zA-Z0-9_-]{12,90}$/.test(GROUP_INVITE_CODE)) throw new Error('O código do convite do grupo é inválido.');
+    const invitation = await socket.groupGetInviteInfo(GROUP_INVITE_CODE);
+    const target = String(invitation && invitation.id || '');
+    if (!/^\d+(?:-\d+)?@g\.us$/.test(target)) throw new Error('Não foi possível identificar o grupo pelo convite.');
+    let participating = await socket.groupFetchAllParticipating();
+    if (!participating || !Object.prototype.hasOwnProperty.call(participating, target)) {
+      console.log('[grupo] Tentando entrar no grupo informado pelo administrador.');
+      const accepted = await socket.groupAcceptInvite(GROUP_INVITE_CODE);
+      // An admin-approved group can return a pending request, not membership.
+      if (accepted && accepted !== target) console.warn('[grupo] Convite enviado; verificando entrada.');
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await sleep(2000);
+        if (socket !== sock || !status.connected) return;
+        participating = await socket.groupFetchAllParticipating();
+        if (participating && Object.prototype.hasOwnProperty.call(participating, target)) break;
+      }
+      if (!participating || !Object.prototype.hasOwnProperty.call(participating, target)) {
+        status.lastError = 'A entrada no grupo está pendente de aprovação. O Bot permanece em silêncio.';
+        console.warn('[grupo] Aguardando participação confirmada no grupo.');
+        return;
+      }
+    }
+    if (socket !== sock || !status.connected || stopping) return;
+    await db.collection('settings').updateOne(
+      { _id: 'bot' }, { $set: { groupId: target, groupUpdatedAt: new Date() } }, { upsert: true }
+    );
+    selectedGroupId = target;
+    history.clear();
+    queues.clear();
+    status.lastError = '';
+    console.log('[grupo] Grupo autorizado conectado; respostas restritas à palavra bot.');
+  } catch (error) {
+    selectedGroupId = '';
+    status.lastError = 'Não foi possível entrar no grupo do convite. Verifique o link e as permissões do grupo.';
+    console.error('[grupo] Falha ao entrar:', String(error.message || error).slice(0, 160));
+  }
+}
+
 async function startWhatsApp() {
   if (launching || stopping || !ready) return;
   launching = true;
@@ -210,6 +252,7 @@ async function startWhatsApp() {
         status.since = new Date().toISOString();
         status.lastError = '';
         await socket.sendPresenceUpdate('available').catch(() => {});
+        activateInvitedGroup(socket).catch(error => console.error('[grupo] Vinculação:', String(error.message).slice(0, 100)));
         applyBotName(socket).catch(error => console.error('[perfil] Nome:', String(error.message).slice(0, 90)));
       }
       if (update.connection === 'close') {
@@ -300,6 +343,7 @@ app.post('/api/settings', guard, async (req, res) => {
       if (typeof groupId !== 'string' || (groupId && (!/^\d+(?:-\d+)?@g\.us$/.test(groupId) || groupId.length > 120))) {
         return res.status(400).json({ error: 'Grupo do WhatsApp inválido.' });
       }
+      if (GROUP_INVITE_CODE) return res.status(409).json({ error: 'O grupo já está fixado pelo convite configurado no Render; não é possível alterar aqui.' });
       if (groupId) {
         if (!status.connected || !sock) return res.status(409).json({ error: 'Conecte o WhatsApp antes de escolher o grupo.' });
         const groups = await sock.groupFetchAllParticipating();
@@ -369,7 +413,7 @@ async function main() {
   authStore = createAuthStore(db, SESSION_SECRET);
   const record = await db.collection('settings').findOne({ _id: 'bot' });
   botEnabled = typeof record?.enabled === 'boolean' ? record.enabled : true;
-  selectedGroupId = typeof record?.groupId === 'string' && record.groupId.endsWith('@g.us') ? record.groupId : '';
+  selectedGroupId = !GROUP_INVITE_CODE && typeof record?.groupId === 'string' && record.groupId.endsWith('@g.us') ? record.groupId : '';
   if (record && record.geminiKey) try { geminiKey = authStore.codec.decrypt(record.geminiKey); } catch { console.error('[settings] Chave Gemini indisponível; recadastre-a.'); }
   if (!geminiKey && process.env.GEMINI_API_KEY) geminiKey = process.env.GEMINI_API_KEY.trim();
   ready = true;
