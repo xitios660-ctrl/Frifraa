@@ -2,6 +2,7 @@
 const crypto = require('node:crypto');
 
 const SIGNUP_MS = 10_000;
+const TURN_MS = 45_000;
 const MAX_PLAYERS = 8;
 const clean = s => String(s||'').trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[!?.,]+$/,'').trim();
 const isStart = s => /^(?:bot\s+)(?:jogar\s+)?(?:blackjack|black jack|21|vinte e um)$/.test(clean(s));
@@ -96,7 +97,10 @@ function createBlackjack({db,getGroup,sendGroup,sendPrivate,isActive}) {
   }
   async function askTurn(game) {
     const p=current(game); if(!p)return;
-    await say('🎴 Vez de '+labeled(p)+'. Quer *carta* ou *parar*?',[mention(p)].filter(Boolean));
+    await say('🎴 Vez de '+labeled(p)+'. Quer *carta* ou *parar*? (45s)',[mention(p)].filter(Boolean));
+    await col.updateOne({_id:gid(),gameId:game.gameId,phase:'playing',turnIndex:game.turnIndex},
+      {$set:{turnDeadline:Date.now()+TURN_MS,updatedAt:now()}});
+
   }
   async function sendHand(p, extra='') {
     await sendPrivate(p.jid,{text:'🎴 *Seu Blackjack*\nSuas cartas: '+cardText(p.hand)+'\nTotal: *'+value(p.hand)+'*'+extra+
@@ -135,7 +139,7 @@ function createBlackjack({db,getGroup,sendGroup,sendPrivate,isActive}) {
       if(changed)await say('Não consegui entregar as cartas no privado. Blackjack cancelado; os participantes precisam aceitar mensagens do Bot.');
       return;
     }
-    const changed=await persist(game,{phase:index===-1?'finishing':'playing',turnIndex:index},{phase:'dealing'});
+    const changed=await persist(game,{phase:index===-1?'finishing':'playing',turnIndex:index,turnDeadline:Date.now()+TURN_MS+5000,finishAfter:Date.now()+3000},{phase:'dealing'});
     if(changed) {
       await say('🎴 Cartas enviadas! Minha carta visível: *'+cardText([game.dealer[0]])+'* (a outra está escondida).');
       if(index!==-1)await askTurn({...game,phase:'playing',turnIndex:index});
@@ -195,7 +199,7 @@ function createBlackjack({db,getGroup,sendGroup,sendPrivate,isActive}) {
       else if(points===21)mine.status='stand';
       const next=mine.status==='pending'?game.turnIndex:nextPending(players,game.turnIndex+1);
       const phase=next===-1?'finishing':'playing';
-      const changed=await persist(game,{players,deck,turnIndex:next,phase},{phase:'playing',turnIndex:game.turnIndex});
+      const changed=await persist(game,{players,deck,turnIndex:next,phase,turnDeadline:Date.now()+TURN_MS+5000,finishAfter:Date.now()+3000},{phase:'playing',turnIndex:game.turnIndex});
       if(!changed)return true;
       try{await sendHand(mine,'\n➕ Nova carta: '+cardText([card]));}
       catch(e){await say('⚠️ '+mine.name+', não consegui mandar sua nova carta no privado. Verifique a conversa com o Bot.');}
@@ -207,7 +211,7 @@ function createBlackjack({db,getGroup,sendGroup,sendPrivate,isActive}) {
       mine.status='stand';
       const next=nextPending(players,game.turnIndex+1);
       const phase=next===-1?'finishing':'playing';
-      const changed=await persist(game,{players,turnIndex:next,phase},{phase:'playing',turnIndex:game.turnIndex});
+      const changed=await persist(game,{players,turnIndex:next,phase,turnDeadline:Date.now()+TURN_MS+5000,finishAfter:Date.now()+3000},{phase:'playing',turnIndex:game.turnIndex});
       if(!changed)return true;
       await say('✋ '+mine.name+' parou.'); 
       if(phase==='playing')await askTurn({...game,players,turnIndex:next,phase});else await say('🃏 Todo mundo jogou! Vou revelar minhas cartas…');
@@ -263,7 +267,14 @@ function createBlackjack({db,getGroup,sendGroup,sendPrivate,isActive}) {
           if(changed)await say('⏰ Ninguém entrou no Blackjack. Partida cancelada.');
         }else await deal(g);
       }else if(g.phase==='dealing')await distribute(g);
-      else if(g.phase==='finishing')await settle(g);
+      else if(g.phase==='playing' && Number.isFinite(g.turnDeadline) && Date.now()>=g.turnDeadline) {
+        const player=current(g);
+        if(player) {
+          await say('⏰ Acabou o tempo de '+player.name+'! Vou considerar *parar*.');
+          await action('parar',{phoneE164:player.id});
+        }
+      }
+      else if(g.phase==='finishing' && (!g.finishAfter || Date.now()>=g.finishAfter))await settle(g);
     }catch(err){console.error('[blackjack] Erro na rodada:',String(err.stack||err).slice(0,450))}
     finally{busy=false}
   }
