@@ -10,6 +10,7 @@ const { createAuthStore } = require('./auth-store');
 const { reply, shouldWebSearch } = require('./reply');
 const { getWeatherReply } = require('./weather');
 const { createStopGame } = require('./stop-game');
+const { createBlackjack } = require('./blackjack');
 const { IMAGE_MODEL, DAILY_IMAGE_LIMIT, parseImageRequest, reserveImage, generateImage, imageErrorMessage } = require('./image');
 
 const makeWASocket = baileys.default || baileys.makeWASocket;
@@ -93,7 +94,7 @@ app.post('/api/logout', guard, (_req, res) => {
 });
 
 const status = { phase: 'iniciando', connected: false, qr: null, lastError: '', since: null, received: 0, sent: 0, profileName: 'Pendente', profilePhoto: 'Pendente' };
-let client, db, authStore, sock, reconnectTimer, launching = false, stopGame = null, gameClock = null;
+let client, db, authStore, sock, reconnectTimer, launching = false, stopGame = null, blackjack = null, gameClock = null;
 let botEnabled = true, imagesEnabled = false, geminiKey = '', selectedGroupId = '', ready = false, stopping = false;
 const history = new Map();
 const queues = new Map();
@@ -256,6 +257,10 @@ async function handleMessage(message) {
   if (!seen.upsertedCount) return;
   const identity = await getVerifiedGroupSender(message, jid).catch(() => ({name:null,jids:participantJids(message)}));
   const authorName = identity.name;
+  if (blackjack) {
+    const handledBlackjack = await blackjack.handle({text,identity});
+    if (handledBlackjack) {status.received++;return;}
+  }
   if (stopGame) {
     const senderJids = identity.jids;
     const handled = await stopGame.handle({
@@ -404,6 +409,7 @@ async function activateInvitedGroup(socket) {
     );
     selectedGroupId = target;
     stopGame?.setGroupId(target);
+    blackjack?.setGroupId(target);
     syncKnownGroupIdentities(socket,target).catch(error=>console.warn('[identidade] Sincronização:',String(error.message).slice(0,100)));
     history.clear();
     queues.clear();
@@ -570,7 +576,7 @@ app.post('/api/settings', guard, async (req, res) => {
     await db.collection('settings').updateOne({ _id: 'bot' }, { $set: update }, { upsert: true });
     if ('enabled' in update) botEnabled = update.enabled;
     if ('imagesEnabled' in update) imagesEnabled = update.imagesEnabled;
-    if ('groupId' in update) { selectedGroupId = update.groupId; stopGame?.setGroupId(selectedGroupId); history.clear(); queues.clear(); }
+    if ('groupId' in update) { selectedGroupId = update.groupId; stopGame?.setGroupId(selectedGroupId); blackjack?.setGroupId(selectedGroupId); history.clear(); queues.clear(); }
     if ('geminiKey' in update) geminiKey = String(req.body.geminiKey).trim();
     return res.json({ ok: true, botEnabled, geminiConfigured: !!geminiKey, selectedGroupId, imagesEnabled });
   } catch (error) {
@@ -647,7 +653,34 @@ async function main() {
       }
     }
   });
-  gameClock = setInterval(() => { stopGame?.tick().catch(e => console.error('[stop] Timer:', e.message)); },1000);
+  blackjack = createBlackjack({
+    db,
+    getGroup: () => selectedGroupId,
+    isActive: () => botEnabled && status.connected && isSelectedGroup(selectedGroupId),
+    sendGroup: async ({text,mentions=[]}) => {
+      if(!sock || !botEnabled || !isSelectedGroup(selectedGroupId) || !status.connected)return;
+      const socket=sock;
+      try {
+        await socket.sendPresenceUpdate('composing',selectedGroupId).catch(()=>{});
+        await sleep(750);
+        if(socket!==sock || !botEnabled || !status.connected || !isSelectedGroup(selectedGroupId))return;
+        await socket.sendMessage(selectedGroupId,{text,mentions});
+        status.sent++;
+      }finally {await socket.sendPresenceUpdate('paused',selectedGroupId).catch(()=>{});}
+    },
+    sendPrivate: async (jid,content) => {
+      if(!sock || !botEnabled || !status.connected || !isSelectedGroup(selectedGroupId))throw Error('WhatsApp offline');
+      if(!/^55\d{10,11}@s\.whatsapp\.net$/.test(jid))throw Error('Destino privado inválido');
+      const socket=sock;
+      if(!socket.user)throw Error('WhatsApp sem sessão');
+      await socket.sendMessage(jid,content);
+      status.sent++;
+    }
+  });
+  gameClock = setInterval(() => {
+    stopGame?.tick().catch(e => console.error('[stop] Timer:',e.message));
+    blackjack?.tick().catch(e => console.error('[blackjack] Timer:',e.message));
+  },1000);
   ready = true;
   console.log('[bot] MongoDB conectado; configurações e sessão persistidas.');
   await startWhatsApp();
