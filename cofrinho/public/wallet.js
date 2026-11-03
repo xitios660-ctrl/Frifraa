@@ -7,7 +7,7 @@
  const requests=new Map();
  const button=document.createElement('button');button.type='button';button.className='wallet-open';button.textContent='🪙 Minha Carteira';
  (document.querySelector('.topbar-right')||document.querySelector('header')||document.body).append(button);
- if(!cofrinho){const lobby=document.querySelector('#startBtn')?.parentElement;if(lobby){const copy=button.cloneNode(true);copy.classList.add('wallet-lobby');copy.onclick=()=>open();lobby.append(copy);}}
+ if(!cofrinho&&!document.querySelector('#openCoinShop')){const lobby=document.querySelector('#startBtn')?.parentElement;if(lobby){const copy=button.cloneNode(true);copy.classList.add('wallet-lobby');copy.onclick=()=>open();lobby.append(copy);}}
  const dialog=document.createElement('dialog');dialog.id='walletDialog';dialog.className='wallet-dialog';
  dialog.innerHTML=`<div class="wallet-head"><div><small>BOMBA PARTY · CLUBE DOS QUATRO</small><h2>Minha Carteira <span>🪙</span></h2></div><button type="button" class="wallet-close" aria-label="Fechar carteira">✕</button></div>
  <p class="wallet-note">R$ 1 registrado = 1 moeda. Comprar poderes nunca retira dinheiro do cofrinho.</p>
@@ -28,6 +28,7 @@
  function render(){
   $('.wallet-login').hidden=!!wallet;$('.wallet-account').hidden=!wallet;
   button.textContent=wallet?`🪙 ${fmt(wallet.available)} · ${NAMES[wallet.character]}`:'🪙 Minha Carteira';
+  const summary=document.querySelector('#coinWalletSummary');if(summary)summary.textContent=wallet?`🪙 ${NAMES[wallet.character]} · ${fmt(wallet.available)} moedas disponíveis`:'🪙 Entre com seu PIN para consultar moedas';
   if(!wallet)return;
   $('.wallet-person h3').textContent=`${NAMES[wallet.character]} · Carteira pessoal`;
   const balances=$('.wallet-balances');balances.replaceChildren();
@@ -48,12 +49,13 @@
    }));card.append(art,title,benefit,price,action);grid.append(card);
   }
   const history=$('.wallet-history');history.replaceChildren();
-  for(const purchase of wallet.history.slice().reverse()){const row=document.createElement('li');row.textContent=`${wallet.catalog.find(item=>item.id===purchase.itemId)?.name||purchase.itemId} · ${purchase.price} moedas · ${new Date(purchase.at).toLocaleString('pt-BR')}`;history.append(row);}
+  for(const purchase of wallet.history.slice().reverse()){const row=document.createElement('li');row.textContent=`${wallet.catalog.find(item=>item.id===purchase.itemId)?.name||purchase.label||purchase.itemId} · ${purchase.price} moedas · ${new Date(purchase.at).toLocaleString('pt-BR')}`;history.append(row);}
   if(!wallet.history.length){const row=document.createElement('li');row.textContent='Nenhuma compra ainda. Todos podem jogar e coletar poderes gratuitamente.';history.append(row);}
  }
- async function mutate(fn){if(busy)return;busy=true;revision++;render();try{await fn();}catch(error){status(error.message,true);}finally{busy=false;render();}}
+ async function mutate(fn){if(busy)return;busy=true;revision++;render();try{await fn();window.dispatchEvent(new Event('bomba-wallet-changed'));}catch(error){status(error.message,true);}finally{busy=false;render();}}
  async function refresh(quiet=false){if(busy)return;const current=revision;try{const fresh=await api('/api/wallet');if(busy||current!==revision)return;wallet=fresh;await link();if(busy||current!==revision)return;render();if(!quiet)status('Carteira sincronizada. Suas compras ficam salvas online.');}catch(error){if(busy||current!==revision)return;if(error.status===401){wallet=null;render();if(!quiet)status('Entre com seu PIN pessoal para acessar as moedas.');}else if(!quiet)status(error.message,true);}}
- async function open(character){if(NAMES[character])$('.wallet-login select').value=character;if(!dialog.open)dialog.showModal();await refresh();}
+ async function open(character){if(!character&&!cofrinho)character=Object.keys(NAMES)[Number(localStorage.getItem('arena-skin')||0)];if(NAMES[character])$('.wallet-login select').value=character;if(!dialog.open)dialog.showModal();await refresh();}
+ for(const id of ['openCoinShop','openCoinShopFinished'])document.getElementById(id)?.addEventListener('click',()=>open());
  button.onclick=()=>open();$('.wallet-close').onclick=()=>dialog.close();
  $('.wallet-login').onsubmit=event=>{event.preventDefault();const form=event.currentTarget,character=form.elements.character.value,pin=form.elements.pin.value;form.elements.pin.value='';mutate(async()=>{await api('/api/wallet/login',{character,pin});wallet=await api('/api/wallet');await link();status('Carteira protegida conectada.');});};
  $('.wallet-logout').onclick=()=>mutate(async()=>{await api('/api/wallet/logout',{});wallet=null;status('Você saiu da carteira. O jogo continua disponível.');});

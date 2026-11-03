@@ -64,11 +64,16 @@ function createWalletStore(database,{prefix=''}={}){
    const item=CATALOG.find(item=>item.id===itemId);
    if(!item||typeof requestId!=='string'||!/^[a-zA-Z0-9-]{16,80}$/.test(requestId))throw fail('Compra inválida.',400);
    const{d,character}=await session(token),records=d.collection('cofrinhos');
+   const existing=walletView(await records.findOne({_id:character}),character);
+   const replay=existing.history.find(p=>p.requestId===requestId);
+   if(replay?.itemId===itemId)return existing;
+   if(replay)throw fail('Identificador de compra já utilizado.',409);
+   if(existing.owned.includes(itemId))throw fail('Essa melhoria já está comprada.',409);
    // Deposits, spending, ownership and audit entry live in the SAME document.
    // This conditional write serializes with existing deposit updates: no stale
    // balance read, no browser-supplied price, no multi-document transaction gap.
    const saved={$setIntersection:[{$ifNull:['$saved',[]]},Array.from({length:200},(_,i)=>i+1)]};
-   const spent={$sum:{$map:{input:{$ifNull:['$wallet.purchases',[]]},as:'p',in:'$$p.price'}}};
+   const spent={$add:[{$max:[0,{$ifNull:['$spentCoins',0]}]},{$sum:{$map:{input:{$ifNull:['$wallet.purchases',[]]},as:'p',in:'$$p.price'}}}]};
    const result=await records.updateOne({_id:character,'wallet.purchases.itemId':{$ne:itemId},'wallet.purchases.requestId':{$ne:requestId},$expr:{$gte:[{$subtract:[{$sum:saved},spent]},item.price]}},{$push:{'wallet.purchases':{itemId,price:item.price,requestId,at:new Date()}},$set:{'wallet.updatedAt':new Date()}});
    const view=walletView(await records.findOne({_id:character}),character);
    if(!result.modifiedCount){

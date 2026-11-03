@@ -52,3 +52,8 @@ test('bootstrap PINs are unique per character and never replace an existing cred
  const store=createWalletStore(async()=>d);await store.bootstrap({jheniffer:'12345678'});const {token}=await store.login('jheniffer','12345678','bootstrap');
  await store.bootstrap({jheniffer:'87654321'});assert.equal((await store.get(token)).character,'jheniffer');await assert.rejects(store.login('jheniffer','87654321','bootstrap'),e=>e.status===401);
 });
+test('prior coin-shop spending, historical purchases and unlock tiers survive without double credit or a second charge',async()=>{
+ const store=createWalletStore(async()=>d);await d.collection('cofrinhos').insertOne({_id:'jheniffer',saved:[100],spentCoins:35,upgrades:{bomb:1,kick:1},coinPurchases:[{id:'previous-purchase-id',upgrade:'bomb',cost:10,level:1,at:new Date()}]});
+ const {token}=await store.login('jheniffer','12345678','legacy');let view=await store.get(token);assert.equal(view.spent,35);assert.equal(view.available,65);assert.ok(view.owned.includes('bomb2'));assert.ok(view.owned.includes('legacy-kick'));assert.equal(view.history[0].price,10);
+ await assert.rejects(store.purchase(token,'bomb2',crypto.randomUUID()),e=>e.status===409);await store.equip(token,['bomb2','legacy-kick']);await store.purchase(token,'fire2',crypto.randomUUID());view=await store.get(token);assert.equal(view.spent,50);assert.equal(view.available,50);assert.deepEqual(view.equipped,['bomb2','legacy-kick']);assert.equal((await d.collection('cofrinhos').findOne({_id:'jheniffer'})).spentCoins,35);
+});

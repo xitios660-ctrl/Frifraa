@@ -110,3 +110,14 @@ prefixo aleatório `qa_<16 hex>_`, remove-as ao terminar e compara hashes dos
 campos `saved` dos quatro cofrinhos reais, sem gravar neles. A resposta lista
 as verificações. Somente uma execução pode ocorrer por vez. Nunca exponha a
 chave do administrador ou inclua valores de PIN em scripts versionados.
+
+### Compatibilidade com a integração anterior
+
+Os campos anteriores `spentCoins`, `upgrades` e `coinPurchases` permanecem
+intactos. Gastos antigos entram no saldo, os níveis já comprados aparecem como
+melhorias próprias e o histórico existente continua visível. Níveis antigos
+fora do novo catálogo podem ser equipados como compras anteriores. Não há
+migração destrutiva, reembolso artificial nem segunda cobrança pelo mesmo
+benefício. O cartão de moedas da página do cofrinho usa o mesmo saldo canônico.
+A antiga API que identificava carteiras somente pela skin retorna 410 e orienta
+abrir Minha Carteira com PIN, para impedir gastos em nome de outra pessoa.

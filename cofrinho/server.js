@@ -9,6 +9,29 @@ const {installWallet}=require('./wallet-routes');
 const PEOPLE = Object.freeze(['mary', 'kaique', 'jheniffer', 'gustavo']);
 const TARGET = 20100;
 const MAX_AMOUNT = 200;
+const crypto = require('node:crypto');
+// In-game coins reflect marked Cofrinho amounts; they do not verify bank payments.
+const STORE_ITEMS = Object.freeze({
+  bomb: Object.freeze({label:'Bomba extra',cost:10,max:3}),
+  range: Object.freeze({label:'Fogo +1',cost:10,max:4}),
+  speed: Object.freeze({label:'Velocidade +1',cost:15,max:2}),
+  life: Object.freeze({label:'Vida inicial +1',cost:20,max:2}),
+  shield: Object.freeze({label:'Escudo inicial',cost:25,max:1}),
+  kick: Object.freeze({label:'Luva de chute',cost:20,max:1}),
+  push: Object.freeze({label:'Empurrar bomba',cost:20,max:1})
+});
+function walletView(character,doc={}){
+  const value=require('./catalog').walletView(doc,character);
+  return {...value,balance:value.available,upgrades:doc.upgrades||{},recentPurchases:value.history.slice(-8).reverse()};
+}
+function validGameKey(req){
+  const configured=process.env.BOMBERMAN_GAME_KEY;
+  const received=req.get('x-bomberman-game-key')||'';
+  if(!configured||!received)return false;
+  const a=Buffer.from(received),b=Buffer.from(configured);
+  return a.length===b.length && crypto.timingSafeEqual(a,b);
+}
+
 
 function publicState(character, saved = []) {
   const valid = [...new Set(saved.filter(v => Number.isInteger(v) && v >= 1 && v <= MAX_AMOUNT))].sort((a, b) => a - b);
@@ -44,7 +67,12 @@ function createMongoStore({ uri = process.env.MONGODB_URI, dbName = process.env.
     async getAll() {
       const db = await collection();
       const records = await db.find({ _id: { $in: PEOPLE } }).toArray();
-      return PEOPLE.map(character => publicState(character, records.find(item => item._id === character)?.saved || []));
+      return PEOPLE.map(character => {
+        const doc=records.find(item=>item._id===character)||{};
+        const coins=walletView(character,doc);
+        return {...publicState(character,doc.saved||[]),
+          coins:coins.balance,coinsEarned:coins.earned,coinsSpent:coins.spent};
+      });
     },
     async setMarked(character, amount, marked) {
       const db = await collection();
@@ -58,7 +86,14 @@ function createMongoStore({ uri = process.env.MONGODB_URI, dbName = process.env.
         await db.updateOne({ _id: character }, { $pull: { saved: amount }, $set: { updatedAt: new Date() } });
       }
       const current = await db.findOne({ _id: character });
-      return publicState(character, current?.saved || []);
+      const coins=walletView(character,current||{});
+      return {...publicState(character,current?.saved||[]),
+        coins:coins.balance,coinsEarned:coins.earned,coinsSpent:coins.spent};
+    },
+    async getWallet(character) {
+      const db=await collection();
+      const doc=await db.findOne({_id:character});
+      return walletView(character,doc||{});
     },
     async close() { if (client) await client.close(); }
   };
@@ -84,6 +119,9 @@ function createApp(store = createMongoStore(),wallet = createWalletStore(()=>sto
   });
 
   app.get('/api/health', (_req, res) => res.json({ service: 'cofrinho-bomba-party', status: 'up' }));
+  // The old skin-only bridge is retired: a service key alone never identifies
+  // the owner of a personal wallet. Keep the URL with an explicit upgrade error.
+  app.all('/api/game-wallet/:operation', (_req,res)=>res.status(410).json({error:'A loja agora exige seu PIN pessoal. Atualize o aplicativo e abra Minha Carteira.'}));
 
   app.get('/api/state', async (_req, res, next) => {
     try { res.json({ target: TARGET, people: await store.getAll() }); }
@@ -127,4 +165,4 @@ if (require.main === module) {
   process.on('SIGTERM', () => server.close(() => process.exit(0)));
 }
 
-module.exports = { PEOPLE, TARGET, publicState, createMongoStore, createApp };
+module.exports = { PEOPLE, TARGET, publicState, walletView, STORE_ITEMS, createMongoStore, createApp };
