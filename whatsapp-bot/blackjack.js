@@ -14,7 +14,7 @@ const isStopStart = s => /^bot\s+(?:jogar\s+)?(?:stop|adedonha|adedanha)$/.test(
 const isJoin = s => /^(eu|eu quero|eu vou|eu jogo|to dentro|tô dentro|participo|quero jogar)$/.test(clean(s));
 const isHit = s => /^(?:bot\s+)?(?:carta|mais|mais carta|pedir carta|quero carta|quero mais|quero mais uma|outra|outra carta|manda carta|manda mais uma|me da uma carta|me de uma carta|comprar|puxar|mais uma|hit|sim)$/.test(clean(s));
 const isStand = s => /^(?:bot\s+)?(?:parar|parou|paro|passar|passo|passei|parei|vou parar|quero parar|nao quero mais|nao|sem mais cartas|plantar|stand|chega|chega de carta|ficar|fico|manter|segurar|to bem|estou bem)$/.test(clean(s));
-const isHand = s => /^(?:bot\s+)?(?:cartas|minhas cartas|minha mao|ver cartas|ver mao|mostra as cartas|mostra minhas cartas|quais sao minhas cartas|me manda minhas cartas|oi|ola|iniciar)$/.test(clean(s));
+const isHand = s => /^(?:bot\s+)?(?:cartas|minhas cartas|minha mao|ver cartas|ver mao|mostra as cartas|mostra minhas cartas|quais sao minhas cartas|me manda minhas cartas)$/.test(clean(s));
 const active = phase => ['signup','dealing','playing','finishing'].includes(phase);
 const faces = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
 const suits = ['♠️','♥️','♦️','♣️'];
@@ -111,7 +111,7 @@ function createBlackjack({db,getGroup,sendGroup,sendPrivate,isActive}) {
     const players=game.players.map(p=>({...p,hand:[cards.pop(),cards.pop()],status:'pending',dmStatus:'pending'}));
     const dealer=[cards.pop(),cards.pop()];
     for(const p of players)if(natural(p.hand))p.status='blackjack';
-    const changed=await persist(game,{phase:'dealing',players,dealer,deck:cards,turnIndex:-1,updatedAt:now()},{phase:'signup'});
+    const changed=await persist(game,{phase:'dealing',players,dealer,deck:cards,turnIndex:-1,deliveryDeadline:Date.now()+25000,updatedAt:now()},{phase:'signup'});
     if(changed)await say('🃏 Inscrições encerradas! Distribuindo 2 cartas no privado…');
   }
   async function distribute(game) {
@@ -129,8 +129,16 @@ function createBlackjack({db,getGroup,sendGroup,sendPrivate,isActive}) {
       await col.updateOne({_id:gid(),gameId:game.gameId,phase:'dealing',
         ['players.'+index+'.dmStatus']:'pending'},
       {$set:{['players.'+index+'.dmStatus']:delivered?'sent':'failed',
-        ...(delivered?{['players.'+index+'.dmJid']:dmReceipt?.jid||pending.jid}:{['players.'+index+'.status']:'unavailable'}),updatedAt:now()},$inc:{version:1}});
-      if(!delivered)await say('⚠️ Não consegui enviar as cartas no privado de '+pending.name+'. Essa pessoa ficará fora desta rodada.');
+        ...(delivered?{['players.'+index+'.dmJid']:dmReceipt?.jid||pending.jid}:{}),updatedAt:now()},$inc:{version:1}});
+      if(!delivered)await say('⚠️ Não consegui iniciar o privado com '+pending.name+'. Abra a conversa com o Bot e envie *cartas* em até 25 segundos para recuperar sua mão.');
+      return;
+    }
+    const missed=game.players.filter(p=>p.dmStatus==='failed');
+    if(missed.length && Date.now()<(game.deliveryDeadline||0))return;
+    if(missed.length) {
+      await col.updateOne({_id:gid(),gameId:game.gameId,phase:'dealing'},
+        {$set:{players:game.players.map(p=>p.dmStatus==='failed'?{...p,status:'unavailable'}:p),updatedAt:now()},$inc:{version:1}});
+      await say('⚠️ Os jogadores que não conseguiram abrir o privado ficarão fora desta mão.');
       return;
     }
     const index=nextPending(game.players);
@@ -259,7 +267,7 @@ function createBlackjack({db,getGroup,sendGroup,sendPrivate,isActive}) {
     const game=await dbGame();
     if(!game || !active(game.phase))return false;
     const command=clean(text);
-    if(!(isHand(command)||isHit(command)||isStand(command)))return false;
+    if(!(isHand(command)||isHit(command)||isStand(command)||/^(oi|ola|iniciar)$/.test(command)))return false;
     const candidates=[remoteJid,...(identity?.jids||[])].filter(Boolean);
     const participant=game.players.find(p=>
       (identity?.phoneE164 && p.id===identity.phoneE164) ||
@@ -268,8 +276,18 @@ function createBlackjack({db,getGroup,sendGroup,sendPrivate,isActive}) {
     );
     if(!participant)return false;
     const respond=async message=>sendPrivate({...participant,jid:remoteJid,jids:[remoteJid]},{text:message});
-    if(game.phase==='signup'||game.phase==='dealing'){
-      await respond('🎴 Você está inscrito(a)! Aguarde o fim das inscrições para receber suas duas cartas. Quando receber, poderá escrever *carta* ou *parar* no grupo.');
+    if(game.phase==='signup'){
+      await respond('🎴 Você está inscrito(a)! Aguarde os 10 segundos de inscrição. Depois envio suas cartas aqui.');
+      return true;
+    }
+    if(game.phase==='dealing'){
+      if(participant.hand?.length===2) {
+        await sendHand(participant,'',remoteJid);
+        const index=game.players.findIndex(p=>p.id===participant.id);
+        await col.updateOne({_id:gid(),gameId:game.gameId,phase:'dealing'},
+          {$set:{['players.'+index+'.dmStatus']:'sent',['players.'+index+'.status']:natural(participant.hand)?'blackjack':'pending',
+            ['players.'+index+'.dmJid']:remoteJid,updatedAt:now()},$inc:{version:1}});
+      } else await respond('🎴 Aguarde mais um instante. Estou embaralhando as cartas.');
       return true;
     }
     if(isHand(command)){
