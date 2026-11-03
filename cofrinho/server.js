@@ -67,7 +67,12 @@ function createMongoStore({ uri = process.env.MONGODB_URI, dbName = process.env.
     async getAll() {
       const db = await collection();
       const records = await db.find({ _id: { $in: PEOPLE } }).toArray();
-      return PEOPLE.map(character => publicState(character, records.find(item => item._id === character)?.saved || []));
+      return PEOPLE.map(character => {
+        const doc=records.find(item=>item._id===character)||{};
+        const coins=walletView(character,doc);
+        return {...publicState(character,doc.saved||[]),
+          coins:coins.balance,coinsEarned:coins.earned,coinsSpent:coins.spent};
+      });
     },
     async setMarked(character, amount, marked) {
       const db = await collection();
@@ -81,7 +86,9 @@ function createMongoStore({ uri = process.env.MONGODB_URI, dbName = process.env.
         await db.updateOne({ _id: character }, { $pull: { saved: amount }, $set: { updatedAt: new Date() } });
       }
       const current = await db.findOne({ _id: character });
-      return publicState(character, current?.saved || []);
+      const coins=walletView(character,current||{});
+      return {...publicState(character,current?.saved||[]),
+        coins:coins.balance,coinsEarned:coins.earned,coinsSpent:coins.spent};
     },
     async getWallet(character) {
       const db=await collection();
@@ -99,7 +106,7 @@ function createMongoStore({ uri = process.env.MONGODB_URI, dbName = process.env.
         if(wallet.upgrades[upgrade]>=item.max)throw Object.assign(new Error('Essa melhoria já está no máximo.'),{status:409});
         if(wallet.balance<item.cost)throw Object.assign(new Error('Moedas insuficientes. Confira o saldo do Cofrinho.'),{status:409});
         const version=doc.coinsVersion;
-        const filter={_id:character,coinsVersion:version===undefined?{$exists:false}:version};
+        const filter={_id:character,coinsVersion:version===undefined?{$exists:false}:version,saved:doc.saved};
         const result=await db.updateOne(filter,{
           $inc:{spentCoins:item.cost,coinsVersion:1,['upgrades.'+upgrade]:1},
           $push:{coinPurchases:{$each:[{id:purchaseId,upgrade,cost:item.cost,
