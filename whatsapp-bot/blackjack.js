@@ -137,7 +137,7 @@ function createBlackjack({db,getGroup,sendGroup,sendPrivate,isActive}) {
     if(missed.length && Date.now()<(game.deliveryDeadline||0))return;
     if(missed.length) {
       await col.updateOne({_id:gid(),gameId:game.gameId,phase:'dealing'},
-        {$set:{players:game.players.map(p=>p.dmStatus==='failed'?{...p,status:'unavailable'}:p),updatedAt:now()},$inc:{version:1}});
+        {$set:{players:game.players.map(p=>p.dmStatus==='failed'?{...p,status:'unavailable',dmStatus:'skipped'}:p),updatedAt:now()},$inc:{version:1}});
       await say('⚠️ Os jogadores que não conseguiram abrir o privado ficarão fora desta mão.');
       return;
     }
