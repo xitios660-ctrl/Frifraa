@@ -206,6 +206,8 @@ function fillBots(room) {
 }
 async function prepareAndStartGame(room,hostWs) {
   if(room.preparing || !['lobby','finished'].includes(room.phase))return;
+  if([...room.players.values()].some(p=>purchasingCharacters.has(coinModule.characterForSkin(p.skinIndex))))
+    return error(hostWs,'Aguarde a compra de melhorias terminar antes de iniciar.');
   room.preparing=true;
   try{
     if(coinShop.enabled()){
