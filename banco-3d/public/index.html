@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#101126">
+<meta name="description" content="Compre ruas, construa casas e vença seus amigos no Banco da Turma 3D online.">
+<title>Banco da Turma 3D · Bomba Party</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
+<header class="topbar">
+  <a class="logo" href="/" aria-label="Banco da Turma 3D"><span class="logo-mark">◆</span><span><strong>BANCO<span class="gradient">DA TURMA.</span></strong><small>PROPERTY PARTY · 3D</small></span></a>
+  <div class="top-actions"><span id="connection" class="connection">● Conectando</span><a class="back-link" href="https://bomberman-i7lu.onrender.com/" target="_blank" rel="noopener">💣 Bomba Party</a></div>
+</header>
+<main>
+<section id="welcome" class="welcome page">
+ <div class="welcome-intro">
+  <div class="eyebrow"><span class="shine">✧</span> DA TURMA PARA A TURMA <span class="shine">✧</span></div>
+  <h1>COMPRE A<br><span>cidade.</span><br>DOMINE O<br>tabuleiro.</h1>
+  <p>Uma disputa de propriedades com os quatro personagens do Bomba Party. Construa, cobre aluguéis e torne-se o(a) mais rico(a) da mesa. Em tempo real, direto do celular.</p>
+  <div class="hero-pills"><span>🎲 Dados animados</span><span>🏘️ 24 casas</span><span>🌐 Sala online</span><span>✨ Tabuleiro 3D</span></div>
+  <div class="decor-cards" aria-hidden="true"><div class="floating-building">🏦</div><div class="floating-dice">⚄</div><div class="floating-money">R$</div></div>
+ </div>
+ <div class="welcome-panel">
+  <div class="panel-heading"><span class="tag">01 / SUA IDENTIDADE</span><h2>Escolha seu personagem</h2><p>Cada personagem pode ser escolhido uma vez por sala.</p></div>
+  <div id="characters" class="character-grid" aria-label="Personagens"></div>
+  <div class="lobby-actions">
+    <button id="create" class="btn primary" disabled>✦ CRIAR SALA <span>↗</span></button>
+    <div class="separ"><span>ou entre na sala de alguém</span></div>
+    <div class="join-row"><input id="room-input" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CÓDIGO DA SALA"><button id="join" class="btn secondary" disabled>ENTRAR</button></div>
+    <p class="subtle">Sem senha. Basta compartilhar o código ou link. Até 4 jogadores.</p>
+  </div>
+ </div>
+</section>
+<section id="game" class="page game-page hidden">
+ <div class="game-heading">
+  <div><div class="eyebrow">✦ SALA ONLINE · ATÉ QUATRO JOGADORES</div><h2>BANCO <span>DA TURMA</span> <i>3D</i></h2></div>
+  <div class="room-display"><span>CÓDIGO DA SALA</span><strong id="room-code">------</strong><button id="copy-link" class="mini-btn" title="Copiar convite">🔗 Copiar convite</button></div>
+ </div>
+ <div id="players" class="players-strip"></div>
+ <div id="lobby-banner" class="lobby-banner hidden"><div><div class="tag">⏳ SALA DE ESPERA</div><h3>Esperando a turma...</h3><p>Envie o convite. Quando duas ou mais pessoas entrarem, o anfitrião pode começar.</p></div><button id="start-game" class="btn primary">🎲 COMEÇAR PARTIDA</button></div>
+ <div class="game-layout">
+  <div class="board-frame">
+   <div class="board-halo"></div>
+   <div class="board-3d">
+    <div id="board" class="board" aria-label="Tabuleiro de propriedades">
+     <div class="board-center">
+      <div class="center-pattern"></div>
+      <div class="center-content">
+       <div class="center-shine">✦ BANCO DA TURMA ✦</div>
+       <div class="center-monogram">B<span>3</span>D</div>
+       <div class="center-title">BUILD YOUR EMPIRE</div>
+       <div class="dice-stage"><div id="die-a" class="die">⚀</div><div id="die-b" class="die">⚀</div></div>
+       <div id="board-caption" class="board-caption">Aguardando a turma</div>
+      </div>
+     </div>
+    </div>
+   </div>
+   <div class="board-footnote"><span>Arraste para rolar a página · Toque em uma propriedade para ver detalhes</span><span>✦ 3D PERSPECTIVE</span></div>
+  </div>
+  <aside class="game-sidebar">
+   <div class="section-title"><span>01</span><h3>PAINEL DE JOGO</h3></div>
+   <div class="turn-card">
+    <div class="turn-head"><span class="turn-led"></span><strong id="turn-label">AGUARDANDO...</strong></div>
+    <div class="turn-person"><img id="turn-img" alt="" src=""><div><span>É A VEZ DE</span><strong id="turn-name">---</strong><small id="turn-hint">Prepare os dados</small></div></div>
+    <div id="action-info" class="action-info">Quando a partida começar, o jogador da vez lança os dados.</div>
+    <div id="action-buttons" class="action-buttons"></div>
+   </div>
+   <div class="section-title"><span>02</span><h3>PROPRIEDADES</h3></div>
+   <div id="property-panel" class="property-panel"><span class="muted">Toque em uma casa do tabuleiro para consultar valores, proprietário e construções.</span></div>
+   <div class="section-title"><span>03</span><h3>DIÁRIO DA PARTIDA</h3></div>
+   <div id="history" class="history"></div>
+   <div class="bottom-controls"><button id="restart" class="mini-btn hidden">↻ NOVA PARTIDA</button><button id="rules" class="mini-btn">? COMO JOGAR</button></div>
+  </aside>
+ </div>
+</section>
+</main>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="rules-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="rules-title">
+ <div class="modal-card"><button id="close-rules" class="close-btn" aria-label="Fechar">×</button><span class="tag">GUIA RÁPIDO</span><h2 id="rules-title">Como jogar</h2><p>🎲 De 2 a 4 pessoas escolhem seus personagens e entram na mesma sala. Cada uma começa com <strong>R$ 1.500</strong>.</p><p>🏠 Role dois dados na sua vez, caminhe pelo tabuleiro e compre propriedades. Quando alguém cair no seu terreno, recebe aluguel. Passe pela Partida e ganhe <strong>R$ 200</strong>.</p><p>🔨 Melhore seus terrenos com até 3 casas. Construções aumentam o aluguel. Você também pode hipotecar seus terrenos para conseguir dinheiro.</p><p>✨ Cartas Surpresa, impostos e prisão mudam o rumo do jogo. Quando não conseguir pagar uma dívida, você declara falência. Ganha quem for o último ativo (ou o mais rico após 150 turnos).</p><p>🛟 Suas ações são confirmadas pelo servidor. Guarde o link da sala para reconectar se a internet cair.</p><button id="got-it" class="btn primary">ENTENDI ✦</button></div>
+</div>
+<footer>FEITO PARA MARY · KAIQUE · JHENIFFER · GUSTAVO <span>✦</span> UM UNIVERSO BOMBA PARTY</footer>
+</body>
+</html>
