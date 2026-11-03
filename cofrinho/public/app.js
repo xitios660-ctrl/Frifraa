@@ -98,6 +98,7 @@ async function deposit(amount) {
   if (networkBusy) return;
   if (!initialized) return setStatus('⚠️ Aguarde a conexão do banco antes de marcar um valor.', 'error');
   const character = selected;
+  if(window.BombaWallet?.identity!==character){window.BombaWallet?.open(character);return setStatus('🔒 Entre com o PIN deste personagem para alterar depósitos.','info');}
   const isMarked = people.get(character).saved.includes(amount);
   if (isMarked && !window.confirm(`Desmarcar o depósito de ${MONEY.format(amount)} do cofrinho de ${NAMES[character]}?`)) return;
   const button = savedButtons.get(amount);
@@ -108,6 +109,7 @@ async function deposit(amount) {
   try {
     const data = await fetchJSON('/api/deposit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ character, amount, marked: !isMarked }) });
     people.set(character, data.person);
+    window.BombaWallet?.refresh();
     render();
     setStatus(isMarked ? `↩️ ${MONEY.format(amount)} desmarcado do cofrinho de ${NAMES[character]}.` : `🎉 ${MONEY.format(amount)} guardado no cofrinho de ${NAMES[character]}!`, 'success');
     if (data.person.count === 200) setStatus(`🏆 PARABÉNS, ${NAMES[character].toUpperCase()}! VOCÊ COMPLETOU OS 200 DEPÓSITOS!`, 'success');

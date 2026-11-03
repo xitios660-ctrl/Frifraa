@@ -3,6 +3,8 @@
 const path = require('node:path');
 const express = require('express');
 const { MongoClient } = require('mongodb');
+const {createWalletStore}=require('./wallet-store');
+const {installWallet}=require('./wallet-routes');
 
 const PEOPLE = Object.freeze(['mary', 'kaique', 'jheniffer', 'gustavo']);
 const TARGET = 20100;
@@ -21,7 +23,7 @@ function createMongoStore({ uri = process.env.MONGODB_URI, dbName = process.env.
 
   async function collection() {
     if (!uri) throw unavailable();
-    if (dbName === 'ganoh_production') throw Object.assign(new Error('Banco da Ganoh bloqueado por segurança.'), { status: 503 });
+    if (dbName !== 'bomba_party_cofrinho') throw Object.assign(new Error('Somente o banco bomba_party_cofrinho é permitido.'), { status: 503 });
     if (!connecting) {
       connecting = (async () => {
         client = new MongoClient(uri, { maxPoolSize: 5, serverSelectionTimeoutMS: 6500, retryWrites: true });
@@ -38,6 +40,7 @@ function createMongoStore({ uri = process.env.MONGODB_URI, dbName = process.env.
   }
 
   return {
+    async database(){await collection();return client.db(dbName);},
     async getAll() {
       const db = await collection();
       const records = await db.find({ _id: { $in: PEOPLE } }).toArray();
@@ -61,11 +64,24 @@ function createMongoStore({ uri = process.env.MONGODB_URI, dbName = process.env.
   };
 }
 
-function createApp(store = createMongoStore()) {
+function createApp(store = createMongoStore(),wallet = createWalletStore(()=>store.database())) {
   const app = express();
   app.disable('x-powered-by');
+  app.set('trust proxy',1);
   app.use(express.json({ limit: '2kb', strict: true }));
   app.use('/api', (_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+  app.use('/api',(req,res,next)=>{
+    if(req.method==='POST'&&req.headers.origin&&req.headers.origin!==`${req.protocol}://${req.get('host')}`)return res.status(403).json({error:'Origem não autorizada.'});
+    next();
+  });
+  const access=installWallet(app,wallet);
+  let verifying=false;
+  app.post('/api/wallet/admin/verify',async(req,res,next)=>{
+    if(!require('./wallet-routes').equal(req.headers['x-wallet-admin'],process.env.WALLET_ADMIN_KEY))return res.status(403).json({error:'Acesso restrito ao administrador.'});
+    if(verifying)return res.status(409).json({error:'Verificação já está em andamento.'});
+    verifying=true;
+    try{res.json(await require('./wallet-verification').verifyWallet(()=>store.database()));}catch(error){next(error);}finally{verifying=false;}
+  });
 
   app.get('/api/health', (_req, res) => res.json({ service: 'cofrinho-bomba-party', status: 'up' }));
 
@@ -79,7 +95,7 @@ function createApp(store = createMongoStore()) {
     if (!PEOPLE.includes(character) || !Number.isInteger(amount) || amount < 1 || amount > MAX_AMOUNT || typeof marked !== 'boolean') {
       return res.status(400).json({ error: 'Informe personagem válido, valor inteiro entre 1 e 200 e se foi guardado.' });
     }
-    try { return res.json({ target: TARGET, person: await store.setMarked(character, amount, marked) }); }
+    try { await access.authorizeDeposit(req);return res.json({ target: TARGET, person: await store.setMarked(character, amount, marked) }); }
     catch (error) { return next(error); }
   });
 
@@ -89,8 +105,8 @@ function createApp(store = createMongoStore()) {
   app.use((err, _req, res, _next) => {
     if (res.headersSent) return;
     if (err instanceof SyntaxError && 'body' in err) return res.status(400).json({ error: 'JSON inválido.' });
-    console.error('[cofrinho]', err.message);
-    res.status(err.status || 500).json({ error: err.status === 503 ? err.message : 'Não foi possível salvar. Tente novamente; a marcação não foi confirmada.' });
+    if(!err.status)console.error('[cofrinho] Falha interna ao processar operação.');
+    res.status(err.status || 500).json({ error: err.status ? err.message : 'Não foi possível salvar. Tente novamente; a operação não foi confirmada.' });
   });
   return app;
 }
@@ -98,10 +114,12 @@ function createApp(store = createMongoStore()) {
 if (require.main === module) {
   const port = Number(process.env.PORT) || 3000;
   const store = createMongoStore();
-  const server = createApp(store).listen(port, '0.0.0.0', () => {
+  const wallet=createWalletStore(()=>store.database());
+  const server = createApp(store,wallet).listen(port, '0.0.0.0', () => {
     console.log(`Cofrinho Bomba Party no porto ${port}`);
     store.getAll().then(people => {
       console.log(`[cofrinho] MongoDB conectado e consulta realizada para ${people.length} cofrinhos.`);
+      return wallet.bootstrap(Object.fromEntries(PEOPLE.map(character=>[character,process.env[`WALLET_PIN_${character.toUpperCase()}`]])));
     }).catch(() => {
       console.error('[cofrinho] MongoDB ainda indisponível; depósitos continuam bloqueados.');
     });
