@@ -3,7 +3,7 @@ const crypto = require('node:crypto');
 
 const SIGNUP_MS = 10_000;
 const TURN_MS = 45_000;
-const MAX_PLAYERS = 8;
+const MAX_PLAYERS = 4;
 const clean = s => String(s||'').trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[!?.,]+$/,'').trim();
 const isStart = s => /^(?:bot\s+)(?:jogar\s+)?(?:blackjack|black jack|21|vinte e um)$/.test(clean(s));
 const isRules = s => /^bot\s+(?:regras\s+(?:do\s+)?)?(?:blackjack|black jack|21)\s+regras$/.test(clean(s)) ||
@@ -11,10 +11,10 @@ const isRules = s => /^bot\s+(?:regras\s+(?:do\s+)?)?(?:blackjack|black jack|21)
 const isStatus = s => /^bot\s+(?:blackjack|black jack|21)\s+(?:status|placar|mesa)$/.test(clean(s));
 const isCancel = s => /^bot\s+(?:encerrar|cancelar|parar)\s+(?:blackjack|black jack|21)$/.test(clean(s));
 const isStopStart = s => /^bot\s+(?:jogar\s+)?(?:stop|adedonha|adedanha)$/.test(clean(s));
-const isJoin = s => clean(s)==='eu';
-const isHit = s => /^(?:bot\s+)?(?:carta|mais carta|pedir carta|outra|comprar|puxar|mais uma|hit)$/.test(clean(s));
-const isStand = s => /^(?:bot\s+)?(?:parar|paro|passo|parei|plantar|stand|chega|ficar)$/.test(clean(s));
-const isHand = s => /^(?:bot\s+)?(?:minhas cartas|minha mao|ver cartas|ver mao)$/.test(clean(s));
+const isJoin = s => /^(eu|eu quero|eu vou|eu jogo|to dentro|tô dentro|participo|quero jogar)$/.test(clean(s));
+const isHit = s => /^(?:bot\s+)?(?:carta|mais|mais carta|pedir carta|quero carta|quero mais|quero mais uma|outra|outra carta|manda carta|manda mais uma|me da uma carta|me de uma carta|comprar|puxar|mais uma|hit|sim)$/.test(clean(s));
+const isStand = s => /^(?:bot\s+)?(?:parar|parou|paro|passar|passo|passei|parei|vou parar|quero parar|nao quero mais|nao|sem mais cartas|plantar|stand|chega|chega de carta|ficar|fico|manter|segurar|to bem|estou bem)$/.test(clean(s));
+const isHand = s => /^(?:bot\s+)?(?:cartas|minhas cartas|minha mao|ver cartas|ver mao|mostra as cartas|mostra minhas cartas|quais sao minhas cartas|me manda minhas cartas|oi|ola|iniciar)$/.test(clean(s));
 const active = phase => ['signup','dealing','playing','finishing'].includes(phase);
 const faces = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
 const suits = ['♠️','♥️','♦️','♣️'];
@@ -86,7 +86,7 @@ function createBlackjack({db,getGroup,sendGroup,sendPrivate,isActive}) {
     if(!jid){await say('Não encontrei um WhatsApp válido para mandar as cartas no privado.');return true;}
     if(game.players.some(p=>p.id===identity.phoneE164))return true;
     if(game.players.length>=MAX_PLAYERS){await say('🎴 A mesa já está cheia!');return true;}
-    const player={id:identity.phoneE164,name:identity.name,jid,hand:[],status:'waiting',dmStatus:'pending'};
+    const player={id:identity.phoneE164,name:identity.name,jid,jids:(identity.jids||[]).filter(x=>typeof x==='string' && /^\d+@(lid|s\.whatsapp\.net)$/.test(x)),hand:[],status:'waiting',dmStatus:'pending'};
     const result=await col.updateOne({_id:gid(),gameId:game.gameId,phase:'signup',signupDeadline:{$gte:Date.now()},
       'players.id':{$ne:player.id},'players.7':{$exists:false}},{$push:{players:player},$inc:{version:1},$set:{updatedAt:now()}});
     if(result.modifiedCount)await say('✅ '+player.name+' entrou! ('+(game.players.length+1)+' jogador(es))');
@@ -102,8 +102,8 @@ function createBlackjack({db,getGroup,sendGroup,sendPrivate,isActive}) {
       {$set:{turnDeadline:Date.now()+TURN_MS,updatedAt:now()}});
 
   }
-  async function sendHand(p, extra='') {
-    await sendPrivate(p.jid,{text:'🎴 *Seu Blackjack*\nSuas cartas: '+cardText(p.hand)+'\nTotal: *'+value(p.hand)+'*'+extra+
+  async function sendHand(p, extra='', directJid=null) {
+    return sendPrivate({...p,...(directJid?{jid:directJid,jids:[directJid]}:{})},{text:'🎴 *Seu Blackjack*\nSuas cartas: '+cardText(p.hand)+'\nTotal: *'+value(p.hand)+'*'+extra+
       '\n\nResponda *carta* ou *parar* no GRUPO quando chegar sua vez.'});
   }
   async function deal(game) {
@@ -117,9 +117,9 @@ function createBlackjack({db,getGroup,sendGroup,sendPrivate,isActive}) {
   async function distribute(game) {
     const pending=game.players.find(p=>p.dmStatus==='pending');
     if(pending) {
-      let delivered=false;
+      let delivered=false, dmReceipt=null;
       try {
-        await sendHand(pending,natural(pending.hand)?'\n✨ Blackjack natural! Você já tem 21.':'');
+        dmReceipt=await sendHand(pending,natural(pending.hand)?'\n✨ Blackjack natural! Você já tem 21.':'');
         delivered=true;
       } catch(e) {
         console.warn('[blackjack] Privado não entregue para '+pending.name+': '+String(e.message).slice(0,100));
@@ -129,7 +129,7 @@ function createBlackjack({db,getGroup,sendGroup,sendPrivate,isActive}) {
       await col.updateOne({_id:gid(),gameId:game.gameId,phase:'dealing',
         ['players.'+index+'.dmStatus']:'pending'},
       {$set:{['players.'+index+'.dmStatus']:delivered?'sent':'failed',
-        ...(delivered?{}:{['players.'+index+'.status']:'unavailable'}),updatedAt:now()},$inc:{version:1}});
+        ...(delivered?{['players.'+index+'.dmJid']:dmReceipt?.jid||pending.jid}:{['players.'+index+'.status']:'unavailable'}),updatedAt:now()},$inc:{version:1}});
       if(!delivered)await say('⚠️ Não consegui enviar as cartas no privado de '+pending.name+'. Essa pessoa ficará fora desta rodada.');
       return;
     }
@@ -141,7 +141,7 @@ function createBlackjack({db,getGroup,sendGroup,sendPrivate,isActive}) {
     }
     const changed=await persist(game,{phase:index===-1?'finishing':'playing',turnIndex:index,turnDeadline:Date.now()+TURN_MS+5000,finishAfter:Date.now()+3000},{phase:'dealing'});
     if(changed) {
-      await say('🎴 Cartas enviadas! Minha carta visível: *'+cardText([game.dealer[0]])+'* (a outra está escondida).');
+      await say('🎴 Tentei enviar as cartas no privado! Se não chegaram, abra a conversa com o *Bot* e escreva *cartas*. Minha carta visível: *'+cardText([game.dealer[0]])+'* (a outra está escondida).');
       if(index!==-1)await askTurn({...game,phase:'playing',turnIndex:index});
     }
   }
@@ -255,6 +255,35 @@ function createBlackjack({db,getGroup,sendGroup,sendPrivate,isActive}) {
     }
     return false;
   }
+  async function handlePrivate({text,identity,remoteJid}) {
+    const game=await dbGame();
+    if(!game || !active(game.phase))return false;
+    const command=clean(text);
+    if(!(isHand(command)||isHit(command)||isStand(command)))return false;
+    const candidates=[remoteJid,...(identity?.jids||[])].filter(Boolean);
+    const participant=game.players.find(p=>
+      (identity?.phoneE164 && p.id===identity.phoneE164) ||
+      p.jid===remoteJid ||
+      (p.jids||[]).some(j=>candidates.includes(j))
+    );
+    if(!participant)return false;
+    const respond=async message=>sendPrivate({...participant,jid:remoteJid,jids:[remoteJid]},{text:message});
+    if(game.phase==='signup'||game.phase==='dealing'){
+      await respond('🎴 Você está inscrito(a)! Aguarde o fim das inscrições para receber suas duas cartas. Quando receber, poderá escrever *carta* ou *parar* no grupo.');
+      return true;
+    }
+    if(isHand(command)){
+      await sendHand(participant,'',remoteJid);
+      return true;
+    }
+    if(game.phase==='playing' && game.players[game.turnIndex]?.id===participant.id) {
+      await action(command,{phoneE164:participant.id});
+      return true;
+    }
+    await respond('🎴 Ainda não é sua vez ou a partida está terminando. Suas cartas: '+cardText(participant.hand)+' (total *'+value(participant.hand)+'*).');
+    return true;
+  }
+
   async function tick() {
     if(busy || !isActive() || !gid())return;
     busy=true;
@@ -278,6 +307,6 @@ function createBlackjack({db,getGroup,sendGroup,sendPrivate,isActive}) {
     }catch(err){console.error('[blackjack] Erro na rodada:',String(err.stack||err).slice(0,450))}
     finally{busy=false}
   }
-  return {handle,tick,isRunning:async()=>{const g=await dbGame();return active(g?.phase)},setGroupId:id=>{groupId=id},_internals:{value,natural,freshDeck}};
+  return {handle,handlePrivate,tick,isRunning:async()=>{const g=await dbGame();return active(g?.phase)},setGroupId:id=>{groupId=id},_internals:{value,natural,freshDeck}};
 }
 module.exports={createBlackjack,value,natural,freshDeck,isStart,isHit,isStand,isJoin};
