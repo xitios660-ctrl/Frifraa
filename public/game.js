@@ -176,9 +176,16 @@
       return;
     }
     if(msg.type==='shield'){if(soundOn)beep(880,.18,'triangle');toast('🛡 Seu escudo absorveu a explosão!');return;}
+    if(msg.type==='lifeLost'){
+      if(soundOn)beep(190,.22,'sawtooth');
+      if(msg.lives>0)toast('💥 Você perdeu uma vida! ❤️ '+msg.lives+' restante(s). Seus poderes caíram no mapa!');
+      else toast('💀 Você perdeu sua última vida! Seus poderes ficaram no chão.');
+      if(navigator.vibrate)navigator.vibrate([95,60,95]);
+      return;
+    }
     if (msg.type === 'pickup') {
       if (soundOn) beep(msg.bonus==='curse'?145:670,.12,msg.bonus==='curse'?'sawtooth':'triangle');
-      const labels = { range: '🔥 Alcance aumentado!', bomb: '💣 Bomba extra!', speed: '⚡ Mais velocidade!', shield:'🛡 Escudo: protege de uma explosão!', push:'🌈 Encoste para empurrar a bomba uma casa!', pierce:'◆ Suas bombas atravessam caixas!', maxrange:'✹ Fogo dourado! +5 de alcance!',curse:'💀 Caveira! Lentidão por 6 segundos.',kick:'🥊 Luva! Encoste andando para chutar bombas.' };
+      const labels = { life: '❤️ +1 vida! Pegue corações para recuperar vidas!', range: '🔥 Alcance aumentado!', bomb: '💣 Bomba extra!', speed: '⚡ Mais velocidade!', shield:'🛡 Escudo: protege de uma explosão!', push:'🌈 Encoste para empurrar a bomba uma casa!', pierce:'◆ Suas bombas atravessam caixas!', maxrange:'✹ Fogo dourado! +5 de alcance!',curse:'💀 Caveira! Lentidão por 6 segundos.',kick:'🥊 Luva! Encoste andando para chutar bombas.' };
       toast(msg.bonus==='speed'&&msg.atSpeedLimit?'⚡ Velocidade no limite!':labels[msg.bonus]||'Poder recebido!');
       return;
     }
@@ -275,12 +282,12 @@
     row.append(info);
     const role = document.createElement('span');
     role.className = 'player-role';
-    role.textContent = roomMode === 'lobby' ? (p.id === state.hostId ? 'ANFITRIÃO' : 'PRONTO') : (p.place ? `${p.place}º LUGAR` : (p.alive ? 'VIVO' : 'FORA'));
+    role.textContent = roomMode === 'lobby' ? (p.id === state.hostId ? 'ANFITRIÃO' : 'PRONTO') : (p.place ? `${p.place}º LUGAR · 💀` : (p.alive ? `❤️ ${p.lives??3} ${p.lives===1?'VIDA':'VIDAS'}` : 'FORA'));
     row.append(role);
     return row;
   }
   function updatePlayers() {
-    const key=JSON.stringify([state.code,state.phase,state.hostId,meId,state.players.map(p=>[p.id,p.name,p.slot,p.skinIndex,p.color,p.alive,p.place,p.bot])]);
+    const key=JSON.stringify([state.code,state.phase,state.hostId,meId,state.players.map(p=>[p.id,p.name,p.slot,p.skinIndex,p.color,p.alive,p.lives,p.place,p.bot])]);
     if(key===rosterKey) return;
     rosterKey=key;
     const lobby = $('lobbyPlayers');
@@ -298,7 +305,7 @@
       const chip = document.createElement('div');
       chip.className = `hud-player ${p.alive ? '' : 'hud-out'}`;
       chip.style.setProperty('--skin-color', p.color);
-      chip.textContent = `${p.bot?'🤖':SKIN_ICONS[getSkinIndex(p)]} ${p.name.slice(0, 10)}`;
+      chip.textContent = `${p.bot?'🤖':SKIN_ICONS[getSkinIndex(p)]} ${p.name.slice(0, 10)} ❤️${p.lives??3}`;
       mobileHud.append(chip);
     }
     for (let i = ordered.length; i < 4; i++) {
