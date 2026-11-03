@@ -185,7 +185,7 @@
     }
     if (msg.type === 'pickup') {
       if (soundOn) beep(msg.bonus==='curse'?145:670,.12,msg.bonus==='curse'?'sawtooth':'triangle');
-      const labels = { life: '❤️ +1 vida! Pegue corações para recuperar vidas!', range: '🔥 Alcance aumentado!', bomb: '💣 Bomba extra!', speed: '⚡ Mais velocidade!', shield:'🛡 Escudo: protege de uma explosão!', push:'🌈 Encoste para empurrar a bomba uma casa!', pierce:'◆ Suas bombas atravessam caixas!', maxrange:'✹ Fogo dourado! +5 de alcance!',curse:'💀 Caveira! Lentidão por 6 segundos.',kick:'🥊 Luva! Encoste andando para chutar bombas.' };
+      const labels = { life: '❤️ +1 vida! Pegue corações para recuperar vidas!', range: '🔥 Alcance aumentado!', bomb: '💣 Bomba extra!', speed: '⚡ Mais velocidade!', shield:'🛡 Escudo: protege de uma explosão!', push:'🌈 Encoste para empurrar a bomba uma casa!', maxrange:'✹ Fogo dourado! +5 de alcance!',curse:'💀 Caveira! Lentidão por 6 segundos.',kick:'🥊 Luva! Encoste andando para chutar bombas.' };
       toast(msg.bonus==='speed'&&msg.atSpeedLimit?'⚡ Velocidade no limite!':labels[msg.bonus]||'Poder recebido!');
       return;
     }
@@ -753,9 +753,9 @@
     for(const tile of state.collapse?.falling||[])rectangle(x+tile.x*4,y+tile.y*4,4,4,'#ff9463');
     ctx.textAlign='left';ctx.textBaseline='middle';ctx.font='bold 10px system-ui';ctx.fillStyle='#eaddff';ctx.fillText(state.mapName||'Arena',x+2,y+minimap.height+10);
     if(me){
-      const powers=[`🔥 ${me.range}`,`💣 ${me.bombs}`,`⚡ ${Math.round(170/me.speed*100)}%`];
+      const powers=[`🔥 ${me.range}`,`💣 ${me.bombs}`,`⚡ ${me.speedLevel??1}/3`];
       if(me.kick)powers.push('🥊 Chute');if(me.slowedUntil>worldTime)powers.push(`💀 ${Math.ceil((me.slowedUntil-worldTime)/1000)}s`);
-      if(me.shield)powers.push('🛡 Escudo');if(me.push)powers.push('🌈 Empurrar');if(me.piercing)powers.push('◆ Perfurante');
+      if(me.shield)powers.push('🛡 Escudo');if(me.push)powers.push('🌈 Empurrar');
       roundRect(8,canvas.height-34,Math.min(x-18,450),26,6,'#100c25d9');ctx.fillStyle='#fff0b1';ctx.font='bold 12px system-ui';ctx.fillText(powers.join('  '),16,canvas.height-20);
     }
   }
