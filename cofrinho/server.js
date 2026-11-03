@@ -28,8 +28,9 @@ function walletView(character,doc={}){
 function validGameKey(req){
   const configured=process.env.BOMBERMAN_GAME_KEY;
   const received=req.get('x-bomberman-game-key')||'';
-  if(!configured||!received||received.length!==configured.length)return false;
-  return crypto.timingSafeEqual(Buffer.from(received),Buffer.from(configured));
+  if(!configured||!received)return false;
+  const a=Buffer.from(received),b=Buffer.from(configured);
+  return a.length===b.length && crypto.timingSafeEqual(a,b);
 }
 
 
