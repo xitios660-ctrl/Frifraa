@@ -563,6 +563,7 @@ function onMessage(ws, raw) {
   if (!message || typeof message !== 'object') return;
   if(['enter','create','join'].includes(message.type)){
     let room=rooms.values().next().value;
+    if(room?.preparing)return error(ws,'A partida está preparando os bônus. Aguarde um instante.');
     if(room&&ws.roomCode===room.code){send(ws,{type:'joined',code:room.code,playerId:ws.playerId,skinIndex:room.players.get(ws.playerId)?.skinIndex});broadcast(room);return;}
     if(room&&(room.phase==='playing'||room.phase==='countdown'))return error(ws,'A partida está em andamento. Aguarde a próxima rodada para escolher seu personagem.');
     if(room)removeBots(room);
@@ -590,6 +591,7 @@ function onMessage(ws, raw) {
     leaveRoom(ws);
     send(ws, { type: 'left' });
   } else if (message.type === 'skin') {
+    if(room.preparing)return error(ws,'Aguarde o início da partida antes de trocar de personagem.');
     if (room.phase !== 'lobby') return error(ws, 'Só é possível trocar de personagem antes da partida.');
     const skinIndex = Number(message.skinIndex);
     if (!Number.isInteger(skinIndex) || skinIndex < 0 || skinIndex >= SKINS.length) return;
