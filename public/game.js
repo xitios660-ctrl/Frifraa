@@ -38,8 +38,12 @@
   let selectedSkin=Number(localStorage.getItem('arena-skin')||0);
   if(!Number.isInteger(selectedSkin)||selectedSkin<0||selectedSkin>3)selectedSkin=0;
   if(savedRoom&&!Number.isInteger(savedRoom.skinIndex)&&typeof savedRoom.name==='string'){const old=SKIN_LABELS.indexOf(savedRoom.name.toUpperCase());if(old>=0){savedRoom.skinIndex=old;selectedSkin=old;}}
-  let coinWallet=null,coinShopPending=false;
+  let coinWallet=null,coinShopPending=false,lastCoinShopRender='';
   function renderCoinShop(){
+    const stateKey=JSON.stringify([coinWallet?.character,coinWallet?.earned,coinWallet?.spent,
+      coinWallet?.upgrades,coinShopPending,selectedSkin,state?.phase]);
+    if(stateKey===lastCoinShopRender)return;
+    lastCoinShopRender=stateKey;
     const summary=$('coinWalletSummary'),balance=$('coinShopBalance'),grid=$('coinShopItems');
     if(summary)summary.textContent=coinWallet?.character===COIN_CHARACTERS[selectedSkin]
       ? '🪙 '+coinWallet.balance+' moedas disponíveis · '+coinWallet.earned+' acumuladas'
@@ -201,10 +205,10 @@
       renderCoinShop();return;
     }
     if(msg.type==='coinPurchase'){
-      coinShopPending=false;
-      $('coinShopStatus').textContent='✅ '+(msg.message||'Compra confirmada!');
+      // Keep controls disabled until the authoritative new balance arrives.
+      $('coinShopStatus').textContent='✅ '+(msg.message||'Compra confirmada!')+' Atualizando saldo…';
       toast('🪙 Compra confirmada! Bônus ativo na próxima partida.');
-      renderCoinShop();return;
+      return;
     }
     if (msg.type === 'hello') {
       meId = msg.playerId;
