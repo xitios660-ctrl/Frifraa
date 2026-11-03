@@ -455,7 +455,7 @@ function tick() {
       broadcast(room);
     }
     if (room.phase === 'playing') {
-      collapse.update(room,t);
+      collapse.update(room,t,(p,when)=>loseLife(room,p,{ownerId:null},when));
       bombMotion.update(room,t);
       updatePowerups(room,t);
       botMinds.tick(room,t);
