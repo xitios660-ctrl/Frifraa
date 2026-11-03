@@ -1,6 +1,7 @@
 'use strict';
 const crypto = require('node:crypto');
 const { GoogleGenAI } = require('@google/genai');
+const { parseSubmission, assignEntries, validCats } = require('./stop-categorizer');
 
 const THINK_MS = 75_000, ANSWER_MS = 10_000, INTERMISSION_MS = 5_000;
 const LETTERS = 'ABCDEFGIJLMNOPRSTUV'.split('');
@@ -27,55 +28,9 @@ const activeState = state => ['thinking','collecting','scoring','intermission'].
 // Empty slots and unfinished submissions are accepted and score only for valid cells.
 // Named fields can be submitted in any order; plain comma-separated fields use positional order.
 const parseAnswers = text => {
-  const raw = String(text || '').trim().replace(/^bot[,!:]?\s*/i,'').trim();
-  if (!raw || raw.length > 600) return null;
-  const parts = raw.split(/[,;\n]/).map(x => x.trim());
-  if (parts.length > CATEGORIES.length || parts.some(x => x.length > 65)) return null;
-  const labels=['animal','lugar','comida','cor','objeto','nome'];
-  const labelRE=/^(animal|lugar|comida|cor|objeto|nome)\s*[:=]\s*/i;
-  const isLabelled=parts.some(x => labelRE.test(norm(x)));
-  if (parts.length===1 && !isLabelled) return null; // Never mistake normal group chat for STOP.
-  const answers=Array(CATEGORIES.length).fill('');
-  if (isLabelled) {
-    for(const part of parts) {
-      if(!part) continue;
-      const m=norm(part).match(labelRE);
-      if(!m) return null;
-      answers[labels.indexOf(m[1])]=part.replace(labelRE,'').trim();
-    }
-    return answers.some(Boolean)?answers:null;
-  }
-  // Only explicit category labels fix category positions; blanks may be omitted in any order.
-  if (false) {
-    parts.forEach((part,i)=>{answers[i]=part;});
-    return answers.some(Boolean)?answers:null;
-  }
-  const words=parts.filter(Boolean);
-  if(words.length<2) return null;
-  // Match each item to its most likely category, even if a category was skipped.
-  // Strong dictionary hits beat original position; unknown terms keep positional order.
-  let best=null;
-  const search=(index,used,mapping,score)=>{
-    if(index===words.length) {
-      if(!best||score>best.score) best={mapping:[...mapping],score};
-      return;
-    }
-    const value=words[index];
-    const matches=CATEGORIES.map((_,cat)=>cached(cat,value));
-    const known=matches.some(Boolean);
-    for(let cat=0;cat<CATEGORIES.length;cat++) {
-      if(used&(1<<cat))continue;
-      const weight=(matches[cat]?30:(known?-30:0))-Math.abs(cat-index)*0.4;
-      // Preserve ascending order in ambiguous answers.
-      const inversions=mapping.filter(previous=>previous>cat).length;
-      search(index+1,used|(1<<cat),[...mapping,cat],score+weight-inversions*0.5);
-    }
-  };
-  search(0,0,[],0);
-  best.mapping.forEach((cat,i)=>{answers[cat]=words[i];});
-  return answers;
+  const submitted=parseSubmission(text);
+  return submitted ? assignEntries(submitted,cached).words : null;
 };
-
 function draw(used) {
   const remain = LETTERS.filter(x => !used.includes(x));
   return remain[crypto.randomInt(remain.length || LETTERS.length)] || LETTERS[crypto.randomInt(LETTERS.length)];
@@ -83,12 +38,13 @@ function draw(used) {
 const phone = jid => { const m=String(jid || '').match(/^(\d+)@s\.whatsapp\.net$/); return m ? '+' + (m[1].startsWith('55') ? m[1] : '55' + m[1]) : ''; };
 const mentioned = person => person.phone ? person.phone.replace(/\D/g,'') + '@s.whatsapp.net' : (person.jids||[]).find(j=>j.endsWith('@lid')||j.endsWith('@s.whatsapp.net')) || '';
 const letterValid = (text,letter) => norm(text).charAt(0) === letter.toLowerCase();
-const cached = (cat,word) => {
+const baseCached = (cat,word) => {
   const value=norm(word);
   if(cat===0) return lexicon.animal.includes(value);
   if(cat===1) return lexicon.pais.includes(value) || lexicon.lugar.includes(value) || lexicon.cidade.some(place=>norm(place)===value);
   return (lexicon[['animal','lugar','comida','cor','objeto','nome'][cat]] || []).some(item=>norm(item)===value);
 };
+const cached = (cat,word) => baseCached(cat,word) || validCats(word,baseCached).includes(cat);
 const nowDate = () => new Date().toISOString();
 function formatScores(people) {
   const sorted=[...people].sort((a,b)=>b.total-a.total || a.name.localeCompare(b.name,'pt-BR'));
@@ -207,8 +163,9 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
     if(/\bbot\b/i.test(norm(msg))) return false;
     const g=await collection.findOne({_id:groupId});
     if(!g || !['thinking','collecting'].includes(g.status)) return false;
-    const words=parseAnswers(msg);
-    if(!words) return false;
+    const submitted=parseSubmission(msg);
+    if(!submitted) return false;
+    const words=assignEntries(submitted,cached).words;
     // Late submissions never count; do not use the message's original timestamp.
     if(Date.now()>g.deadline) return true;
     const resolvedJids=typeof resolveSenderJids==='function' ? await resolveSenderJids(senderJids||[sender]) : (senderJids||[sender]);
@@ -217,7 +174,7 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
     if(g.answers.some(x=>x.id===person.id)) { await output('✅ '+person.name+', suas respostas já foram recebidas nesta rodada.');return true; }
     const updated=await collection.updateOne(
       {_id:groupId,gameId:g.gameId,round:g.round,status:{$in:['thinking','collecting']},deadline:{$gte:Date.now()},'answers.id':{$ne:person.id}},
-      {$push:{answers:{id:person.id,name:person.name,words,receivedAt:nowDate()}},$set:{updatedAt:nowDate()}}
+      {$push:{answers:{id:person.id,name:person.name,words,submitted,receivedAt:nowDate()}},$set:{updatedAt:nowDate()}}
     );
     if(updated.modifiedCount && g.status==='thinking') {
       // The first accepted answer freezes the round for everyone. Only one sender can win the transition.
@@ -241,7 +198,12 @@ function createStopGame({db,groupId,send,getGeminiKey,isActive}) {
   }
   async function score(game) {
     const rows=[];
-    for(const answer of game.answers) for(let cat=0;cat<CATEGORIES.length;cat++) rows.push({id:rows.length,owner:answer.id,cat,word:answer.words[cat]});
+    for(const answer of game.answers) {
+      const entries=answer.submitted || (answer.words || []).filter(Boolean).map(word=>({word}));
+      const assigned=assignEntries(entries,cached);
+      for(let cat=0;cat<CATEGORIES.length;cat++)
+        rows.push({id:rows.length,owner:answer.id,cat,word:assigned.words[cat]});
+    }
     const valid=await checkWords(rows,game.letter,getGeminiKey());
     const scores=game.scores.map(p=>({...p}));
     const details=[];
