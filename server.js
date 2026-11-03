@@ -20,8 +20,9 @@ const rules=require('./game-rules');
 const botMinds=require('./bot-minds').createController();
 const COLORS = ['#ac82ff', '#ff6e96', '#55dcff', '#ffd36f'];
 const SKINS = ['Mary', 'Kaique', 'Jheniffer', 'Gustavo'];
-const START_LIVES = 3;
+const START_LIVES = 1;
 const MAX_LIVES = 5;
+const START_RANGE = 1;
 const RESPAWN_INVULNERABLE_MS = 2800;
 const rooms = new Map();
 const clients = new Set();
@@ -73,8 +74,8 @@ function newPlayer(ws, name, slot, skinIndex) {
     collectedPowerups: [],
     bombs: 1,
     activeBombs: 0,
-    range: 2,
-    speed: 170, baseSpeed:170, slowedUntil:0, kick:false, shield:0, invulnerableUntil:0, push:false, piercing:false,
+    range: START_RANGE,
+    speed: rules.BASE_SPEED, baseSpeed:rules.BASE_SPEED, speedLevel:1, slowedUntil:0, kick:false, shield:0, invulnerableUntil:0, push:false, piercing:false,
     lastMove: 0,
     inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false,
     motion: { x: 0, y: 0 }, moveTarget:null,
@@ -92,6 +93,7 @@ function newRoom(code, ws, name) {
     mapChoice:'rotation', mapId:'classic', roundIndex:0, botsEnabled:false,
     bombs: [],
     flames: [],
+    crateFlameBlockers: new Map(),
     effects: [],
     powerups: new Map(), pendingPowerups:[], collapse:null,
     countdownUntil: 0,
@@ -110,7 +112,7 @@ function playerView(p) {
   return {
     id: p.id, name: p.name, bot:!!p.bot, botSpeech:p.botSpeech?.until>now()?p.botSpeech:null, botAllyId:p.botMind?.allyId||null, botPlan:p.bot?{source:p.botMind?.planSource||'local',goal:p.botMind?.goal||'collect',destination:p.botMind?.destination||null,bombMode:p.botMind?.bombMode||'auto'}:null, slot: p.slot, skinIndex: p.skinIndex, color: p.color, skin: p.skin,
     x: p.x, y: p.y, ack: p.ack, motion: p.motion, moveTarget:p.moveTarget, facing: p.facing, alive: p.alive, lives:p.lives??START_LIVES, maxLives:MAX_LIVES, bombs: p.bombs,
-    range: p.range, speed: p.speed, slowedUntil:p.slowedUntil, kick:p.kick, shield:p.shield, invulnerableUntil:p.invulnerableUntil, push:p.push, piercing:p.piercing, kills: p.kills, place: p.place
+    range: p.range, speed: p.speed, speedLevel:p.speedLevel??1, maxSpeedLevel:rules.MAX_SPEED_LEVEL, slowedUntil:p.slowedUntil, kick:p.kick, shield:p.shield, invulnerableUntil:p.invulnerableUntil, push:p.push, piercing:p.piercing, kills: p.kills, place: p.place
   };
 }
 function stateFor(room) {
@@ -206,10 +208,11 @@ function startGame(room) {
   room.board = makeBoard(room.mapId);
   room.bombs = [];
   room.flames = [];
+  room.crateFlameBlockers = new Map();
   room.effects = [];
   room.powerups.clear();
   room.pendingPowerups=[];
-  const special=['shield','push','pierce','range'];
+  const special=['shield','push','life','range'];
   for(let slot=0;slot<4;slot++){const p=SPAWNS[slot],dx=p.x===1?2:-2,dy=p.y===1?2:-2;room.powerups.set(tileKey(p.x+dx,p.y),slot===room.roundIndex%4?'kick':special[(slot+room.roundIndex-1)%special.length]);room.powerups.set(tileKey(p.x,p.y+dy),slot===(room.roundIndex+1)%4?'push':'speed');}
   const centre={x:Math.floor(WIDTH/2),y:Math.floor(HEIGHT/2)};
   const curseCell=room.board.flatMap((row,y)=>row.flatMap((cell,x)=>cell===0?[{x,y}]:[])).sort((a,b)=>(Math.abs(a.x-centre.x)+Math.abs(a.y-centre.y))-(Math.abs(b.x-centre.x)+Math.abs(b.y-centre.y)))[0];
@@ -232,7 +235,7 @@ function startGame(room) {
     const pos = SPAWNS[p.slot];
     Object.assign(p, {
       x: pos.x, y: pos.y, facing: 'down', alive: true, lives:START_LIVES, collectedPowerups:[], bombs: 1, activeBombs: 0,
-      range: 2, speed: 170, baseSpeed:170, slowedUntil:0, kick:false, shield:0, invulnerableUntil:0, push:false, piercing:false, lastMove: 0, inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false, motion: { x: 0, y: 0 }, moveTarget:null, kills: 0, place: null, botTarget:null, botThinkAt:0, botCooldown:0, botStall:0, botIdleFor:0, botReplanAt:0, botRecent:[]
+      range: START_RANGE, speed: rules.BASE_SPEED, baseSpeed:rules.BASE_SPEED, speedLevel:1, slowedUntil:0, kick:false, shield:0, invulnerableUntil:0, push:false, piercing:false, lastMove: 0, inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false, motion: { x: 0, y: 0 }, moveTarget:null, kills: 0, place: null, botTarget:null, botThinkAt:0, botCooldown:0, botStall:0, botIdleFor:0, botReplanAt:0, botRecent:[]
     });
   }
   botMinds.reset(room,now());
@@ -275,7 +278,7 @@ function movePlayers(room, t) {
       if (bonus === 'push'||bonus==='bombpass') p.push=true;
       if (bonus === 'pierce') p.piercing=true;
       if (bonus === 'bomb') p.bombs += 1;
-      if (bonus === 'speed') p.baseSpeed = Math.max(rules.MIN_SPEED,p.baseSpeed-rules.SPEED_GAIN);
+      if (bonus === 'speed') {p.speedLevel=Math.min(rules.MAX_SPEED_LEVEL,(p.speedLevel??1)+1);p.baseSpeed=Math.max(rules.MIN_SPEED,rules.BASE_SPEED-(p.speedLevel-1)*rules.SPEED_GAIN);}
       if (bonus === 'curse') p.slowedUntil=t+6000;
       if (bonus === 'kick') p.kick=true;
       if (bonus === 'life')p.lives=Math.min(MAX_LIVES,(p.lives??START_LIVES)+1);
@@ -290,7 +293,7 @@ function movePlayers(room, t) {
       p.speed=p.baseSpeed*(p.slowedUntil>t?1.6:1);
       room.effects.push({kind:'pickup',x:Math.round(p.x),y:Math.round(p.y),startedAt:t,expiresAt:t+600});
       room.powerups.delete(key);
-      send(p.ws, { type: 'pickup', bonus, lives:p.lives, atSpeedLimit:bonus==='speed'&&p.baseSpeed<=rules.MIN_SPEED });
+      send(p.ws, { type: 'pickup', bonus, lives:p.lives, speedLevel:p.speedLevel, atSpeedLimit:bonus==='speed'&&p.speedLevel>=rules.MAX_SPEED_LEVEL });
     }
   }
 }
@@ -313,6 +316,7 @@ function explodeBomb(room, bomb, t) {
   const owner = room.players.get(bomb.ownerId);
   if (owner) owner.activeBombs = Math.max(0, owner.activeBombs - 1);
   const tiles = [{ x: bomb.x, y: bomb.y }];
+  room.crateFlameBlockers??=new Map();
   for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
     for (let step = 1; step <= bomb.range; step++) {
       const x = bomb.x + dx * step;
@@ -321,13 +325,17 @@ function explodeBomb(room, bomb, t) {
       if (cell === undefined) break;
       if (cell === 1) {room.effects.push({kind:'wall',x,y,startedAt:t,expiresAt:t+360});break;}
       tiles.push({ x, y });
-      if (cell === 2) {
-        room.board[y][x] = 0;
-        room.effects.push({kind:'crate',x,y,startedAt:t,expiresAt:t+650});
-        if (Math.random() < 0.25) {
-          room.pendingPowerups.push({x,y,type:rules.drop(),readyAt:t+500});
+      // An intact crate blocks the entire ray, even when it breaks. Other
+      // bombs exploding in the same flame window must respect that cover.
+      const crateWasBlocking=(room.crateFlameBlockers.get(tileKey(x,y))||0)>t;
+      if (cell === 2 || crateWasBlocking) {
+        if (cell === 2) {
+          room.board[y][x] = 0;
+          room.crateFlameBlockers.set(tileKey(x,y),t+500);
+          room.effects.push({kind:'crate',x,y,startedAt:t,expiresAt:t+650});
+          if(Math.random()<0.25)room.pendingPowerups.push({x,y,type:rules.drop(),readyAt:t+500});
         }
-        if(!bomb.piercing)break;
+        break;
       }
     }
   }
@@ -351,7 +359,7 @@ function updatePowerups(room,t){
 function clearCollectedPowerups(p){
   const collected=Array.isArray(p.collectedPowerups)?p.collectedPowerups.slice():[];
   p.collectedPowerups=[];
-  p.bombs=1;p.range=2;p.baseSpeed=rules.BASE_SPEED;p.speed=rules.BASE_SPEED;
+  p.bombs=1;p.range=START_RANGE;p.baseSpeed=rules.BASE_SPEED;p.speed=rules.BASE_SPEED;p.speedLevel=1;
   p.slowedUntil=0;p.kick=false;p.shield=0;p.push=false;p.piercing=false;
   return collected;
 }
@@ -455,6 +463,8 @@ function tick() {
       broadcast(room);
     }
     if (room.phase === 'playing') {
+      if(room.crateFlameBlockers)for(const [key,expiresAt] of room.crateFlameBlockers)
+        if(expiresAt<=t)room.crateFlameBlockers.delete(key);
       collapse.update(room,t,(p,when)=>(p.invulnerableUntil||0)>when?false:loseLife(room,p,{ownerId:null},when));
       bombMotion.update(room,t);
       updatePowerups(room,t);
