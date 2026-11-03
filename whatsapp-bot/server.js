@@ -364,11 +364,32 @@ async function handleMessage(message) {
     if (history.size > 200) history.clear();
   } finally { await socket.sendPresenceUpdate('paused', jid).catch(() => {}); }
 }
+async function handleBlackjackPrivateMessage(msg) {
+  if(!ready || !status.connected || !botEnabled || !blackjack || !sock || !selectedGroupId)return;
+  const jid=normalizedJid(msg.key?.remoteJid);
+  if(!/^\d+@(lid|s\.whatsapp\.net)$/.test(jid) || msg.key?.fromMe || !msg.key?.id)return;
+  const text=extractText(msg).trim().slice(0,500);
+  if(!text)return;
+  const sentAt=Number(msg.messageTimestamp || 0);
+  if(sentAt && Math.abs(Date.now()/1000-sentAt)>600)return;
+  const seen=await db.collection('whatsapp_seen').updateOne(
+    {_id:'private:'+jid+':'+msg.key.id},{$setOnInsert:{createdAt:new Date()}},{upsert:true});
+  if(!seen.upsertedCount)return;
+  const identityMessage={key:{participant:jid,participantAlt:normalizedJid(msg.key.remoteJidAlt)},participant:jid};
+  const identity=await getVerifiedGroupSender(identityMessage,selectedGroupId)
+    .catch(()=>({name:null,jids:[jid]}));
+  if(!identity?.phoneE164)return; // Never expose cards without verified group identity.
+  await blackjack.handlePrivate({text,identity,remoteJid:jid});
+}
+
 function queueContact(msg) {
   const jid = msg.key && msg.key.remoteJid;
-  if (!isSelectedGroup(jid)) return;
-  const prior = queues.get(jid) || Promise.resolve();
-  const next = prior.catch(() => {}).then(() => handleMessage(msg));
+  const isGroup=isSelectedGroup(jid);
+  const isPrivate=typeof jid==='string' && /^\d+@(lid|s\.whatsapp\.net)$/.test(jid);
+  if(!isGroup&&!isPrivate)return;
+  const prior=queues.get(jid)||Promise.resolve();
+  const next=prior.catch(()=>{}).then(()=>
+    isGroup ? handleMessage(msg) : handleBlackjackPrivateMessage(msg));
   queues.set(jid, next);
   next.catch(err => console.error('[whatsapp] Mensagem não processada:', err.message)).finally(() => {
     if (queues.get(jid) === next) queues.delete(jid);
@@ -668,13 +689,29 @@ async function main() {
         status.sent++;
       }finally {await socket.sendPresenceUpdate('paused',selectedGroupId).catch(()=>{});}
     },
-    sendPrivate: async (jid,content) => {
+    sendPrivate: async (recipient,content) => {
       if(!sock || !botEnabled || !status.connected || !isSelectedGroup(selectedGroupId))throw Error('WhatsApp offline');
-      if(!/^55\d{10,11}@s\.whatsapp\.net$/.test(jid))throw Error('Destino privado inválido');
       const socket=sock;
       if(!socket.user)throw Error('WhatsApp sem sessão');
-      await socket.sendMessage(jid,content);
-      status.sent++;
+      const candidates=[...(recipient?.jids||[]).filter(j=>typeof j==='string' && j.endsWith('@lid')),
+        recipient?.jid,...(recipient?.jids||[])].filter(j=>typeof j==='string' &&
+          /^\d+@(lid|s\.whatsapp\.net)$/.test(j));
+      const unique=[...new Set(candidates)];
+      if(!unique.length)throw Error('Nenhum destino privado confirmado para este participante');
+      let lastError=null;
+      for(const to of unique){
+        try {
+          const result=await socket.sendMessage(to,content);
+          if(!result?.key?.id)throw Error('WhatsApp não confirmou o envio da mensagem');
+          status.sent++;
+          console.log('[blackjack] Carta encaminhada ao WhatsApp via '+to.split('@')[1]);
+          return {jid:to,messageId:result.key.id};
+        } catch(error) {
+          lastError=error;
+          console.warn('[blackjack] Falha no encaminhamento privado ('+to.split('@')[1]+'): '+String(error.message).slice(0,100));
+        }
+      }
+      throw lastError||new Error('Não foi possível encaminhar a mensagem privada');
     }
   });
   gameClock = setInterval(() => {
