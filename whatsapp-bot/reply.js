@@ -69,29 +69,48 @@ function shouldWebSearch(text) {
   const q=String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()
     .replace(/(^|[^\p{L}\p{N}_])bot(?=$|[^\p{L}\p{N}_])/giu,' ').trim();
   if (!q || /^(oi|ola|ola tudo bem|eai|bom dia|boa tarde|boa noite|obrigad[oa]|valeu|tchau|conta uma piada|me anima|fala comigo)[!? .]*$/.test(q)) return false;
-  return /(?:pesquis|procura|busca|internet|google|site|notici|ultim|recent|atual|agora|hoje|amanha|ontem|semana|mes passado|202[6-9]|preco|quanto custa|cotacao|dolar|clima|temperatura|previsao|evento|resultado|lancamento|quem ganhou|quem venceu|aconteceu|qual foi|qual e|qual o|quais sao|onde fica|quando|quem e|oque e|o que e|como funciona|e verdade|sera que)/i.test(q);
+  // Google Search is slower. Use it only for current facts or an explicit web request.
+  return /(?:pesquis|procura|busca|internet|google|site|notici|ultim|recent|atualiz|agora|hoje|amanha|ontem|semana|mes passado|202[6-9]|preco|quanto custa|cotacao|dolar|clima|temperatura|previsao|evento|resultado (?:da|de|do) (?:eleicao|jogo|votacao)|lancamento|quem ganhou (?:a|o) (?:eleicao|jogo|premio)|quem venceu (?:o|a) (?:jogo|partida|eleicao))/.test(q);
 }
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+let cachedAi=null,cachedKey=null;
+function clientFor(key){
+  if(!cachedAi || cachedKey!==key){cachedAi=new GoogleGenAI({apiKey:key});cachedKey=key;}
+  return cachedAi;
+}
+async function bounded(promise,timeoutMs){
+  let timer;
+  const expired=new Promise((_,reject)=>{
+    timer=setTimeout(()=>reject(Object.assign(new Error('Tempo limite da consulta ao Gemini'),{status:504})),timeoutMs);
+  });
+  try{return await Promise.race([promise,expired]);}
+  finally{clearTimeout(timer);}
+}
 async function reply({ key, text, history = [], model = 'gemini-3.5-flash-lite', authorName = null, useWebSearch = false }) {
   const ranking = await liveRanking(text);
   if (ranking) return ranking;
   if (!key) return fallback(text);
-  const ai = new GoogleGenAI({ apiKey: key });
+  const ai = clientFor(key);
   const context = history.slice(-6).map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: String(m.text || '').slice(0, 650) }]
   }));
   const contents = [...context, { role: 'user', parts: [{ text: (authorName ? 'Participante confirmado pelo WhatsApp: ' + authorName + '. ' : 'Participante não identificado com segurança pelo WhatsApp. ') + 'Mensagem: ' + String(text).slice(0, 850) }] }];
-  const models = [...new Set([model, 'gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.8-flash'])].slice(0, 3);
+  // Prefer Flash-Lite for conversational speed; keep a single stronger fallback.
+  const models=[...new Set([model,'gemini-3.5-flash-lite','gemini-3.8-flash'])].slice(0,2);
+  const startedAt=Date.now();
+  const TOTAL_BUDGET_MS=13500;
   let lastError;
   for (let i = 0; i < models.length; i++) {
     try {
-      const result = await ai.models.generateContent({
+      const remaining=TOTAL_BUDGET_MS-(Date.now()-startedAt);
+      if(remaining<2000)break;
+      const result = await bounded(ai.models.generateContent({
         model: models[i],
         contents,
-        config: { systemInstruction: SYSTEM, maxOutputTokens: 950, thinkingConfig: { thinkingLevel: 'low' }, ...(useWebSearch ? { tools: [{ googleSearch: {} }] } : {}) }
-      });
+        config: { systemInstruction: SYSTEM, maxOutputTokens: 680, thinkingConfig: { thinkingLevel: 'low' }, ...(useWebSearch ? { tools: [{ googleSearch: {} }] } : {}) }
+      }),Math.min(9500,remaining));
       const answer = String(result.text || '').trim();
       if (answer) {
         const pages = useWebSearch ? (result.candidates?.[0]?.groundingMetadata?.groundingChunks || [])
@@ -105,9 +124,13 @@ async function reply({ key, text, history = [], model = 'gemini-3.5-flash-lite',
       return fallback(text);
     } catch (err) {
       lastError = err;
-      if (!isTemporaryModelError(err)) throw err;
-      console.warn('[gemini] Modelo indisponível:', models[i], '- tentando alternativa, tentativa', i + 1);
-      if (i < models.length - 1) await pause(500 * (i + 1));
+      const msg=String(err?.message||err);
+      const code=Number(err?.status||err?.code||(msg.match(/"code"\s*:\s*(\d+)/)||[])[1]);
+      // Quota errors are generally account-wide; retrying only delays the answer.
+      if(code===429||/RESOURCE_EXHAUSTED|quota|rate limit/i.test(msg))throw err;
+      if(!isTemporaryModelError(err))throw err;
+      console.warn('[gemini] Modelo indisponível:',models[i],'·',Math.round(Date.now()-startedAt)+'ms');
+      if(i<models.length-1 && Date.now()-startedAt<TOTAL_BUDGET_MS-2000)await pause(150);
     }
   }
   throw lastError || new Error('Gemini temporariamente indisponível');
