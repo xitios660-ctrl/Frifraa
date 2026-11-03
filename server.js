@@ -20,6 +20,9 @@ const rules=require('./game-rules');
 const botMinds=require('./bot-minds').createController();
 const COLORS = ['#ac82ff', '#ff6e96', '#55dcff', '#ffd36f'];
 const SKINS = ['Mary', 'Kaique', 'Jheniffer', 'Gustavo'];
+const START_LIVES = 3;
+const MAX_LIVES = 5;
+const RESPAWN_INVULNERABLE_MS = 2800;
 const rooms = new Map();
 const clients = new Set();
 const PUBLIC = path.join(__dirname, 'public');
@@ -66,6 +69,8 @@ function newPlayer(ws, name, slot, skinIndex) {
     x: SPAWNS[slot].x,
     y: SPAWNS[slot].y,
     alive: true,
+    lives: START_LIVES,
+    collectedPowerups: [],
     bombs: 1,
     activeBombs: 0,
     range: 2,
@@ -104,7 +109,7 @@ function newRoom(code, ws, name) {
 function playerView(p) {
   return {
     id: p.id, name: p.name, bot:!!p.bot, botSpeech:p.botSpeech?.until>now()?p.botSpeech:null, botAllyId:p.botMind?.allyId||null, botPlan:p.bot?{source:p.botMind?.planSource||'local',goal:p.botMind?.goal||'collect',destination:p.botMind?.destination||null,bombMode:p.botMind?.bombMode||'auto'}:null, slot: p.slot, skinIndex: p.skinIndex, color: p.color, skin: p.skin,
-    x: p.x, y: p.y, ack: p.ack, motion: p.motion, moveTarget:p.moveTarget, facing: p.facing, alive: p.alive, bombs: p.bombs,
+    x: p.x, y: p.y, ack: p.ack, motion: p.motion, moveTarget:p.moveTarget, facing: p.facing, alive: p.alive, lives:p.lives??START_LIVES, maxLives:MAX_LIVES, bombs: p.bombs,
     range: p.range, speed: p.speed, slowedUntil:p.slowedUntil, kick:p.kick, shield:p.shield, invulnerableUntil:p.invulnerableUntil, push:p.push, piercing:p.piercing, kills: p.kills, place: p.place
   };
 }
@@ -209,6 +214,14 @@ function startGame(room) {
   const centre={x:Math.floor(WIDTH/2),y:Math.floor(HEIGHT/2)};
   const curseCell=room.board.flatMap((row,y)=>row.flatMap((cell,x)=>cell===0?[{x,y}]:[])).sort((a,b)=>(Math.abs(a.x-centre.x)+Math.abs(a.y-centre.y))-(Math.abs(b.x-centre.x)+Math.abs(b.y-centre.y)))[0];
   if(curseCell)room.powerups.set(tileKey(curseCell.x,curseCell.y),'curse');
+  // Guarantee two discoverable extra lives each round, plus rare crate hearts.
+  const freeHeartCells=room.board.flatMap((row,y)=>row.flatMap((cell,x)=>
+    cell===0&&!room.powerups.has(tileKey(x,y))&&SPAWNS.every(p=>Math.abs(p.x-x)+Math.abs(p.y-y)>3)?[{x,y}]:[]));
+  freeHeartCells.sort((a,b)=>
+    (Math.abs(a.x-WIDTH/3)+Math.abs(a.y-HEIGHT/3))-(Math.abs(b.x-WIDTH/3)+Math.abs(b.y-HEIGHT/3)));
+  for(const cell of [freeHeartCells[0],...freeHeartCells.slice().reverse().slice(0,1)]) {
+    if(cell && !room.powerups.has(tileKey(cell.x,cell.y)))room.powerups.set(tileKey(cell.x,cell.y),'life');
+  }
   room.winnerId = null;
   room.phase = 'countdown';
   room.countdownUntil = now() + 3000;
@@ -218,7 +231,7 @@ function startGame(room) {
   for (const p of room.players.values()) {
     const pos = SPAWNS[p.slot];
     Object.assign(p, {
-      x: pos.x, y: pos.y, facing: 'down', alive: true, bombs: 1, activeBombs: 0,
+      x: pos.x, y: pos.y, facing: 'down', alive: true, lives:START_LIVES, collectedPowerups:[], bombs: 1, activeBombs: 0,
       range: 2, speed: 170, baseSpeed:170, slowedUntil:0, kick:false, shield:0, invulnerableUntil:0, push:false, piercing:false, lastMove: 0, inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false, motion: { x: 0, y: 0 }, moveTarget:null, kills: 0, place: null, botTarget:null, botThinkAt:0, botCooldown:0, botStall:0, botIdleFor:0, botReplanAt:0, botRecent:[]
     });
   }
@@ -255,6 +268,7 @@ function movePlayers(room, t) {
     const key = tileKey(Math.round(p.x), Math.round(p.y));
     const bonus = room.powerups.get(key);
     if (bonus) {
+      const previous={shield:p.shield,push:p.push,piercing:p.piercing,kick:p.kick,baseSpeed:p.baseSpeed};
       if (bonus === 'range') p.range += 1;
       if (bonus === 'maxrange') p.range+=5;
       if (bonus === 'shield') p.shield=1;
@@ -264,10 +278,19 @@ function movePlayers(room, t) {
       if (bonus === 'speed') p.baseSpeed = Math.max(rules.MIN_SPEED,p.baseSpeed-rules.SPEED_GAIN);
       if (bonus === 'curse') p.slowedUntil=t+6000;
       if (bonus === 'kick') p.kick=true;
+      if (bonus === 'life')p.lives=Math.min(MAX_LIVES,(p.lives??START_LIVES)+1);
+      if (['range','maxrange','bomb'].includes(bonus) ||
+        (bonus==='speed'&&p.baseSpeed<previous.baseSpeed) ||
+        (bonus==='shield'&&!previous.shield) ||
+        (['push','bombpass'].includes(bonus)&&!previous.push) ||
+        (bonus==='pierce'&&!previous.piercing) ||
+        (bonus==='kick'&&!previous.kick)) {
+        (p.collectedPowerups??=[]).push(bonus);
+      }
       p.speed=p.baseSpeed*(p.slowedUntil>t?1.6:1);
       room.effects.push({kind:'pickup',x:Math.round(p.x),y:Math.round(p.y),startedAt:t,expiresAt:t+600});
       room.powerups.delete(key);
-      send(p.ws, { type: 'pickup', bonus, atSpeedLimit:bonus==='speed'&&p.baseSpeed<=rules.MIN_SPEED });
+      send(p.ws, { type: 'pickup', bonus, lives:p.lives, atSpeedLimit:bonus==='speed'&&p.baseSpeed<=rules.MIN_SPEED });
     }
   }
 }
@@ -324,6 +347,70 @@ function updatePowerups(room,t){
     room.powerups.set(tileKey(p.x,p.y),p.type);return false;
   });
 }
+
+function clearCollectedPowerups(p){
+  const collected=Array.isArray(p.collectedPowerups)?p.collectedPowerups.slice():[];
+  p.collectedPowerups=[];
+  p.bombs=1;p.range=2;p.baseSpeed=rules.BASE_SPEED;p.speed=rules.BASE_SPEED;
+  p.slowedUntil=0;p.kick=false;p.shield=0;p.push=false;p.piercing=false;
+  return collected;
+}
+function dropCollectedPowerups(room,p,t){
+  const items=clearCollectedPowerups(p);
+  if(!items.length)return;
+  const x=Math.round(p.x),y=Math.round(p.y);
+  const occupied=new Set([
+    ...room.powerups.keys(),
+    ...room.pendingPowerups.map(v=>tileKey(v.x,v.y))
+  ]);
+  const candidates=[];
+  for(let dy=-HEIGHT;dy<=HEIGHT;dy++)for(let dx=-WIDTH;dx<=WIDTH;dx++){
+    const px=x+dx,py=y+dy;
+    if(room.board[py]?.[px]!==0 || occupied.has(tileKey(px,py)) ||
+      room.bombs.some(b=>bombMotion.occupies(b,px,py)))continue;
+    const distance=Math.abs(dx)+Math.abs(dy);
+    if(distance>10)continue;
+    candidates.push({x:px,y:py,distance});
+  }
+  candidates.sort((a,b)=>a.distance-b.distance || a.y-b.y || a.x-b.x);
+  for(let i=0;i<Math.min(items.length,candidates.length);i++){
+    const spot=candidates[i];
+    room.pendingPowerups.push({x:spot.x,y:spot.y,type:items[i],readyAt:t+750});
+  }
+  room.effects.push({kind:'itemDrop',x,y,startedAt:t,expiresAt:t+850});
+}
+function chooseRespawnTile(room,p){
+  const origin=SPAWNS[p.slot];
+  const choices=[];
+  for(let y=0;y<HEIGHT;y++)for(let x=0;x<WIDTH;x++){
+    if(room.board[y]?.[x]!==0)continue;
+    if(room.bombs.some(b=>bombMotion.occupies(b,x,y)))continue;
+    if([...room.players.values()].some(other=>other.id!==p.id&&other.alive&&Math.abs(other.x-x)<1&&Math.abs(other.y-y)<1))continue;
+    if(room.flames.some(f=>f.x===x&&f.y===y&&f.expiresAt>now()))continue;
+    choices.push({x,y,distance:Math.abs(x-origin.x)+Math.abs(y-origin.y)});
+  }
+  choices.sort((a,b)=>a.distance-b.distance);
+  return choices[0]||{x:p.x,y:p.y};
+}
+function loseLife(room,p,flame,t){
+  const oldLives=p.lives??START_LIVES;
+  p.lives=Math.max(0,oldLives-1);
+  dropCollectedPowerups(room,p,t);
+  p.motion={x:0,y:0};p.moveTarget=null;p.inputQueue=[];p.inputBudget=0;
+  const owner=room.players.get(flame.ownerId);
+  if(owner&&owner.id!==p.id)owner.kills++;
+  room.effects.push({kind:'lifeLost',x:Math.round(p.x),y:Math.round(p.y),startedAt:t,expiresAt:t+1000});
+  if(p.lives>0){
+    const respawn=chooseRespawnTile(room,p);
+    p.x=respawn.x;p.y=respawn.y;p.invulnerableUntil=t+RESPAWN_INVULNERABLE_MS;
+    send(p.ws,{type:'lifeLost',lives:p.lives});
+    return false;
+  }
+  p.alive=false;p.invulnerableUntil=0;
+  send(p.ws,{type:'lifeLost',lives:0});
+  return true;
+}
+
 function applyFlames(room) {
   const eliminated = [];
   const tiles=new Set(room.flames.map(f=>tileKey(f.x,f.y)));
@@ -332,20 +419,20 @@ function applyFlames(room) {
     if (!p.alive) continue;
     const flame=(p.flameContact&&p.flameContact.expiresAt>now()?p.flameContact:null)||hazards.find(h=>physics.touchesFlame(p,h.flame,tiles,h.shapes))?.flame;
     if(flame && (p.invulnerableUntil||0)<=now()){
-      if(p.shield){p.shield=0;p.invulnerableUntil=now()+1400;room.effects.push({kind:'pickup',x:Math.round(p.x),y:Math.round(p.y),startedAt:now(),expiresAt:now()+600});send(p.ws,{type:'shield'});}
+      if(p.shield){p.shield=0;p.collectedPowerups=(p.collectedPowerups||[]).filter(item=>item!=='shield');p.invulnerableUntil=now()+1400;room.effects.push({kind:'pickup',x:Math.round(p.x),y:Math.round(p.y),startedAt:now(),expiresAt:now()+600});send(p.ws,{type:'shield'});}
       else eliminated.push({player:p,flame});
     }
   }
-  // Quem sai primeiro fica em último; eliminações no mesmo tick empatam.
-  const place = room.participantsAtStart - room.eliminatedCount;
-  for (const { player, flame } of eliminated) {
-    player.alive = false;
-    player.place = place;
-    player.motion = { x: 0, y: 0 };
-    const owner = room.players.get(flame.ownerId);
-    if (owner && owner.id !== player.id) owner.kills++;
+  // Each explosion removes just one life. Only zero lives eliminates a player.
+  const place=room.participantsAtStart-room.eliminatedCount;
+  let totalEliminated=0;
+  for(const {player,flame} of eliminated) {
+    if(loseLife(room,player,flame,now())) {
+      player.place=place;
+      totalEliminated++;
+    }
   }
-  room.eliminatedCount += eliminated.length;
+  room.eliminatedCount+=totalEliminated;
 }
 function checkWinner(room) {
   if (room.phase !== 'playing') return;
