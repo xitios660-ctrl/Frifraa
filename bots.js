@@ -9,7 +9,7 @@ function blast(board,bomb){
  for(const [dx,dy] of DIRECTIONS) for(let i=1;i<=bomb.range;i++) {
   const x=bomb.x+dx*i,y=bomb.y+dy*i,cell=board[y]?.[x];
   if(cell===undefined||cell===1)break;
-  cells.push({x,y});if(cell===2&&!bomb.piercing)break;
+  cells.push({x,y});if(cell===2)break;
  }
  return cells;
 }
