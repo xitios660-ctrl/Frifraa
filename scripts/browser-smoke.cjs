@@ -12,13 +12,18 @@ for(let i=0;i<4;i++) {
      window.WebSocket=class extends NativeSocket {
        send(data) {
          this.sendAt=Math.max(this.sendAt||0,performance.now()+latency+Math.random()*40);
-         setTimeout(()=>{if(this.readyState===NativeSocket.OPEN)super.send(data);},this.sendAt-performance.now());
+         const due=this.sendAt;
+         // Preserve the ordering guaranteed by a real WebSocket. Independent
+         // rounded timers can otherwise reorder adjacent protocol packets.
+         this.sendQueue=(this.sendQueue||Promise.resolve()).then(()=>new Promise(resolve=>setTimeout(resolve,Math.max(0,due-performance.now())))).then(()=>{if(this.readyState===NativeSocket.OPEN)super.send(data);});
        }
        addEventListener(type,listener,options) {
          if(type!=='message') return super.addEventListener(type,listener,options);
+         let delivery=Promise.resolve();
          return super.addEventListener(type,event=>{
            this.receiveAt=Math.max(this.receiveAt||0,performance.now()+latency+Math.random()*40);
-           setTimeout(()=>listener.call(this,event),this.receiveAt-performance.now());
+           const due=this.receiveAt;
+           delivery=delivery.then(()=>new Promise(resolve=>setTimeout(resolve,Math.max(0,due-performance.now())))).then(()=>listener.call(this,event));
          },options);
        }
      };
@@ -28,10 +33,12 @@ for(let i=0;i<4;i++) {
    const send=window.WebSocket.prototype.send;
    window.WebSocket.prototype.send=function(data){try{const m=JSON.parse(data);if(m.type==='input'){window.sentDirections.push(...m.steps);if(window.sentDirections.length>500)window.sentDirections.splice(0,250);}}catch{}return send.call(this,data);};
    window.playerPoints=[];
+   const frame=window.requestAnimationFrame;
+   window.requestAnimationFrame=callback=>frame.call(window,time=>{window.renderTime=time;callback(time);});
    const ellipse=CanvasRenderingContext2D.prototype.ellipse;
    CanvasRenderingContext2D.prototype.ellipse=function(...args) {
      if(this.canvas.id==='arena' && args[2]===17 && args[3]===7) {
-       const transform=this.getTransform();window.playerPoints.push({x:args[0],y:args[1],cameraX:-transform.e,cameraY:-transform.f,time:performance.now()});
+       const transform=this.getTransform();window.playerPoints.push({x:args[0],y:args[1],cameraX:-transform.e,cameraY:-transform.f,time:window.renderTime});
        if(window.playerPoints.length>2000) window.playerPoints.shift();
      }
      return ellipse.apply(this,args);
@@ -159,5 +166,5 @@ await pages[0].setViewportSize({width:390,height:844});
 await pages[0].locator('#rotateOverlay').waitFor({state:'visible'});
 assert.deepEqual(errors,[]);
 console.log('PASS: one room without codes, large scrolling arena/map selection, animated bombs/debris, four browser clients, mobile landscape controls, bomb, portrait warning, four sprite sheets, four directions, idle animation, music playback/mute/resume, stable joystick, no teleports or reverse corrections, no JS errors');
-}catch(e){console.log('BROWSER DEBUG',await pages[0].evaluate(()=>({id:window.myId,state:window.latestState,directions:window.sentDirections.slice(-8),focused:document.hasFocus(),visible:document.visibilityState})));await pages[0].screenshot({path:'/tmp/bomba-browser-failure.png'});throw e;}finally{await browser.close()}
+}catch(e){console.log('BROWSER DEBUG',JSON.stringify(await pages[0].evaluate(()=>({id:window.myId,players:window.latestState?.players,phase:window.latestState?.phase,directions:window.sentDirections.slice(-8),focused:document.hasFocus(),visible:document.visibilityState,active:document.activeElement?.tagName}))));await pages[0].screenshot({path:'/tmp/bomba-browser-failure.png'});throw e;}finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exit(1)});

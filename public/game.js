@@ -141,6 +141,7 @@
     if(msg.type==='availability'){roomAvailability=msg;renderEntryCharacters();return;}
     if (msg.type === 'hello') {
       meId = msg.playerId;
+      window.dispatchEvent(new CustomEvent('bomba-wallet-connection',{detail:{playerId:msg.playerId,walletLink:msg.walletLink}}));
       return;
     }
     if (msg.type === 'error') {
@@ -177,6 +178,8 @@
     }
     if(msg.type==='shield'){if(soundOn)beep(880,.18,'triangle');toast('🛡 Seu escudo absorveu a explosão!');return;}
     if(msg.type==='lifeLost'){
+      prediction=null;localPlayer=null;inputAccumulator=0;displayPositions.clear();snapshotHistory.length=0;
+      heldKeys.clear();resetJoystick();lastDirection='0,0';
       if(soundOn)beep(190,.22,'sawtooth');
       if(msg.lives>0)toast('💥 Você perdeu uma vida! ❤️ '+msg.lives+' restante(s). Seus poderes caíram no mapa!');
       else toast('💀 Você perdeu sua última vida! Seus poderes ficaram no chão.');
@@ -195,10 +198,11 @@
       currentCode = msg.code;
       const previousPhase=state?.phase;
       state = msg;
+      if(previousPhase!==msg.phase)window.dispatchEvent(new CustomEvent('bomba-round',{detail:{phase:msg.phase}}));
       stateReceivedAt=performance.now();
       const authoritative = msg.players.find(p => p.id === meId);
       if(authoritative) {
-        if(msg.phase!=='playing'||previousPhase!=='playing'||!prediction) {
+        if(msg.phase!=='playing'||previousPhase!=='playing'||!prediction||prediction.player.inputEpoch!==authoritative.inputEpoch) {
           prediction=BombaNetcode.create(authoritative,msg.board,msg.bombs,msg.players);
           inputAccumulator=0;localPlayer=prediction.player;
           if(previousPhase!==msg.phase) {displayPositions.clear();snapshotHistory.length=0;camera=null;}
@@ -282,7 +286,7 @@
     row.append(info);
     const role = document.createElement('span');
     role.className = 'player-role';
-    role.textContent = roomMode === 'lobby' ? (p.id === state.hostId ? 'ANFITRIÃO' : 'PRONTO') : (p.place ? `${p.place}º LUGAR · 💀` : (p.alive ? `❤️ ${p.lives??3} ${p.lives===1?'VIDA':'VIDAS'}` : 'FORA'));
+    role.textContent = roomMode === 'lobby' ? (p.id === state.hostId ? 'ANFITRIÃO' : 'PRONTO') : (p.place ? `${p.place}º LUGAR · 💀` : (p.alive ? `❤️ ${p.lives??1} ${p.lives===1?'VIDA':'VIDAS'}` : 'FORA'));
     row.append(role);
     return row;
   }
@@ -305,7 +309,7 @@
       const chip = document.createElement('div');
       chip.className = `hud-player ${p.alive ? '' : 'hud-out'}`;
       chip.style.setProperty('--skin-color', p.color);
-      chip.textContent = `${p.bot?'🤖':SKIN_ICONS[getSkinIndex(p)]} ${p.name.slice(0, 10)} ❤️${p.lives??3}`;
+      chip.textContent = `${p.bot?'🤖':SKIN_ICONS[getSkinIndex(p)]} ${p.name.slice(0, 10)} ❤️${p.lives??1}`;
       mobileHud.append(chip);
     }
     for (let i = ordered.length; i < 4; i++) {
@@ -369,13 +373,14 @@
     document.body.classList.toggle('eliminated',!!me&&!me.alive);
 
     const humans=state.players.filter(p=>!p.bot).length;
-    const canChoose=isHost&&['lobby','finished'].includes(state.phase);
+    const canChoose=isHost&&!state.preparing&&['lobby','finished'].includes(state.phase);
     for(const id of ['botsToggle','rematchBotsToggle']){$(id).checked=!!state.botsEnabled;$(id).disabled=!canChoose;}
     $('rematchBotsOption').hidden=!(isHost&&state.phase==='finished');
-    $('startBtn').disabled = !isHost||state.phase!=='lobby';
+    $('startBtn').disabled = !isHost||state.phase!=='lobby'||state.preparing;
     const missingBots=state.botsEnabled?Math.max(0,4-humans):0;
     $('startBtn').textContent=isHost?`${!state.botsEnabled&&humans===1?'Iniciar treino':'Iniciar partida'}${missingBots?` · +${missingBots} ${missingBots===1?'bot':'bots'}`:''} ▶`:'Aguardando anfitrião';
     $('hostHint').textContent = isHost ? (state.botsEnabled?'Bots ativados. As vagas só serão completadas depois que você tocar em Iniciar.':'Sem bots. Aguarde seus amigos ou inicie um treino sozinho. A partida só começa quando você tocar em Iniciar.') : 'Aguardando o anfitrião iniciar. Só ele escolhe se haverá bots.';
+    if(state.preparing){$('startBtn').textContent='Validando melhorias…';$('hostHint').textContent='Consultando as carteiras protegidas antes de iniciar a contagem.';}
     updatePlayers();
 
     if (state.phase === 'lobby') {
@@ -578,10 +583,10 @@
     if(!prediction||socket?.readyState!==WebSocket.OPEN||!isPlaying()) return;
     while(prediction.outbound.length) {
       const steps=prediction.outbound.splice(0,8);
-      socket.send(JSON.stringify({type:'input',steps}));
+      socket.send(JSON.stringify({type:'input',epoch:prediction.player.inputEpoch||0,steps}));
     }
   }
-  function sendBomb() {flushInputs();safeSend({type:'bomb'});}
+  function sendBomb() {flushInputs();safeSend({type:'bomb',epoch:prediction?.player.inputEpoch||0});}
   setInterval(flushInputs,33);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) { stopMusic(); heldKeys.clear(); resetJoystick(); lastDirection = '0,0'; flushInputs(); audioCtx?.suspend(); }
@@ -608,6 +613,7 @@
     flushInputs();
   }
   document.addEventListener('keydown', event => {
+    if(document.querySelector('#walletDialog[open]'))return;
     if (/input|textarea/i.test(event.target.tagName)) return;
     if (keyToDirection[event.code]) {
       event.preventDefault();
@@ -778,7 +784,7 @@
     requestAnimationFrame(draw);
     frameDt = Math.min(.05, (time - (lastFrame || time)) / 1000);
     lastFrame = time;
-    if (localPlayer && isPlaying() && state.players.find(p=>p.id===meId)?.alive) {
+    if (prediction && localPlayer && isPlaying() && state.players.find(p=>p.id===meId)?.alive) {
       const [x,y] = lastDirection.split(',').map(Number);
       inputAccumulator+=frameDt;
       while(inputAccumulator>=BombaNetcode.STEP) {

@@ -2,7 +2,7 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const art=require('../public/items');
 test('nine reference skins each have their own effect',()=>{
- assert.equal(Object.keys(art.SKINS).length,9);assert.equal(Object.keys(art.DEFS).length,9);
+ assert.equal(Object.keys(art.SKINS).length,9);assert.equal(Object.keys(art.DEFS).length,10);
  const selected=new Set();for(const type of Object.keys(art.DEFS))for(let x=0;x<2;x++)selected.add(art.selectSkin(type,x,0));
  assert.equal(selected.size,9);for(const skin of selected)assert.ok(art.SKINS[skin]);
  assert.equal(art.selectSkin('push',2,3,1),art.selectSkin('push',2,3,1));

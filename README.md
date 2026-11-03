@@ -440,3 +440,46 @@ permissões, revanche, troca de anfitrião e treino solo.
 móvel com dois jogadores reais: partida sem bots e revanche manual com bots.
 A captura é salva em `/tmp/bomba-host-options-mobile.png`. Os smokes específicos
 de bots agora ativam a opção explicitamente antes de iniciar.
+
+### Carteira, cofrinho e loja permanente
+
+O jogo consulta o serviço existente do cofrinho por HTTPS, configurado em
+`COFRINHO_URL` (padrão: https://cofrinho-bomba-party.onrender.com). Configure
+`WALLET_SERVICE_KEY` com o mesmo segredo nos dois serviços. O jogo não recebe
+credenciais do MongoDB e não acessa outros bancos. A identidade da carteira vem
+exclusivamente de uma sessão autenticada por PIN no cofrinho; trocar a skin ou
+forjar um personagem na compra não concede acesso à carteira de outra pessoa.
+
+`Minha Carteira` funciona na entrada e no lobby. O cookie de sessão é HttpOnly,
+SameSite=Strict e Secure em HTTPS. O vínculo ao WebSocket exige um segredo
+individual entregue somente no hello daquela conexão. Na hora de iniciar, o
+servidor consulta novamente as melhorias equipadas e valida sua correspondência
+com a skin; bots e pessoas sem carteira usam os atributos padrão. Falha ao
+consultar uma carteira autenticada impede o início até tentar novamente ou sair
+da carteira, sem retirar silenciosamente uma vantagem comprada. Só o anfitrião
+inicia a rodada e escolhe se haverá bots.
+
+As oito melhorias são permanentes, sem repetição de compras, e o equipamento
+é opcional: um nível por categoria. Corações no mapa sobem vidas até 5; sem
+melhorias equipadas, todos começam com vida 1, fogo 1 e velocidade 1. Velocidade
+é limitada a 3 (170/160/150 ms por casa), bombas e fogo coletados não têm teto;
+fogo dourado raro acrescenta 5. Nenhum poder atravessa caixas. Explosões
+simultâneas usam uma cópia imutável do mapa e fragmentam caixas com fogo por
+500 ms. A proteção breve de reaparecimento não deixa o corpo dentro de uma
+parede em queda. Sequências de comandos descartadas são confirmadas e a
+previsão reinicia a partir da confirmação, evitando travar depois de perder vida.
+
+Validação: `npm test`; para integração entre as duas branches já existentes,
+instale as dependências de desenvolvimento do cofrinho e execute:
+
+```sh
+COFRINHO_PROJECT=/caminho/do/worktree/cofrinho \
+BOMBA_CHROME=/caminho/do/chromium \
+node scripts/commerce-e2e.cjs
+```
+
+Esse teste inicia MongoDB temporário e os dois serviços localmente, compra e
+equipa melhorias por interface, testa quatro navegadores móveis, atualização
+por outro dispositivo e persistência após reiniciar o serviço do cofrinho.
+Não usa contas, depósitos ou credenciais de produção. Os testes de latência
+preservam a ordem das mensagens, assim como o WebSocket real.

@@ -6,7 +6,7 @@ const physics=require('../public/physics');
 const {spawnSync}=require('node:child_process');
 test('gold flame is one percent of revealed items and much rarer than regular flame',()=>{
  const counts={};for(let roll=0;roll<100;roll++){const type=rules.drop(roll);counts[type]=(counts[type]||0)+1;}
- assert.equal(counts.maxrange,1);assert.equal(counts.range,24);assert.equal(counts.bomb,24);assert.equal(counts.push,8);assert.equal(counts.bombpass,undefined);
+ assert.equal(counts.maxrange,1);assert.equal(counts.range,26);assert.equal(counts.bomb,22);assert.equal(counts.push,8);assert.equal(counts.bombpass,undefined);
 });
 test('rainbow pushes exactly one house, without walking through the bomb or renewing its fuse',()=>{
  const board=Array.from({length:5},(_,y)=>Array.from({length:8},(_,x)=>!x||!y||x===7||y===4?1:0));
@@ -25,8 +25,8 @@ test('bomb capacity and fire keep growing, gold adds five even above eight, and 
  r.phase='playing';r.participantsAtStart=1;r.lastTick=time;
  const pick=type=>{r.powerups.set('1,1',type);time+=17;tick();};
  for(let i=0;i<40;i++){pick('range');pick('bomb');pick('speed');}
- assert.equal(p.range,42);assert.equal(p.bombs,41);assert.equal(p.baseSpeed,150);assert.equal(p.speed,150);
- pick('maxrange');assert.equal(p.range,47);pick('maxrange');assert.equal(p.range,52);
+ assert.equal(p.range,41);assert.equal(p.bombs,41);assert.equal(p.baseSpeed,150);assert.equal(p.speed,150);
+ pick('maxrange');assert.equal(p.range,46);pick('maxrange');assert.equal(p.range,51);
  pick('push');assert.equal(p.push,true);assert.equal(p.bombPass,undefined);
  pick('curse');assert.equal(p.push,true);assert.equal(p.speed,240);assert.equal(p.bombPass,undefined);
  time+=6000;tick();assert.equal(p.speed,150);console.log('PASS');process.kill(process.pid,'SIGTERM');`;

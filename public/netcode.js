@@ -4,7 +4,7 @@
   const STEP=1/60,MAX_PENDING=120;
   function worldBombs(bombs){return bombs.map(b=>({...b,passThrough:[...(b.passThrough||[])]}));}
   function create(player,board,bombs=[],players=[]) {
-    return {player:{...player},others:players.filter(p=>p.id!==player.id).map(p=>({...p})),board,bombs:worldBombs(bombs),pending:[],outbound:[],sequence:0};
+    return {player:{...player},others:players.filter(p=>p.id!==player.id).map(p=>({...p})),board,bombs:worldBombs(bombs),pending:[],outbound:[],sequence:player.ack||0};
   }
   function advance(model,direction) {
     if(model.pending.length>=MAX_PENDING) return false;

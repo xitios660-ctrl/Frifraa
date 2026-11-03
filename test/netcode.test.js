@@ -44,6 +44,10 @@ test('a long disconnection caps prediction instead of letting it drift indefinit
   assert.equal(model.pending.length,net.MAX_PENDING);
   assert.equal(model.sequence,net.MAX_PENDING);
 });
+test('recreated prediction after respawn continues the acknowledged sequence instead of sending rejected old inputs',()=>{
+ const model=net.create({id:'p',x:1,y:1,speed:170,ack:137},board);
+ net.advance(model,{x:1,y:0});assert.equal(model.outbound[0].seq,138);
+});
 test('remote players are interpolated between received snapshots',()=>{
   const history=[{time:100,players:[{id:'p',x:1,y:2}]},{time:200,players:[{id:'p',x:2,y:2}]}];
   assert.equal(net.remotePosition(history,'p',150).x,1.5);

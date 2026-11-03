@@ -51,7 +51,10 @@ function route(room,p,t,bombs=room.bombs,escape=false){
    score-=(p.botRecent||[]).filter(cell=>cell===key(node.x,node.y)).length*12;
    if(destination)score-=100*(Math.abs(node.x-destination.x)+Math.abs(node.y-destination.y));
    if(!node.path.length&&(p.botIdleFor||0)>.85)score-=100;
-   if(room.powerups.has(key(node.x,node.y)))score+=room.powerups.get(key(node.x,node.y))==='curse'?-40:p.botMind?.goal==='collect'?26:16;
+   if(room.powerups.has(key(node.x,node.y))){
+    const item=room.powerups.get(key(node.x,node.y));
+    score+=item==='curse'?-40:item==='life'?((p.lives??1)<3?38:12):item==='speed'&&(p.speedLevel??1)>=3?1:p.botMind?.goal==='collect'?26:16;
+   }
    for(const [dx,dy] of DIRECTIONS)if(room.board[node.y+dy]?.[node.x+dx]===2)score+=p.botMind?.goal==='break'?9:5;
    let opponents=[...room.players.values()].filter(other=>other.alive&&other.id!==p.id&&other.id!==p.botMind?.allyId);
    const target=opponents.find(o=>o.id===p.botMind?.targetId);if(target)opponents=[target];

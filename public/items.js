@@ -3,7 +3,7 @@
  const TAU=Math.PI*2;
  const SKINS={rainbow:{cell:0,color:'#db7bff'},techbomb:{cell:1,color:'#5cdbff'},flame:{cell:2,color:'#ffb346'},skate:{cell:3,color:'#68e9ff'},skull:{cell:4,color:'#ffcd60'},tanks:{cell:5,color:'#ffb950'},glove:{cell:6,color:'#ff8655'},goldflame:{cell:7,color:'#ffe46d'},heart:{cell:8,color:'#ff6481'}};
  const variants={};
- const defaults={life:'heart',range:'flame',bomb:'techbomb',speed:'skate',shield:'heart',push:'rainbow',pierce:'tanks',maxrange:'goldflame',curse:'skull',kick:'glove'};
+ const defaults={life:'heart',range:'flame',bomb:'techbomb',speed:'skate',shield:'tanks',push:'rainbow',pierce:'tanks',maxrange:'goldflame',curse:'skull',kick:'glove'};
  function selectSkin(type,x,y,round=0){const choices=variants[type];return choices?choices[Math.abs(x+y+round)%choices.length]:defaults[type];}
  const tiles={},shine={};let loaded=false;
  function prepare(image){
@@ -110,7 +110,7 @@
   c.save();c.beginPath();c.rect(item.x*48,item.y*48,48,48);c.clip();c.translate(x,y);
   c.fillStyle='#08051b66';c.beginPath();c.ellipse(0,18,13-f.bob*.5,4.5,0,0,TAU);c.fill();
   const color=SKINS[skin]?.color||def.color,glow=c.createRadialGradient(0,0,3,0,0,23);glow.addColorStop(0,color+'36');glow.addColorStop(1,color+'00');circle(c,0,0,23,glow);
-  if(item.type==='life'||!drawSkin(c,skin,time,44,item)){c.translate(0,f.bob);icon(c,item.type,f.phase);}
+  if(!drawSkin(c,skin,time,44,item)){c.translate(0,f.bob);icon(c,item.type,f.phase);}
   c.restore();
  }
  const api={DEFS,SKINS,defaults,variants,selectSkin,frame,icon,draw,drawSkin,ready,hasArt:()=>loaded};if(typeof module!=='undefined')module.exports=api;else root.BombaItems=api;

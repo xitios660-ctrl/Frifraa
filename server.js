@@ -8,7 +8,7 @@ const { WebSocketServer, WebSocket } = require('ws');
 
 const maps=require('./public/maps');
 const {WIDTH,HEIGHT,SPAWNS}=maps;
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = process.env.PORT === '0' ? 0 : Number(process.env.PORT) || 3000;
 const TICK_MS = 1000 / 60;
 const physics = require('./public/physics');
 const {STEP} = require('./public/netcode');
@@ -26,6 +26,8 @@ const START_RANGE = 1;
 const RESPAWN_INVULNERABLE_MS = 2800;
 const rooms = new Map();
 const clients = new Set();
+const walletIntegration=require('./wallet-integration').createIntegration(clients);
+const {benefits}=require('./wallet-integration');
 const PUBLIC = path.join(__dirname, 'public');
 
 function now() { return Date.now(); }
@@ -77,7 +79,7 @@ function newPlayer(ws, name, slot, skinIndex) {
     range: START_RANGE,
     speed: rules.BASE_SPEED, baseSpeed:rules.BASE_SPEED, speedLevel:1, slowedUntil:0, kick:false, shield:0, invulnerableUntil:0, push:false, piercing:false,
     lastMove: 0,
-    inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false,
+    inputQueue: [], inputBudget: 0, inputEpoch:0, ack: 0, lastQueuedSeq: 0, usingInputs: false,
     motion: { x: 0, y: 0 }, moveTarget:null,
     kills: 0,
     place: null
@@ -111,7 +113,7 @@ function newRoom(code, ws, name) {
 function playerView(p) {
   return {
     id: p.id, name: p.name, bot:!!p.bot, botSpeech:p.botSpeech?.until>now()?p.botSpeech:null, botAllyId:p.botMind?.allyId||null, botPlan:p.bot?{source:p.botMind?.planSource||'local',goal:p.botMind?.goal||'collect',destination:p.botMind?.destination||null,bombMode:p.botMind?.bombMode||'auto'}:null, slot: p.slot, skinIndex: p.skinIndex, color: p.color, skin: p.skin,
-    x: p.x, y: p.y, ack: p.ack, motion: p.motion, moveTarget:p.moveTarget, facing: p.facing, alive: p.alive, lives:p.lives??START_LIVES, maxLives:MAX_LIVES, bombs: p.bombs,
+    x: p.x, y: p.y, ack: p.ack, inputEpoch:p.inputEpoch||0, motion: p.motion, moveTarget:p.moveTarget, facing: p.facing, alive: p.alive, lives:p.lives??START_LIVES, maxLives:MAX_LIVES, bombs: p.bombs,
     range: p.range, speed: p.speed, speedLevel:p.speedLevel??1, maxSpeedLevel:rules.MAX_SPEED_LEVEL, slowedUntil:p.slowedUntil, kick:p.kick, shield:p.shield, invulnerableUntil:p.invulnerableUntil, push:p.push, piercing:p.piercing, kills: p.kills, place: p.place
   };
 }
@@ -123,6 +125,7 @@ function stateFor(room) {
     code: room.code,
     hostId: room.hostId,
     botsEnabled:!!room.botsEnabled,
+    preparing:!!room.starting,
     phase: room.phase,
     players: [...room.players.values()].map(playerView),
     board: room.board,
@@ -199,7 +202,7 @@ function fillBots(room) {
     room.players.set(p.id,p);
   }
 }
-function startGame(room) {
+function startGame(room,wallets=new Map()) {
   if(room.botsEnabled)fillBots(room);else removeBots(room);
   room.lastTick = now();
   const ids=Object.keys(maps.DEFS);
@@ -235,8 +238,13 @@ function startGame(room) {
     const pos = SPAWNS[p.slot];
     Object.assign(p, {
       x: pos.x, y: pos.y, facing: 'down', alive: true, lives:START_LIVES, collectedPowerups:[], bombs: 1, activeBombs: 0,
-      range: START_RANGE, speed: rules.BASE_SPEED, baseSpeed:rules.BASE_SPEED, speedLevel:1, slowedUntil:0, kick:false, shield:0, invulnerableUntil:0, push:false, piercing:false, lastMove: 0, inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false, motion: { x: 0, y: 0 }, moveTarget:null, kills: 0, place: null, botTarget:null, botThinkAt:0, botCooldown:0, botStall:0, botIdleFor:0, botReplanAt:0, botRecent:[]
+      range: START_RANGE, speed: rules.BASE_SPEED, baseSpeed:rules.BASE_SPEED, speedLevel:1, slowedUntil:0, kick:false, shield:0, invulnerableUntil:0, push:false, piercing:false, lastMove: 0, inputQueue: [], inputBudget: 0, inputEpoch:0, ack: 0, lastQueuedSeq: 0, usingInputs: false, motion: { x: 0, y: 0 }, moveTarget:null, kills: 0, place: null, botTarget:null, botThinkAt:0, botCooldown:0, botStall:0, botIdleFor:0, botReplanAt:0, botRecent:[]
     });
+  }
+  for(const p of room.players.values()){
+    const initial=benefits(p.bot?null:wallets.get(p.id),p.skinIndex);
+    Object.assign(p,initial,{baseSpeed:rules.BASE_SPEED-(initial.speedLevel-1)*rules.SPEED_GAIN,speed:rules.BASE_SPEED-(initial.speedLevel-1)*rules.SPEED_GAIN});
+    p.equippedUpgrades=p.bot?[]:(wallets.get(p.id)?.character===['mary','kaique','jheniffer','gustavo'][p.skinIndex]?wallets.get(p.id)?.equipped||[]:[]);
   }
   botMinds.reset(room,now());
   broadcast(room);
@@ -276,7 +284,7 @@ function movePlayers(room, t) {
       if (bonus === 'maxrange') p.range+=5;
       if (bonus === 'shield') p.shield=1;
       if (bonus === 'push'||bonus==='bombpass') p.push=true;
-      if (bonus === 'pierce') p.piercing=true;
+      if (bonus === 'pierce') p.shield=1; // Legacy tanks protect; never pierce boxes.
       if (bonus === 'bomb') p.bombs += 1;
       if (bonus === 'speed') {p.speedLevel=Math.min(rules.MAX_SPEED_LEVEL,(p.speedLevel??1)+1);p.baseSpeed=Math.max(rules.MIN_SPEED,rules.BASE_SPEED-(p.speedLevel-1)*rules.SPEED_GAIN);}
       if (bonus === 'curse') p.slowedUntil=t+6000;
@@ -291,7 +299,7 @@ function movePlayers(room, t) {
         (p.collectedPowerups??=[]).push(bonus);
       }
       p.speed=p.baseSpeed*(p.slowedUntil>t?1.6:1);
-      room.effects.push({kind:'pickup',x:Math.round(p.x),y:Math.round(p.y),startedAt:t,expiresAt:t+600});
+      room.effects.push({kind:'pickup',bonus,x:Math.round(p.x),y:Math.round(p.y),startedAt:t,expiresAt:t+600});
       room.powerups.delete(key);
       send(p.ws, { type: 'pickup', bonus, lives:p.lives, speedLevel:p.speedLevel, atSpeedLimit:bonus==='speed'&&p.speedLevel>=rules.MAX_SPEED_LEVEL });
     }
@@ -303,13 +311,13 @@ function putBomb(room, player) {
   room.bombs.push({
     id:crypto.randomUUID(), placedAt:now(),
     x: Math.round(player.x), y: Math.round(player.y), ownerId: player.id,
-    range: player.range, piercing:player.piercing, explodeAt: now() + 2250,
+    range: player.range, piercing:false, explodeAt: now() + 2250,
     passThrough: [...room.players.values()].filter(p => p.alive && physics.overlaps(p, {x:Math.round(player.x),y:Math.round(player.y)})).map(p => p.id)
   });
   player.activeBombs++;
   broadcast(room);
 }
-function explodeBomb(room, bomb, t) {
+function explodeBomb(room, bomb, t,blastBoard=room.board.map(row=>row.slice())) {
   const index = room.bombs.indexOf(bomb);
   if (index < 0) return;
   room.bombs.splice(index, 1);
@@ -321,7 +329,7 @@ function explodeBomb(room, bomb, t) {
     for (let step = 1; step <= bomb.range; step++) {
       const x = bomb.x + dx * step;
       const y = bomb.y + dy * step;
-      const cell = room.board[y]?.[x];
+      const cell = blastBoard[y]?.[x];
       if (cell === undefined) break;
       if (cell === 1) {room.effects.push({kind:'wall',x,y,startedAt:t,expiresAt:t+360});break;}
       tiles.push({ x, y });
@@ -329,7 +337,7 @@ function explodeBomb(room, bomb, t) {
       // bombs exploding in the same flame window must respect that cover.
       const crateWasBlocking=(room.crateFlameBlockers.get(tileKey(x,y))||0)>t;
       if (cell === 2 || crateWasBlocking) {
-        if (cell === 2) {
+        if (room.board[y][x] === 2) {
           room.board[y][x] = 0;
           room.crateFlameBlockers.set(tileKey(x,y),t+500);
           room.effects.push({kind:'crate',x,y,startedAt:t,expiresAt:t+650});
@@ -393,26 +401,35 @@ function chooseRespawnTile(room,p){
   for(let y=0;y<HEIGHT;y++)for(let x=0;x<WIDTH;x++){
     if(room.board[y]?.[x]!==0)continue;
     if(room.bombs.some(b=>bombMotion.occupies(b,x,y)))continue;
-    if([...room.players.values()].some(other=>other.id!==p.id&&other.alive&&Math.abs(other.x-x)<1&&Math.abs(other.y-y)<1))continue;
+    if(!physics.canOccupy(p,x,y,room.board,room.bombs,[...room.players.values()]))continue;
+    if(room.collapse?.path.some((tile,i)=>i>=room.collapse.index&&room.collapse.startsAt+i*collapse.INTERVAL<now()+1000&&tile.x===x&&tile.y===y))continue;
     if(room.flames.some(f=>f.x===x&&f.y===y&&f.expiresAt>now()))continue;
     choices.push({x,y,distance:Math.abs(x-origin.x)+Math.abs(y-origin.y)});
   }
   choices.sort((a,b)=>a.distance-b.distance);
-  return choices[0]||{x:p.x,y:p.y};
+  return choices[0]||null;
 }
 function loseLife(room,p,flame,t){
   const oldLives=p.lives??START_LIVES;
   p.lives=Math.max(0,oldLives-1);
   dropCollectedPowerups(room,p,t);
   p.motion={x:0,y:0};p.moveTarget=null;p.inputQueue=[];p.inputBudget=0;
+  // Discarded commands are acknowledged too. Otherwise the respawned client
+  // reuses an earlier sequence and the server rejects every subsequent input.
+  p.ack=p.lastQueuedSeq;
+  p.inputEpoch=(p.inputEpoch||0)+1;
+  p.botTarget=null;p.botThinkAt=0;p.botIdleFor=0;p.botRecent=[];
   const owner=room.players.get(flame.ownerId);
   if(owner&&owner.id!==p.id)owner.kills++;
   room.effects.push({kind:'lifeLost',x:Math.round(p.x),y:Math.round(p.y),startedAt:t,expiresAt:t+1000});
   if(p.lives>0){
     const respawn=chooseRespawnTile(room,p);
-    p.x=respawn.x;p.y=respawn.y;p.invulnerableUntil=t+RESPAWN_INVULNERABLE_MS;
-    send(p.ws,{type:'lifeLost',lives:p.lives});
-    return false;
+    if(respawn){
+      p.x=respawn.x;p.y=respawn.y;p.invulnerableUntil=t+RESPAWN_INVULNERABLE_MS;
+      send(p.ws,{type:'lifeLost',lives:p.lives});
+      return false;
+    }
+    p.lives=0;
   }
   p.alive=false;p.invulnerableUntil=0;
   send(p.ws,{type:'lifeLost',lives:0});
@@ -465,17 +482,20 @@ function tick() {
     if (room.phase === 'playing') {
       if(room.crateFlameBlockers)for(const [key,expiresAt] of room.crateFlameBlockers)
         if(expiresAt<=t)room.crateFlameBlockers.delete(key);
-      collapse.update(room,t,(p,when)=>(p.invulnerableUntil||0)>when?false:loseLife(room,p,{ownerId:null},when));
+      collapse.update(room,t,(p,when)=>loseLife(room,p,{ownerId:null},when));
       bombMotion.update(room,t);
       updatePowerups(room,t);
       botMinds.tick(room,t);
       movePlayers(room, t);
       room.flames = room.flames.filter(f => f.expiresAt > t);
       for(const b of room.bombs)if(room.flames.some(f=>bombMotion.occupies(b,f.x,f.y)))b.explodeAt=t;
+      // All simultaneous detonations and their chain reactions see one immutable
+      // map. A destroyed box can never open a ray in the current blast batch.
+      const blastBoard=room.board.map(row=>row.slice());
       while (true) {
         const due = room.bombs.find(b => b.explodeAt <= t);
         if (!due) break;
-        explodeBomb(room, due, t);
+        explodeBomb(room, due, t,blastBoard);
       }
       applyFlames(room);
       checkWinner(room);
@@ -490,6 +510,7 @@ function onMessage(ws, raw) {
   if (!message || typeof message !== 'object') return;
   if(['enter','create','join'].includes(message.type)){
     let room=rooms.values().next().value;
+    if(room?.starting)return error(ws,'O anfitrião está iniciando a partida. Aguarde a próxima rodada.');
     if(room&&ws.roomCode===room.code){send(ws,{type:'joined',code:room.code,playerId:ws.playerId,skinIndex:room.players.get(ws.playerId)?.skinIndex});broadcast(room);return;}
     if(room&&(room.phase==='playing'||room.phase==='countdown'))return error(ws,'A partida está em andamento. Aguarde a próxima rodada para escolher seu personagem.');
     if(room)removeBots(room);
@@ -516,6 +537,7 @@ function onMessage(ws, raw) {
     leaveRoom(ws);
     send(ws, { type: 'left' });
   } else if (message.type === 'skin') {
+    if(room.starting)return error(ws,'Aguarde a validação das melhorias antes de trocar de personagem.');
     if (room.phase !== 'lobby') return error(ws, 'Só é possível trocar de personagem antes da partida.');
     const skinIndex = Number(message.skinIndex);
     if (!Number.isInteger(skinIndex) || skinIndex < 0 || skinIndex >= SKINS.length) return;
@@ -540,8 +562,15 @@ function onMessage(ws, raw) {
   } else if (message.type === 'start') {
     if (room.hostId !== ws.playerId) return error(ws, 'Apenas o anfitrião pode iniciar.');
     if (room.phase !== 'lobby' && room.phase !== 'finished') return;
-    startGame(room);
+    if(room.starting)return;
+    const authenticated=[...room.players.values()].filter(p=>!p.bot&&p.ws.walletToken);
+    if(!authenticated.length){startGame(room);return;}
+    room.starting=true;broadcast(room);const hostId=room.hostId;
+    Promise.all(authenticated.map(async p=>[p.id,await walletIntegration.loadPlayer(p)])).then(entries=>{
+      if(rooms.get(room.code)===room&&room.hostId===hostId&&['lobby','finished'].includes(room.phase))startGame(room,new Map(entries));
+    }).catch(()=>error(ws,'Não foi possível validar as melhorias no cofrinho. Tente iniciar novamente ou saia da carteira para jogar sem vantagens.')).finally(()=>{room.starting=false;broadcast(room);});
   } else if (message.type === 'input') {
+    if((message.epoch??0)!==(player.inputEpoch||0))return;
     if(room.phase!=='playing'||!player.alive||!Array.isArray(message.steps)||message.steps.length>8) return;
     let previous=player.lastQueuedSeq;
     for(const command of message.steps) {
@@ -560,6 +589,7 @@ function onMessage(ws, raw) {
     player.motion = { x, y };
     player.lastInput = now();
   } else if (message.type === 'bomb') {
+    if((message.epoch??0)!==(player.inputEpoch||0))return;
     if(player.usingInputs) {
       if(room.phase==='playing' && player.alive && player.inputQueue.filter(c=>c.type==='bomb').length<player.bombs) player.inputQueue.push({type:'bomb'});
     } else putBomb(room, player);
@@ -584,6 +614,8 @@ const FILES = {
   '/netcode.js': ['netcode.js', 'text/javascript; charset=utf-8'],
   '/physics.js': ['physics.js', 'text/javascript; charset=utf-8'],
   '/game.js': ['game.js', 'text/javascript; charset=utf-8'],
+  '/wallet.js': ['wallet.js', 'text/javascript; charset=utf-8'],
+  '/wallet.css': ['wallet.css', 'text/css; charset=utf-8'],
   '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json; charset=utf-8'],
   '/sw.js': ['sw.js', 'text/javascript; charset=utf-8'],
   '/icons/party-four-v1-180.png': ['icons/party-four-v1-180.png', 'image/png'],
@@ -598,7 +630,8 @@ const FILES = {
   '/skins/kaique.webp': ['skins/kaique.webp', 'image/webp'],
   '/skins/jheniffer.webp': ['skins/jheniffer.webp', 'image/webp']
 };
-const server = http.createServer((req, res) => {
+const server = http.createServer(async(req, res) => {
+  if(await walletIntegration.handle(req,res))return;
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
     return res.end(JSON.stringify({ ok: true, rooms: rooms.size, players: clients.size, botAI:botMinds.status() }));
@@ -610,17 +643,18 @@ const server = http.createServer((req, res) => {
     return res.end('Não encontrado');
   }
   const [file, contentType] = entry;
-  res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': ['index.html', 'sw.js', 'manifest.webmanifest', 'game.js', 'physics.js', 'animation.js', 'effects.js', 'maps.js', 'camera.js', 'netcode.js', 'joystick.js', 'items.js', 'styles.css'].includes(file) ? 'no-cache' : 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
+  res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': ['index.html', 'sw.js', 'manifest.webmanifest', 'game.js', 'physics.js', 'animation.js', 'effects.js', 'maps.js', 'camera.js', 'netcode.js', 'joystick.js', 'items.js', 'styles.css', 'wallet.js', 'wallet.css'].includes(file) ? 'no-cache' : 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
   if (req.method === 'HEAD') return res.end();
   fs.createReadStream(path.join(PUBLIC, file)).on('error', () => res.destroy()).pipe(res);
 });
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 1024 });
 wss.on('connection', ws => {
   ws.playerId = crypto.randomUUID();
+  ws.walletLink=crypto.randomBytes(24).toString('hex');
   ws.roomCode = null;
   ws.isAlive = true;
   clients.add(ws);
-  send(ws, { type: 'hello', playerId: ws.playerId });
+  send(ws, { type: 'hello', playerId: ws.playerId, walletLink:ws.walletLink });
   send(ws,availability());
   ws.on('pong', () => { ws.isAlive = true; });
   ws.on('message', raw => onMessage(ws, raw));

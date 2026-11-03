@@ -59,6 +59,8 @@
     const p=progress(e,time),x=e.x*SIZE+24,y=e.y*SIZE+24;
     ctx.save();ctx.globalAlpha=1-p;
     if(e.kind==='crate') {
+      // Low-opacity smoke is decorative, outside the authoritative damage shape.
+      for(let i=0;i<5;i++)circle(ctx,x+Math.sin(i*2.4)*20*p,y-16-30*p+Math.cos(i)*8,5+12*p,'#b8a5bb44');
       for(let i=0;i<12;i++) {
         const a=i*2.399+e.x*.7+e.y,speed=22+(i%4)*13;
         const dx=Math.cos(a)*speed*p,dy=Math.sin(a)*speed*p+45*p*p;
@@ -77,8 +79,13 @@
       for(let i=0;i<10;i++){const a=i*TAU/10;circle(ctx,x+Math.cos(a)*30*p,y+15+Math.sin(a)*12*p,5*(1-p),'#c6b3ad');}
       ctx.strokeStyle='#ffce7e';ctx.lineWidth=2*(1-p);ctx.strokeRect(x-23-p*6,y-23-p*6,46+p*12,46+p*12);
     } else if(e.kind==='pickup') {
+      const colors={life:'#ff719b',shield:'#7fceff',range:'#ffb763',maxrange:'#ffe784',speed:'#6de8d2',curse:'#c79dff'};
+      ctx.shadowColor=colors[e.bonus]||'#e5c2ff';ctx.shadowBlur=8;
       ctx.strokeStyle='#fff3a2';ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y,10+p*22,0,TAU);ctx.stroke();
       for(let i=0;i<6;i++) circle(ctx,x+Math.cos(i*TAU/6)*(8+p*22),y-p*24+Math.sin(i*TAU/6)*(8+p*22),2,'#fff3a2');
+    } else if(e.kind==='lifeLost'||e.kind==='itemDrop'){
+      ctx.strokeStyle=e.kind==='lifeLost'?'#ff91b2':'#ffdf97';ctx.lineWidth=3*(1-p);ctx.beginPath();ctx.arc(x,y,8+p*26,0,TAU);ctx.stroke();
+      for(let i=0;i<8;i++){const a=i*TAU/8;circle(ctx,x+Math.cos(a)*35*p,y+Math.sin(a)*25*p-16*p,3*(1-p),'#ffe3bc');}
     }
     ctx.restore();
   }
