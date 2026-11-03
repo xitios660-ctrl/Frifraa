@@ -1,14 +1,15 @@
 'use strict';
 const CHARACTERS=['mary','kaique','jheniffer','gustavo'];
-const UPGRADES={bomb2:{bombs:2},bomb3:{bombs:3},fire2:{range:2},fire3:{range:3},speed2:{speedLevel:2},speed3:{speedLevel:3},life2:{lives:2},shield:{shield:1}};
+const UPGRADES={'legacy-bomb4':{bombs:4},'legacy-fire4':{range:4},'legacy-fire5':{range:5},'legacy-life3':{lives:3},'legacy-kick':{kick:true},'legacy-push':{push:true},bomb2:{bombs:2},bomb3:{bombs:3},fire2:{range:2},fire3:{range:3},speed2:{speedLevel:2},speed3:{speedLevel:3},life2:{lives:2},shield:{shield:1}};
 function benefits(wallet,skinIndex){
  const result={bombs:1,range:1,speedLevel:1,lives:1,shield:0};
  if(!wallet||wallet.character!==CHARACTERS[skinIndex])return result;
- for(const id of wallet.equipped||[])if(wallet.owned?.includes(id))for(const[key,value]of Object.entries(UPGRADES[id]||{}))result[key]=Math.max(result[key],value);
+ for(const id of wallet.equipped||[])if(wallet.owned?.includes(id))for(const[key,value]of Object.entries(UPGRADES[id]||{}))result[key]=typeof value==='boolean'?!!result[key]||value:Math.max(result[key]??0,value);
  return result;
 }
 function cookie(req){return(req.headers.cookie||'').split(';').find(v=>v.trim().startsWith('bp_wallet='))?.trim().slice(10)||'';}
 function createIntegration(clients,{url=process.env.COFRINHO_URL||'https://cofrinho-bomba-party.onrender.com',key=process.env.WALLET_SERVICE_KEY}={}){
+ const pending=new Map();
  async function request(path,token,body,address){
   if(!key)throw Object.assign(new Error('A carteira ainda não está configurada. O jogo continua disponível.'),{status:503});
   const response=await fetch(`${url}${path}`,{method:body===undefined?'GET':'POST',headers:{'content-type':'application/json','x-wallet-service':key,...(token?{authorization:`Bearer ${token}`} :{}),...(address?{'x-wallet-address':address}:{})},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(15000),redirect:'error'});
@@ -18,6 +19,7 @@ function createIntegration(clients,{url=process.env.COFRINHO_URL||'https://cofri
  }
  async function loadPlayer(p){
   if(!p.ws.walletToken)return null;
+  while(pending.get(p.ws.walletToken)?.size)await Promise.allSettled([...pending.get(p.ws.walletToken)]);
   const wallet=await request('/api/wallet',p.ws.walletToken);
   return wallet.character===CHARACTERS[p.skinIndex]?wallet:null;
  }
@@ -57,7 +59,10 @@ function createIntegration(clients,{url=process.env.COFRINHO_URL||'https://cofri
    const allowed=(req.method==='GET'&&['/api/wallet','/api/shop/catalog'].includes(pathname))||(req.method==='POST'&&['/api/wallet/purchase','/api/wallet/equip'].includes(pathname));
    if(!allowed)throw Object.assign(new Error('Rota não encontrada.'),{status:404});
    const payload=pathname.endsWith('/purchase')?{itemId:body.itemId,requestId:body.requestId}:pathname.endsWith('/equip')?{equipped:body.equipped}:undefined;
-   json(200,await request(pathname,token,payload));
+   if(req.method==='POST'){
+    const operation=request(pathname,token,payload);if(!pending.has(token))pending.set(token,new Set());pending.get(token).add(operation);
+    try{json(200,await operation);}finally{pending.get(token)?.delete(operation);if(!pending.get(token)?.size)pending.delete(token);}
+   }else json(200,await request(pathname,token,payload));
   }catch(error){json(error.status||503,{error:error.status?error.message:'Não foi possível consultar o cofrinho. Tente novamente.'});}
   return true;
  }

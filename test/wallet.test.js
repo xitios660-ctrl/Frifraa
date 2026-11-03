@@ -7,6 +7,7 @@ test('round advantages require ownership, optional equipment and the authenticat
  assert.deepEqual(benefits(wallet,0),{bombs:2,range:2,speedLevel:2,lives:2,shield:1});assert.deepEqual(benefits(wallet,1),defaults);
  wallet.equipped=['bomb3','fire3','speed3','bomb3','life2'];assert.deepEqual(benefits(wallet,0),{bombs:3,range:3,speedLevel:3,lives:2,shield:0});
  wallet.equipped=[];assert.deepEqual(benefits(wallet,0),defaults);wallet.equipped=['forged','bomb2'];wallet.owned=[];assert.deepEqual(benefits(wallet,0),defaults);
+ assert.deepEqual(benefits({character:'mary',owned:['legacy-kick','legacy-bomb4'],equipped:['legacy-kick','legacy-bomb4']},0),{...defaults,bombs:4,kick:true});
 });
 test('game wallet gateway uses HttpOnly sessions, strips browser prices and identity, validates origins and privately binds each WebSocket',async()=>{
  const records=[],upstream=http.createServer(async(req,res)=>{

@@ -483,3 +483,18 @@ equipa melhorias por interface, testa quatro navegadores móveis, atualização
 por outro dispositivo e persistência após reiniciar o serviço do cofrinho.
 Não usa contas, depósitos ou credenciais de produção. Os testes de latência
 preservam a ordem das mensagens, assim como o WebSocket real.
+
+As mudanças de moedas recebidas em paralelo foram integradas: os botões de loja
+no lobby e no resultado agora abrem a mesma carteira protegida. Os lançamentos
+antigos do cofrinho (`spentCoins`, `upgrades`, `coinPurchases`) continuam contando
+no saldo, histórico e desbloqueios, sem reembolso artificial ou segunda cobrança.
+A API anterior que confiava apenas na skin foi desativada; somente a sessão
+pessoal concede autorização de compra. Compras/equipamentos em andamento no
+jogo são aguardados antes de consultar o conjunto inicial da próxima rodada.
+O cartão de moedas do cofrinho também usa esse saldo único.
+
+Após reaparecer, `inputEpoch` muda: comandos que estavam em trânsito antes do
+dano não entram na nova sequência de movimentos. A previsão do cliente começa
+no ACK confirmado. `scripts/respawn-smoke.cjs` verifica essa recuperação com
+quatro navegadores, coração, explosões em cadeia bloqueadas por caixas,
+proteção, eliminação e espectador.

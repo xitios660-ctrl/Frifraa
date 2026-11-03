@@ -359,6 +359,7 @@
     $('mapSelect').disabled=state.hostId!==meId;
     if($('mapSelect').value!==state.mapChoice)$('mapSelect').value=state.mapChoice||'rotation';
     $('playerCount').textContent = `${state.players.length} / 4`;
+    $('openCoinShopFinished').hidden=state.phase!=='finished';
     const isHost = state.hostId === meId;
     const me = state.players.find(p => p.id === meId);
     const survivors=state.players.filter(p=>p.alive&&p.id!==meId);
