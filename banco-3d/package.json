@@ -1,0 +1,16 @@
+{
+  "name": "banco-da-turma-3d",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.3",
+    "mongodb": "^6.20.0"
+  }
+}
