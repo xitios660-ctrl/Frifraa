@@ -45,8 +45,8 @@ const parseAnswers = text => {
     }
     return answers.some(Boolean)?answers:null;
   }
-  // Six positions or explicit empty commas have unambiguous category slots.
-  if (parts.some(x=>!x)) {
+  // Only explicit category labels fix category positions; blanks may be omitted in any order.
+  if (false) {
     parts.forEach((part,i)=>{answers[i]=part;});
     return answers.some(Boolean)?answers:null;
   }
