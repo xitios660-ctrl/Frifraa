@@ -3,7 +3,7 @@
  const TAU=Math.PI*2;
  const SKINS={rainbow:{cell:0,color:'#db7bff'},techbomb:{cell:1,color:'#5cdbff'},flame:{cell:2,color:'#ffb346'},skate:{cell:3,color:'#68e9ff'},skull:{cell:4,color:'#ffcd60'},tanks:{cell:5,color:'#ffb950'},glove:{cell:6,color:'#ff8655'},goldflame:{cell:7,color:'#ffe46d'},heart:{cell:8,color:'#ff6481'}};
  const variants={};
- const defaults={range:'flame',bomb:'techbomb',speed:'skate',shield:'heart',push:'rainbow',pierce:'tanks',maxrange:'goldflame',curse:'skull',kick:'glove'};
+ const defaults={life:'heart',range:'flame',bomb:'techbomb',speed:'skate',shield:'heart',push:'rainbow',pierce:'tanks',maxrange:'goldflame',curse:'skull',kick:'glove'};
  function selectSkin(type,x,y,round=0){const choices=variants[type];return choices?choices[Math.abs(x+y+round)%choices.length]:defaults[type];}
  const tiles={},shine={};let loaded=false;
  function prepare(image){
@@ -18,7 +18,7 @@
   loaded=true;
  }
  const ready=typeof root.Image==='function'?new Promise(resolve=>{const image=new root.Image();image.onload=()=>{prepare(image);resolve(true);};image.onerror=()=>resolve(false);image.src='/items/powerups-3d-v1.png';}):Promise.resolve(false);
- const DEFS={range:{color:'#ff9558',name:'Alcance'},bomb:{color:'#bb9aff',name:'Bomba extra'},speed:{color:'#65ebd2',name:'Velocidade'},shield:{color:'#79caff',name:'Escudo'},push:{color:'#d1b5ff',name:'Empurrar bomba'},pierce:{color:'#ff7ca6',name:'Perfurante'},maxrange:{color:'#ffe275',name:'Fogo +5 · raro'},curse:{color:'#c48aff',name:'Caveira · lentidão por 6s'},kick:{color:'#ff8655',name:'Luva · chutar bombas'}};
+ const DEFS={life:{color:'#ff456e',name:'Vida extra +1'},range:{color:'#ff9558',name:'Alcance'},bomb:{color:'#bb9aff',name:'Bomba extra'},speed:{color:'#65ebd2',name:'Velocidade'},shield:{color:'#79caff',name:'Escudo'},push:{color:'#d1b5ff',name:'Empurrar bomba'},pierce:{color:'#ff7ca6',name:'Perfurante'},maxrange:{color:'#ffe275',name:'Fogo +5 · raro'},curse:{color:'#c48aff',name:'Caveira · lentidão por 6s'},kick:{color:'#ff8655',name:'Luva · chutar bombas'}};
  function circle(c,x,y,r,color){c.fillStyle=color;c.beginPath();c.arc(x,y,r,0,TAU);c.fill();}
  function shape(c,points,fill,stroke){c.beginPath();points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.closePath();c.fillStyle=fill;c.fill();if(stroke){c.strokeStyle=stroke;c.lineWidth=1.4;c.stroke();}}
  function rect(c,x,y,w,h,r,color){c.fillStyle=color;c.beginPath();c.roundRect(x,y,w,h,r);c.fill();}
@@ -40,7 +40,14 @@
   circle(c,Math.sin(t*5)*6,-17-(t*11%6),1.6,'#ffe786');c.restore();
  }
  function icon(c,type,t){
-  if(type==='curse'){circle(c,0,0,13,'#eee3ff');circle(c,-5,-2,3,'#43304f');circle(c,5,-2,3,'#43304f');rect(c,-6,10,12,5,1,'#eee3ff');}
+  if(type==='life'){
+   c.save();c.translate(0,Math.sin(t*5)*1.2);c.scale(1.05,1.05);
+   c.shadowColor='#ff406b';c.shadowBlur=8;
+   shape(c,[[-14,-7],[-12,-14],[-4,-15],[0,-10],[4,-15],[12,-14],[14,-7],[12,0],[0,14],[-12,0]],'#fb4e77','#fff2c8');
+   c.shadowBlur=0;c.font='bold 14px sans-serif';c.textAlign='center';c.textBaseline='middle';
+   c.fillStyle='#fff6e8';c.fillText('+',0,-4);
+   c.restore();
+  }else if(type==='curse'){circle(c,0,0,13,'#eee3ff');circle(c,-5,-2,3,'#43304f');circle(c,5,-2,3,'#43304f');rect(c,-6,10,12,5,1,'#eee3ff');}
   else if(type==='kick'){circle(c,0,-2,13,'#ff7744');rect(c,-8,9,16,7,2,'#ffb751');}
   else if(type==='range')fire(c,0,0,1,t);
   else if(type==='bomb'){
@@ -103,7 +110,7 @@
   c.save();c.beginPath();c.rect(item.x*48,item.y*48,48,48);c.clip();c.translate(x,y);
   c.fillStyle='#08051b66';c.beginPath();c.ellipse(0,18,13-f.bob*.5,4.5,0,0,TAU);c.fill();
   const color=SKINS[skin]?.color||def.color,glow=c.createRadialGradient(0,0,3,0,0,23);glow.addColorStop(0,color+'36');glow.addColorStop(1,color+'00');circle(c,0,0,23,glow);
-  if(!drawSkin(c,skin,time,44,item)){c.translate(0,f.bob);icon(c,item.type,f.phase);}
+  if(item.type==='life'||!drawSkin(c,skin,time,44,item)){c.translate(0,f.bob);icon(c,item.type,f.phase);}
   c.restore();
  }
  const api={DEFS,SKINS,defaults,variants,selectSkin,frame,icon,draw,drawSkin,ready,hasArt:()=>loaded};if(typeof module!=='undefined')module.exports=api;else root.BombaItems=api;
