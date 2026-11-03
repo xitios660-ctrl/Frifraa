@@ -343,7 +343,7 @@ function updatePowerups(room,t){
   for(const f of room.flames)if(f.expiresAt>t&&room.powerups.delete(tileKey(f.x,f.y)))room.effects.push({kind:'itemBurn',x:f.x,y:f.y,startedAt:t,expiresAt:t+420});
   room.pendingPowerups=room.pendingPowerups.filter(p=>{
     if(room.board[p.y]?.[p.x]!==0)return false;
-    if(p.readyAt>t||room.flames.some(f=>f.x===p.x&&f.y===p.y&&f.expiresAt>t))return true;
+    if(p.readyAt>t||room.powerups.has(tileKey(p.x,p.y))||room.flames.some(f=>f.x===p.x&&f.y===p.y&&f.expiresAt>t))return true;
     room.powerups.set(tileKey(p.x,p.y),p.type);return false;
   });
 }
@@ -455,7 +455,7 @@ function tick() {
       broadcast(room);
     }
     if (room.phase === 'playing') {
-      collapse.update(room,t,(p,when)=>loseLife(room,p,{ownerId:null},when));
+      collapse.update(room,t,(p,when)=>(p.invulnerableUntil||0)>when?false:loseLife(room,p,{ownerId:null},when));
       bombMotion.update(room,t);
       updatePowerups(room,t);
       botMinds.tick(room,t);
