@@ -9,6 +9,16 @@
   const COLOR = ['#ac82ff', '#ff6e96', '#55dcff', '#ffd36f'];
   const SKIN_ICONS = ['💙', '👓', '🌸', '😎'];
   const SKIN_LABELS = ['MARY', 'KAIQUE', 'JHENIFFER', 'GUSTAVO'];
+  const COIN_CHARACTERS=['mary','kaique','jheniffer','gustavo'];
+  const COIN_ITEMS=[
+    ['bomb','💣','Bomba extra','Comece com +1 bomba',10,3],
+    ['range','🔥','Alcance','Comece com +1 bloco de fogo',10,4],
+    ['speed','⚡','Velocidade','Comece um nível mais rápido (até 3)',15,2],
+    ['life','❤️','Vida extra','Comece com +1 vida',20,2],
+    ['shield','🛡️','Escudo','Absorve uma explosão',25,1],
+    ['kick','🥊','Luva','Comece chutando bombas',20,1],
+    ['push','🌈','Empurrar','Comece empurrando bombas',20,1]
+  ];
   const SPRITE_URLS = ['/skins/mary.webp', '/skins/kaique.webp', '/skins/jheniffer.webp', '/skins/gustavo-walk-v1.png'];
   const sprites = SPRITE_URLS.map(src => {
     if (!src) return null;
@@ -28,6 +38,45 @@
   let selectedSkin=Number(localStorage.getItem('arena-skin')||0);
   if(!Number.isInteger(selectedSkin)||selectedSkin<0||selectedSkin>3)selectedSkin=0;
   if(savedRoom&&!Number.isInteger(savedRoom.skinIndex)&&typeof savedRoom.name==='string'){const old=SKIN_LABELS.indexOf(savedRoom.name.toUpperCase());if(old>=0){savedRoom.skinIndex=old;selectedSkin=old;}}
+  let coinWallet=null,coinShopPending=false;
+  function renderCoinShop(){
+    const summary=$('coinWalletSummary'),balance=$('coinShopBalance'),grid=$('coinShopItems');
+    if(summary)summary.textContent=coinWallet?.character===COIN_CHARACTERS[selectedSkin]
+      ? '🪙 '+coinWallet.balance+' moedas disponíveis · '+coinWallet.earned+' acumuladas'
+      :'🪙 Moedas: toque para consultar';
+    if(!balance||!grid)return;
+    grid.replaceChildren();
+    if(!coinWallet||coinWallet.character!==COIN_CHARACTERS[selectedSkin]){
+      balance.textContent='🪙 Consultando moedas de '+SKIN_LABELS[selectedSkin]+'…';return;
+    }
+    balance.textContent='🪙 '+coinWallet.balance+' disponíveis · '+coinWallet.earned+' acumuladas · '+coinWallet.spent+' gastas';
+    for(const [key,symbol,name,detail,cost,max] of COIN_ITEMS){
+      const level=coinWallet.upgrades?.[key]||0;
+      const card=document.createElement('div');card.className='coin-shop-item';
+      const image=document.createElement('span');image.className='coin-shop-item-icon';image.textContent=symbol;
+      const info=document.createElement('div');info.className='coin-shop-item-info';
+      const title=document.createElement('strong');title.textContent=name;
+      const description=document.createElement('small');description.textContent=detail;
+      const levelText=document.createElement('span');levelText.className='coin-level';levelText.textContent='Comprado: '+level+'/'+max;
+      info.append(title,description,levelText);
+      const button=document.createElement('button');button.type='button';button.className='coin-shop-buy';
+      button.textContent=level>=max?'MÁXIMO':cost+' 🪙';
+      button.disabled=level>=max||coinWallet.balance<cost||coinShopPending||!state||!['lobby','finished'].includes(state.phase);
+      button.addEventListener('click',()=>{
+        if(coinShopPending)return;
+        coinShopPending=true;$('coinShopStatus').textContent='⏳ Confirmando compra…';
+        renderCoinShop();
+        if(!safeSend({type:'coinPurchase',upgrade:key})){coinShopPending=false;renderCoinShop()}
+      });
+      card.append(image,info,button);grid.append(card);
+    }
+  }
+  function openCoinShop(){
+    $('coinShopModal').hidden=false;
+    $('coinShopStatus').textContent='Bônus para começar suas próximas partidas.';
+    renderCoinShop();safeSend({type:'coinWalletRefresh'});
+  }
+  function closeCoinShop(){$('coinShopModal').hidden=true;}
   let selectionLocked=false;
   let roomAvailability={phase:'lobby',taken:[]};
   localStorage.removeItem('bomba-party-pin');
@@ -98,7 +147,7 @@
       option.setAttribute('aria-pressed',String(selectedSkin===index));option.append(makeAvatar(index));
       const label=document.createElement('span');label.textContent=SKIN_LABELS[index];option.append(label);
       if(taken.includes(index)){const tag=document.createElement('small');tag.textContent='EM USO';option.append(tag);}
-      option.addEventListener('click',()=>{selectedSkin=index;selectionLocked=true;localStorage.setItem('arena-skin',index);renderEntryCharacters();});
+      option.addEventListener('click',()=>{selectedSkin=index;selectionLocked=true;coinWallet=null;localStorage.setItem('arena-skin',index);renderEntryCharacters();renderCoinShop();});
       picker.append(option);
     }
     const connected=socket?.readyState===WebSocket.OPEN;
@@ -139,11 +188,34 @@
   }
   function handleMessage(msg) {
     if(msg.type==='availability'){roomAvailability=msg;renderEntryCharacters();return;}
+    if(msg.type==='coinWallet'){
+      if(msg.wallet?.character===COIN_CHARACTERS[selectedSkin]){
+        coinWallet=msg.wallet;coinShopPending=false;
+        $('coinShopStatus').textContent='✅ Moedas sincronizadas com o Cofrinho.';
+        renderCoinShop();
+      }
+      return;
+    }
+    if(msg.type==='coinShopError'){
+      coinShopPending=false;$('coinShopStatus').textContent=msg.message||'Loja indisponível.';
+      renderCoinShop();return;
+    }
+    if(msg.type==='coinPurchase'){
+      coinShopPending=false;
+      $('coinShopStatus').textContent='✅ '+(msg.message||'Compra confirmada!');
+      toast('🪙 Compra confirmada! Bônus ativo na próxima partida.');
+      renderCoinShop();return;
+    }
     if (msg.type === 'hello') {
       meId = msg.playerId;
       return;
     }
     if (msg.type === 'error') {
+      if(coinShopPending){
+        coinShopPending=false;
+        $('coinShopStatus').textContent=msg.message||'Compra não realizada.';
+        renderCoinShop();
+      }
       toast(msg.message || 'Não foi possível completar a ação.');
       if (!currentCode && savedRoom?.code) {
         sessionStorage.removeItem(storedRoomKey);
@@ -355,6 +427,8 @@
     $('mapSelect').disabled=state.hostId!==meId;
     if($('mapSelect').value!==state.mapChoice)$('mapSelect').value=state.mapChoice||'rotation';
     $('playerCount').textContent = `${state.players.length} / 4`;
+    $('openCoinShopFinished').hidden=state.phase!=='finished';
+    renderCoinShop();
     const isHost = state.hostId === meId;
     const me = state.players.find(p => p.id === meId);
     const survivors=state.players.filter(p=>p.alive&&p.id!==meId);
@@ -467,6 +541,15 @@
   $('rotateFullscreenBtn').addEventListener('click', requestImmersive);
   $('leaveBtn').addEventListener('click', () => leave());
   $('exitGameBtn').addEventListener('click', () => leave());
+  $('openCoinShop').addEventListener('click',openCoinShop);
+  $('openCoinShopFinished').addEventListener('click',openCoinShop);
+  $('closeCoinShop').addEventListener('click',closeCoinShop);
+  $('refreshCoinShop').addEventListener('click',()=>{
+    $('coinShopStatus').textContent='⏳ Atualizando moedas…';
+    safeSend({type:'coinWalletRefresh'});
+  });
+  $('coinShopModal').addEventListener('click',e=>{if(e.target===$('coinShopModal'))closeCoinShop()});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('coinShopModal').hidden)closeCoinShop()});
   $('shareBtn').addEventListener('click', async () => {
     const link = `${location.origin}/`;
     try {
