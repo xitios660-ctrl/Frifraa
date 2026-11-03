@@ -17,6 +17,10 @@ const collapse=require('./collapse');
 const itemArt=require('./public/items');
 const bombMotion=require('./bomb-motion');
 const rules=require('./game-rules');
+const coinModule=require('./coin-shop');
+const coinShop=coinModule.createCoinShop();
+const coinWalletCache=new Map();
+const purchasingCharacters=new Set();
 const botMinds=require('./bot-minds').createController();
 const COLORS = ['#ac82ff', '#ff6e96', '#55dcff', '#ffd36f'];
 const SKINS = ['Mary', 'Kaique', 'Jheniffer', 'Gustavo'];
@@ -72,6 +76,7 @@ function newPlayer(ws, name, slot, skinIndex) {
     alive: true,
     lives: START_LIVES,
     collectedPowerups: [],
+    startingLoadout: {},
     bombs: 1,
     activeBombs: 0,
     range: START_RANGE,
@@ -199,6 +204,60 @@ function fillBots(room) {
     room.players.set(p.id,p);
   }
 }
+async function prepareAndStartGame(room,hostWs) {
+  if(room.preparing || !['lobby','finished'].includes(room.phase))return;
+  room.preparing=true;
+  try{
+    if(coinShop.enabled()){
+      const participants=[...room.players.values()].filter(p=>!p.bot);
+      const wallets=await Promise.all(participants.map(p=>
+        coinShop.getWallet(coinModule.characterForSkin(p.skinIndex))));
+      if(!room.players.has(hostWs.playerId)||room.hostId!==hostWs.playerId||
+         !['lobby','finished'].includes(room.phase))return;
+      for(let i=0;i<participants.length;i++){
+        const p=participants[i],wallet=wallets[i];
+        coinWalletCache.set(wallet.character,wallet);
+        p.startingLoadout=coinModule.starterFor(wallet);
+        send(p.ws,{type:'coinWallet',wallet});
+      }
+    }else for(const p of room.players.values())p.startingLoadout={};
+    startGame(room);
+  }catch(err){
+    error(hostWs,'Não consegui consultar as melhorias do Cofrinho. Tente iniciar novamente quando estiver disponível.');
+    console.warn('[coin-shop] Não iniciou a partida:',String(err.message).slice(0,170));
+  }finally{room.preparing=false}
+}
+async function sendCoinWallet(ws,participant) {
+  if(!participant||participant.bot)return;
+  const character=coinModule.characterForSkin(participant.skinIndex);
+  if(!coinShop.enabled())return send(ws,{type:'coinShopError',message:'Loja de moedas temporariamente indisponível.'});
+  try{
+    const wallet=await coinShop.getWallet(character);
+    if(!ws.roomCode || !rooms.get(ws.roomCode)?.players.get(ws.playerId)||
+       coinModule.characterForSkin(rooms.get(ws.roomCode)?.players.get(ws.playerId)?.skinIndex)!==character)return;
+    coinWalletCache.set(character,wallet);
+    send(ws,{type:'coinWallet',wallet});
+  }catch(err){
+    console.warn('[coin-shop] Consulta:',String(err.message).slice(0,150));
+    send(ws,{type:'coinShopError',message:'Não foi possível carregar suas moedas. Tente atualizar.'});
+  }
+}
+async function buyCoinUpgrade(ws,room,p,upgrade) {
+  if(room.preparing||!['lobby','finished'].includes(room.phase))return error(ws,'A loja funciona antes da próxima partida.');
+  if(p.bot)return error(ws,'Bots não compram melhorias.');
+  const character=coinModule.characterForSkin(p.skinIndex);
+  if(!character||purchasingCharacters.has(character))return error(ws,'Uma compra já está sendo processada. Aguarde.');
+  purchasingCharacters.add(character);
+  try{
+    const wallet=await coinShop.purchase(character,upgrade,crypto.randomUUID());
+    coinWalletCache.set(character,wallet);
+    send(ws,{type:'coinPurchase',message:'Melhoria comprada! Seu próximo início de partida já terá o bônus.'});
+    send(ws,{type:'coinWallet',wallet});
+  }catch(err){
+    error(ws,String(err.message||'Não foi possível comprar a melhoria.').slice(0,160));
+    console.warn('[coin-shop] Compra não efetuada:',String(err.message).slice(0,140));
+  }finally{purchasingCharacters.delete(character)}
+}
 function startGame(room) {
   if(room.botsEnabled)fillBots(room);else removeBots(room);
   room.lastTick = now();
@@ -233,9 +292,17 @@ function startGame(room) {
   room.eliminatedCount = 0;
   for (const p of room.players.values()) {
     const pos = SPAWNS[p.slot];
+    const starter=p.bot?{}:coinModule.starterFor({upgrades:p.startingLoadout||{}});
+    const initialSpeed=Math.min(rules.MAX_SPEED_LEVEL,1+(starter.speed||0));
     Object.assign(p, {
-      x: pos.x, y: pos.y, facing: 'down', alive: true, lives:START_LIVES, collectedPowerups:[], bombs: 1, activeBombs: 0,
-      range: START_RANGE, speed: rules.BASE_SPEED, baseSpeed:rules.BASE_SPEED, speedLevel:1, slowedUntil:0, kick:false, shield:0, invulnerableUntil:0, push:false, piercing:false, lastMove: 0, inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false, motion: { x: 0, y: 0 }, moveTarget:null, kills: 0, place: null, botTarget:null, botThinkAt:0, botCooldown:0, botStall:0, botIdleFor:0, botReplanAt:0, botRecent:[]
+      x: pos.x, y: pos.y, facing: 'down', alive: true,
+      lives:Math.min(MAX_LIVES,START_LIVES+(starter.life||0)),collectedPowerups:[],
+      bombs:1+(starter.bomb||0),activeBombs:0,
+      range:START_RANGE+(starter.range||0),
+      speed:rules.BASE_SPEED-(initialSpeed-1)*rules.SPEED_GAIN,
+      baseSpeed:rules.BASE_SPEED-(initialSpeed-1)*rules.SPEED_GAIN,
+      speedLevel:initialSpeed,slowedUntil:0,kick:!!starter.kick,shield:starter.shield||0,
+      invulnerableUntil:0,push:!!starter.push,piercing:false, lastMove: 0, inputQueue: [], inputBudget: 0, ack: 0, lastQueuedSeq: 0, usingInputs: false, motion: { x: 0, y: 0 }, moveTarget:null, kills: 0, place: null, botTarget:null, botThinkAt:0, botCooldown:0, botStall:0, botIdleFor:0, botReplanAt:0, botRecent:[]
     });
   }
   botMinds.reset(room,now());
@@ -359,8 +426,12 @@ function updatePowerups(room,t){
 function clearCollectedPowerups(p){
   const collected=Array.isArray(p.collectedPowerups)?p.collectedPowerups.slice():[];
   p.collectedPowerups=[];
-  p.bombs=1;p.range=START_RANGE;p.baseSpeed=rules.BASE_SPEED;p.speed=rules.BASE_SPEED;p.speedLevel=1;
-  p.slowedUntil=0;p.kick=false;p.shield=0;p.push=false;p.piercing=false;
+  const starter=coinModule.starterFor({upgrades:p.startingLoadout||{}});
+  p.bombs=1+starter.bomb;p.range=START_RANGE+starter.range;
+  p.speedLevel=Math.min(rules.MAX_SPEED_LEVEL,1+starter.speed);
+  p.baseSpeed=rules.BASE_SPEED-(p.speedLevel-1)*rules.SPEED_GAIN;
+  p.speed=p.baseSpeed;p.slowedUntil=0;
+  p.kick=!!starter.kick;p.shield=starter.shield;p.push=!!starter.push;p.piercing=false;
   return collected;
 }
 function dropCollectedPowerups(room,p,t){
@@ -506,7 +577,8 @@ function onMessage(ws, raw) {
       room.players.set(ws.playerId,newPlayer(ws,SKINS[skinIndex],slot,skinIndex));
       ws.roomCode=room.code;room.lastActivity=now();
     }
-    send(ws,{type:'joined',code:room.code,playerId:ws.playerId,skinIndex});broadcast(room);return;
+    send(ws,{type:'joined',code:room.code,playerId:ws.playerId,skinIndex});broadcast(room);
+    void sendCoinWallet(ws,room.players.get(ws.playerId));return;
   }
   const room = getRoom(ws);
   if (!room) return;
@@ -527,6 +599,7 @@ function onMessage(ws, raw) {
     player.skin = SKINS[skinIndex];
     player.color = COLORS[skinIndex];
     broadcast(room);
+    void sendCoinWallet(ws,player);
   } else if(message.type==='bot-settings'){
     if(room.hostId!==ws.playerId)return error(ws,'Só o anfitrião escolhe se a partida terá bots.');
     if(!['lobby','finished'].includes(room.phase))return error(ws,'Escolha os bots antes de iniciar a próxima partida.');
@@ -537,10 +610,16 @@ function onMessage(ws, raw) {
     if(!['lobby','finished'].includes(room.phase))return;
     if(message.mapId!=='rotation'&&!Object.hasOwn(maps.DEFS,message.mapId))return;
     room.mapChoice=message.mapId;broadcast(room);
+  } else if(message.type==='coinWalletRefresh') {
+    void sendCoinWallet(ws,player);
+  } else if(message.type==='coinPurchase') {
+    if(typeof message.upgrade!=='string'||!['bomb','range','speed','life','shield','kick','push'].includes(message.upgrade))
+      return error(ws,'Melhoria inválida.');
+    void buyCoinUpgrade(ws,room,player,message.upgrade);
   } else if (message.type === 'start') {
     if (room.hostId !== ws.playerId) return error(ws, 'Apenas o anfitrião pode iniciar.');
     if (room.phase !== 'lobby' && room.phase !== 'finished') return;
-    startGame(room);
+    void prepareAndStartGame(room,ws);
   } else if (message.type === 'input') {
     if(room.phase!=='playing'||!player.alive||!Array.isArray(message.steps)||message.steps.length>8) return;
     let previous=player.lastQueuedSeq;
