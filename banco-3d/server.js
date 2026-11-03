@@ -87,7 +87,7 @@ function broadcast(room) {
 }
 async function persist(room) {
  room.revision++;room.updatedAt=Date.now();
- if(collection)try{await collection.replaceOne({_id:room.code},{_id:room.code,...room},{upsert:true})}
+ if(collection)try{const {_locked,...snapshot}=room;await collection.replaceOne({_id:room.code},{_id:room.code,...snapshot},{upsert:true})}
  catch(e){console.error('[database] Save:',e.message.slice(0,130))}
  broadcast(room);
 }
@@ -264,8 +264,9 @@ wss.on('connection',ws=>{
  ws.isAlive=true;
  ws.on('pong',()=>{ws.isAlive=true});
  ws.on('close',()=>{
+  const session=peers.get(ws);
   peers.delete(ws);
-  for(const room of rooms.values())if(room.players.some(p=>peers.get(ws)?.room===room.code))broadcast(room);
+  if(session){const room=rooms.get(session.room);if(room)broadcast(room)}
  });
  ws.on('message',async raw=>{
   if(ws.readyState!==WebSocket.OPEN)return;
@@ -347,7 +348,7 @@ async function start(){
    await mongo.connect();
    collection=mongo.db('banco_da_turma_3d').collection('rooms');
    const stored=await collection.find({updatedAt:{$gt:Date.now()-36*3600_000}}).limit(250).toArray();
-   for(const r of stored){delete r._id;rooms.set(r.code,r)}
+   for(const r of stored){delete r._id;delete r._locked;rooms.set(r.code,r)}
    console.log('[mongodb] Salas recuperadas:',stored.length);
   }catch(e){console.error('[mongodb] Não conectado:',e.message);collection=null}
  }else console.warn('[storage] MONGODB_URI não definido. Salas em memória até reinício do serviço.');
