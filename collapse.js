@@ -24,7 +24,7 @@ function view(c,t){
  }
  return{startsAt:c.startsAt,interval:INTERVAL,closed:c.index,total:c.path.length,falling};
 }
-function update(room,t){
+function update(room,t,onHit){
  const c=room.collapse;if(!c)return;
  const eliminated=new Set();
  while(c.index<c.path.length&&t>=c.startsAt+c.index*INTERVAL){
@@ -40,7 +40,14 @@ function update(room,t){
   room.effects.push({kind:'slam',...tile,startedAt:t,expiresAt:t+450});
  }
  const place=room.participantsAtStart-room.eliminatedCount;
- for(const p of eliminated){p.alive=false;p.place=place;p.motion={x:0,y:0};p.inputQueue=[];}
- room.eliminatedCount+=eliminated.size;
+ let reallyEliminated=0;
+ for(const p of eliminated){
+  const isOut=typeof onHit==='function'?onHit(p,t):true;
+  if(isOut){
+   p.alive=false;p.place=place;p.motion={x:0,y:0};p.inputQueue=[];
+   reallyEliminated++;
+  }
+ }
+ room.eliminatedCount+=reallyEliminated;
 }
 module.exports={DELAY,INTERVAL,WARNING,spiral,create,view,update};
