@@ -3,12 +3,12 @@
 const CATEGORIES=['Animal','Lugar','Comida','Cor','Objeto','Nome'];
 const normalize=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase().replace(/\s+/g,' ');
 const extraWords={
-  0:'dinossauro lula veado cachorro capivara vaca tatu cobra gato cachorro gorila galinha girafa javali veado barata pernilongo gambá borboleta arara rato raposa boi lobo leao mico veado',
-  1:'vivara dinamarca lisboa londres sao paulo rio de janeiro salvador campinas taubate sorocaba osasco guarulhos guaruja suzano atibaia los angeles nova york brasil argentina venezuela peru vietna alemanha portugal shopping farmacia escola supermercado rua pracinha parque bairro jardim rodoviaria restaurante',
-  2:'doritos estrogonofe estrogonoffe lasanha limonada leite doce salgadinho chocolate morango ovo arroz banana batata churrasco sanduiche feijoada coxinha salada sorvete sushi hot dog',
+  0:'dinossauro lula veado cachorro capivara vaca tatu cobra gato cachorro gorila ornitorrinco macaco lagarto galinha girafa javali veado barata pernilongo gambá borboleta arara rato raposa boi lobo leao mico veado',
+  1:'vivara dinamarca lisboa londres sao paulo rio de janeiro marrocos londrina orlando salvador campinas taubate sorocaba osasco guarulhos guaruja suzano atibaia los angeles nova york brasil argentina venezuela peru vietna alemanha portugal shopping farmacia escola supermercado rua pracinha parque bairro jardim rodoviaria restaurante',
+  2:'doritos estrogonofe estrogonoffe lasanha torresmo macarrao limonada leite doce salgadinho chocolate morango ovo arroz banana batata churrasco sanduiche feijoada coxinha salada sorvete sushi hot dog',
   3:'vermelho verde vinho violeta dourado bege branco preto azul rosa roxo amarelo cinza marrom prata lilas turquesa anil',
-  4:'vara lente luva escova tenis oculos lousa telefone sapato escada dado dinamite pente vaso vestido ventilador vassoura vidro violao bolsa saco',
-  5:'vera vinicius vitor vitoria vanderson valeria vanessa luan denis dandara estevan elaine elisa eduardo fernando juliana fernanda gabriela rafael luana daniel'
+  4:'vara lente luva escova tenis oculos lousa telefone sapato escada dado dinamite pente vaso vestido ventilador martelo vassoura vidro violao bolsa saco',
+  5:'thais osvaldo mariana maria vera vinicius vitor vitoria vanderson valeria vanessa luan denis dandara estevan elaine elisa eduardo fernando juliana fernanda gabriela rafael luana daniel'
 };
 const extra=Object.fromEntries(Object.entries(extraWords).map(([k,s])=>[Number(k),new Set(s.split(' ').map(normalize))]));
 for(const [cat,items] of [[1,['são paulo','rio de janeiro','los angeles','nova york']],[2,['hot dog']]])
