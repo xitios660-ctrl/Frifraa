@@ -55,6 +55,8 @@ function render() {
   el('cofrinho-title').textContent = NAMES[selected];
   el('personIcon').textContent = EMOJIS[selected];
   el('savedAmount').textContent = MONEY.format(item.total);
+  el('coinBalance').textContent = (item.coins??item.total)+' 🪙';
+  el('coinDetails').textContent = 'Ganhos: '+(item.coinsEarned??item.total)+' · Gastos: '+(item.coinsSpent??0);
   el('missingAmount').textContent = MONEY.format(item.remaining);
   el('depositCount').innerHTML = `${item.count} <em>/ 200</em>`;
   el('percentageText').textContent = `${item.percentage}% do desafio`;
