@@ -18,7 +18,7 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const SESSION_SECRET = process.env.SESSION_SECRET || '';
 const MONGODB_URI = process.env.MONGODB_URI || '';
 const DB_NAME = process.env.MONGODB_DB || 'bomba_party_whatsapp';
-const MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+const MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 const GROUP_INVITE_CODE = String(process.env.WHATSAPP_GROUP_INVITE_CODE || '').trim();
 if (ADMIN_PASSWORD.length < 8) throw new Error('Defina ADMIN_PASSWORD de ao menos 8 caracteres no Render (16 ou mais recomendado).');
 if (!MONGODB_URI || SESSION_SECRET.length < 24) throw new Error('Defina MONGODB_URI e SESSION_SECRET no Render.');
@@ -141,7 +141,7 @@ function rateAllowed(jid) {
   const inDay = prev.filter(t => now - t < 86400000);
   const in15Min = inDay.filter(t => now - t < 15 * 60000);
   if (inDay.length >= 50 || in15Min.length >= 12) return false;
-  if (now - (lastMessageAt.get(jid) || 0) < 3500) return false;
+  if (now - (lastMessageAt.get(jid) || 0) < 1000) return false;
   inDay.push(now); counters.set(jid, inDay);
   lastMessageAt.set(jid, now);
   if (counters.size > 500) { counters.clear(); lastMessageAt.clear(); }
@@ -157,6 +157,7 @@ function participantJids(message) {
 const e164 = jid => /^\d+@s\.whatsapp\.net$/.test(jid)
   ? '+' + (jid.split('@')[0].startsWith('55') ? jid.split('@')[0] : '55'+jid.split('@')[0]) : '';
 let lastGroupIdentitySync = 0;
+const verifiedSenderCache = new Map();
 async function syncKnownGroupIdentities(socket, groupId) {
   if (!socket || !groupId || !db) return;
   let group;
@@ -190,6 +191,9 @@ async function syncKnownGroupIdentities(socket, groupId) {
 async function getVerifiedGroupSender(message, groupId) {
   const raw=participantJids(message);
   if(!raw.length) return {name:null,jids:[]};
+  const cacheId=groupId+':'+raw.slice().sort().join(':');
+  const prior=verifiedSenderCache.get(cacheId);
+  if(prior && prior.expiresAt>Date.now())return prior.identity;
   const candidates=await resolveStopSenderJids(raw,groupId);
   const jids=[...new Set([...raw,...candidates].map(normalizedJid).filter(Boolean))];
   const phoneNumbers=jids.map(e164).filter(Boolean);
@@ -208,9 +212,13 @@ async function getVerifiedGroupSender(message, groupId) {
   const entry=found[0];
   const known=new Set(entry.jids||[]);
   for(const jid of jids) known.add(jid);
-  await db.collection('group_contacts').updateOne({_id:entry._id,groupId},
-    {$addToSet:{jids:{$each:jids}}});
-  return {name:entry.name,jids:[...known],phoneE164:entry.phoneE164};
+  const missing=jids.filter(jid=>!(entry.jids||[]).includes(jid));
+  if(missing.length)await db.collection('group_contacts').updateOne({_id:entry._id,groupId},
+    {$addToSet:{jids:{$each:missing}}});
+  const identity={name:entry.name,jids:[...known],phoneE164:entry.phoneE164};
+  verifiedSenderCache.set(cacheId,{identity,expiresAt:Date.now()+45000});
+  if(verifiedSenderCache.size>80)verifiedSenderCache.clear();
+  return identity;
 }
 function asksOwnIdentity(text) {
   const q=String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
@@ -269,15 +277,15 @@ async function handleMessage(message) {
     });
     if (handled) { status.received++; return; }
   }
-  if (!shouldAnswerGroupMessage(text) || !rateAllowed(jid)) return;
+  const senderRateId=jid+':'+(participantJids(message)[0]||'unknown');
+  if (!shouldAnswerGroupMessage(text) || !rateAllowed(senderRateId)) return;
   status.received++;
   const socket = sock;
   const oldHistory = history.get(jid) || [];
   if (asksOwnIdentity(text)) {
     const response = authorName ? 'Pelo WhatsApp, quem me chamou foi ' + authorName + '. 😊' :
       'Ainda não consegui confirmar seu nome pelo identificador do WhatsApp. Não vou adivinhar. 😊';
-    await socket.sendPresenceUpdate('composing', jid).catch(()=>{});
-    await sleep(850);
+    void socket.sendPresenceUpdate('composing', jid).catch(()=>{});
     if (sock === socket && isSelectedGroup(jid) && status.connected)
       await socket.sendMessage(jid,{text:response});
     await socket.sendPresenceUpdate('paused', jid).catch(()=>{});
@@ -288,8 +296,7 @@ async function handleMessage(message) {
   const weatherReply = await getWeatherReply(text);
   if (weatherReply) {
     try {
-      await socket.sendPresenceUpdate('composing', jid).catch(() => {});
-      await sleep(Math.min(2300, Math.max(850, weatherReply.length * 8)));
+      void socket.sendPresenceUpdate('composing', jid).catch(() => {});
       if (!botEnabled || !status.connected || !isSelectedGroup(jid) || socket !== sock) return;
       await socket.sendMessage(jid,{text:weatherReply});
       status.sent++;
@@ -339,6 +346,8 @@ async function handleMessage(message) {
     return;
   }
   let answer;
+  const responseStarted=Date.now();
+  void socket.sendPresenceUpdate('composing',jid).catch(()=>{});
   const webSearch = shouldWebSearch(text) ? await allowWebSearch(jid) : false;
   try { answer = await reply({ key: geminiKey, model: MODEL, text, history: oldHistory, authorName, useWebSearch: webSearch }); }
   catch (error) {
@@ -355,11 +364,12 @@ async function handleMessage(message) {
   }
   if (!botEnabled || !status.connected || !isSelectedGroup(jid) || socket !== sock || !answer) return;
   try {
-    await socket.sendPresenceUpdate('composing', jid);
-    await sleep(Math.min(5000, Math.max(900, 350 + answer.length * 16)));
+    // The Gemini call already took time: don't add a fake typing delay.
     if (!botEnabled || !status.connected || !isSelectedGroup(jid) || socket !== sock) return;
     await socket.sendMessage(jid, { text: answer });
     status.sent++;
+    const elapsed=Date.now()-responseStarted;
+    console.log('[latency] Resposta do Bot: '+elapsed+'ms'+(webSearch?' (com busca)':''));
     history.set(jid, [...oldHistory, { role: 'user', text, authorName }, { role: 'assistant', text: answer }].slice(-8));
     if (history.size > 200) history.clear();
   } finally { await socket.sendPresenceUpdate('paused', jid).catch(() => {}); }
@@ -383,16 +393,24 @@ async function handleBlackjackPrivateMessage(msg) {
 }
 
 function queueContact(msg) {
-  const jid = msg.key && msg.key.remoteJid;
+  const jid=msg.key && msg.key.remoteJid;
   const isGroup=isSelectedGroup(jid);
   const isPrivate=typeof jid==='string' && /^\d+@(lid|s\.whatsapp\.net)$/.test(jid);
   if(!isGroup&&!isPrivate)return;
-  const prior=queues.get(jid)||Promise.resolve();
-  const next=prior.catch(()=>{}).then(()=>
-    isGroup ? handleMessage(msg) : handleBlackjackPrivateMessage(msg));
-  queues.set(jid, next);
-  next.catch(err => console.error('[whatsapp] Mensagem não processada:', err.message)).finally(() => {
-    if (queues.get(jid) === next) queues.delete(jid);
+  // Order each member's messages; never let another player's slow AI reply
+  // block STOP submissions or Blackjack actions for the whole group.
+  const sender=isGroup ? participantJids(msg).slice().sort()[0]||'unknown' : '';
+  const queueKey=isGroup ? jid+':'+sender : jid;
+  const receivedAt=Date.now();
+  const prior=queues.get(queueKey)||Promise.resolve();
+  const next=prior.catch(()=>{}).then(async ()=>{
+    const waited=Date.now()-receivedAt;
+    if(waited>=1500)console.warn('[latency] Fila WhatsApp aguardou '+waited+'ms');
+    return isGroup ? handleMessage(msg) : handleBlackjackPrivateMessage(msg);
+  });
+  queues.set(queueKey,next);
+  next.catch(err=>console.error('[whatsapp] Mensagem não processada:',err.message)).finally(()=>{
+    if(queues.get(queueKey)===next)queues.delete(queueKey);
   });
 }
 function scheduleReconnect(delay = 4500) {
@@ -597,7 +615,7 @@ app.post('/api/settings', guard, async (req, res) => {
     await db.collection('settings').updateOne({ _id: 'bot' }, { $set: update }, { upsert: true });
     if ('enabled' in update) botEnabled = update.enabled;
     if ('imagesEnabled' in update) imagesEnabled = update.imagesEnabled;
-    if ('groupId' in update) { selectedGroupId = update.groupId; stopGame?.setGroupId(selectedGroupId); blackjack?.setGroupId(selectedGroupId); history.clear(); queues.clear(); }
+    if ('groupId' in update) { selectedGroupId = update.groupId; stopGame?.setGroupId(selectedGroupId); blackjack?.setGroupId(selectedGroupId); history.clear(); queues.clear(); verifiedSenderCache.clear(); }
     if ('geminiKey' in update) geminiKey = String(req.body.geminiKey).trim();
     return res.json({ ok: true, botEnabled, geminiConfigured: !!geminiKey, selectedGroupId, imagesEnabled });
   } catch (error) {
@@ -630,7 +648,7 @@ app.post('/api/reset-session', guard, async (req, res) => {
     sock = null;
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     await db.collection('whatsapp_auth').deleteMany({});
-    history.clear(); queues.clear(); counters.clear(); lastMessageAt.clear();
+    history.clear(); queues.clear(); counters.clear(); lastMessageAt.clear(); verifiedSenderCache.clear();
     status.qr = null; status.connected = false; status.phase = 'conectando';
     await db.collection('settings').updateOne({ _id: 'bot' }, { $set: { enabled: true } }, { upsert: true });
     botEnabled = true;
@@ -664,8 +682,7 @@ async function main() {
       if (!sock || !botEnabled || !isSelectedGroup(selectedGroupId) || !status.connected) return;
       const socket = sock;
       try {
-        await socket.sendPresenceUpdate('composing', selectedGroupId).catch(() => {});
-        await sleep(850);
+        void socket.sendPresenceUpdate('composing', selectedGroupId).catch(() => {});
         if (!botEnabled || !status.connected || socket !== sock || !isSelectedGroup(selectedGroupId)) return;
         await socket.sendMessage(selectedGroupId,{text,mentions});
         status.sent++;
@@ -682,8 +699,7 @@ async function main() {
       if(!sock || !botEnabled || !isSelectedGroup(selectedGroupId) || !status.connected)return;
       const socket=sock;
       try {
-        await socket.sendPresenceUpdate('composing',selectedGroupId).catch(()=>{});
-        await sleep(750);
+        void socket.sendPresenceUpdate('composing',selectedGroupId).catch(()=>{});
         if(socket!==sock || !botEnabled || !status.connected || !isSelectedGroup(selectedGroupId))return;
         await socket.sendMessage(selectedGroupId,{text,mentions});
         status.sent++;
