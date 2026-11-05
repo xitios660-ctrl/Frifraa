@@ -181,6 +181,8 @@ function createSecretSanta({db, roster=[],adminPhone='',isOriginalGroup,resolveI
     if(!gifteePhone||!names.has(gifteePhone))return false;
     if(WISH_HELP.test(normalized)||/^bot\s+presente\b/.test(normalized)){
       await sendPrivate(who,'🎁 *Seu amigo secreto é: '+names.get(gifteePhone)+'!* 🤫\n\nEste nome é só seu. Não conte no grupo!\n\n💝 *E você, o que gostaria de receber?*\nResponda aqui com suas ideias (ex.: perfume, livro, chocolate, maquiagem). Se mudar de ideia, mande uma lista nova. Eu encaminho para quem tirou você sem dizer quem foi. ✨');
+      await col.updateOne({_id:bound,gameId:game.gameId},
+        {$set:{['outbox.'+who.phone+'.state']:'sent',['outbox.'+who.phone+'.sentAt']:time()}});
       return true;
     }
     if(WISH_REMOVE.test(normalized)){
@@ -189,7 +191,7 @@ function createSecretSanta({db, roster=[],adminPhone='',isOriginalGroup,resolveI
       await sendPrivate(who,'🧹 Apaguei sua lista de desejos. Quando quiser, mande uma nova. 🎁');
       return true;
     }
-    if(/^(?:carta|mais carta|parar|stop|bot\s+stop)$/i.test(normalized))return false;
+    if(/^(?:carta|mais carta|parar|stop|bot\s+stop|eu|bot\s+.*)$/i.test(normalized))return false;
     const cleaned=String(text).trim().replace(/^(?:ideias?|desejos?|quero\s+ganhar|gostaria\s+de\s+receber)\s*[:=-]\s*/i,'').trim();
     if(cleaned.length<3||cleaned.length>450){
       await sendPrivate(who,'🎁 Me conte em até 450 caracteres o que gostaria de receber. Pode mandar mais de uma ideia!');
@@ -235,6 +237,14 @@ function createSecretSanta({db, roster=[],adminPhone='',isOriginalGroup,resolveI
   async function forwardWish(game) {
     for(const [recipient,wish] of Object.entries(game.wishes||{})) {
       if(!wish?.text||wish.forwardedVersion>=wish.version)continue;
+      if((wish.retryAfter||0)>Date.now())continue;
+      if(wish.sendingVersion===wish.version) {
+        const since=new Date(wish.sendingAt||0).getTime();
+        if(Date.now()-since<45000)continue;
+        await col.updateOne({_id:bound,gameId:game.gameId,['wishes.'+recipient+'.sendingVersion']:wish.version},
+          {$unset:{['wishes.'+recipient+'.sendingVersion']:''}});
+        continue;
+      }
       const giver=game.participants.find(p=>game.assignments?.[p.phone]===recipient);
       if(!giver)continue;
       if(game.outbox?.[giver.phone]?.state!=='sent')continue;
@@ -246,7 +256,7 @@ function createSecretSanta({db, roster=[],adminPhone='',isOriginalGroup,resolveI
       try {
         await sendPrivate(giver,'💌🎁 *DICA DO SEU AMIGO SECRETO*\n\n✨ *'+names.get(recipient)+'* gostaria de ganhar:\n\n“'+wish.text+'”\n\n🤫 Essa dica foi encaminhada em segredo. *Não revele que você tirou essa pessoa!*');
         await col.updateOne({_id:bound,gameId:game.gameId,[field+'.version']:wish.version},
-          {$set:{[field+'.forwardedVersion']:wish.version},$unset:{[field+'.sendingVersion']:''}});
+          {$set:{[field+'.forwardedVersion']:wish.version,[field+'.retryAfter']:0},$unset:{[field+'.sendingVersion']:''}});
       }catch(err){
         await col.updateOne({_id:bound,gameId:game.gameId,[field+'.version']:wish.version},
           {$unset:{[field+'.sendingVersion']:''},$set:{[field+'.retryAfter']:Date.now()+40000}});
