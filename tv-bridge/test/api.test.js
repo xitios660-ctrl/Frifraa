@@ -22,3 +22,24 @@ test('pair, authenticate, deliver every supported command, acknowledge, revoke',
 test('polling does not extend the pairing expiry',async t=>{let clock=1000;const req=await setup(t,{now:()=>clock,pairTTL:1000});const d=await req('/device/register',{});clock+=900;await req('/device/poll',d);clock+=101;assert.equal((await req('/pair',{code:d.code})).status,404);});
 test('offline devices and stale queues never execute old actions',async t=>{let clock=1000;const req=await setup(t,{now:()=>clock});const d=await req('/device/register',{}),p=await req('/pair',{code:d.code});const c=await req('/command',{command:'HOME'},p.token);clock+=11000;assert.equal((await req('/device/poll',d)).command,null);assert.equal((await req('/status',undefined,p.token)).results[c.id].state,'failed');clock+=16000;assert.equal((await req('/command',{command:'HOME'},p.token)).status,409);});
 test('bounded pairing attempts and strict input validation',async t=>{const req=await setup(t);assert.equal((await req('/pair',{code:123456})).status,400);assert.equal((await req('/pair',null)).status,400);for(let i=0;i<28;i++)await req('/pair',{code:'000000'});assert.equal((await req('/pair',{code:'000000'})).status,429);});
+test('screenshots require TV opt-in, authenticated paired access and expire after 60 seconds',async t=>{
+ let clock=1000;const req=await setup(t,{now:()=>clock});const d=await req('/device/register',{}),p=await req('/pair',{code:d.code});
+ assert.equal((await req('/command',{command:'SCREENSHOT'},p.token)).status,403);
+ await req('/device/poll',{...d,screenshotAllowed:true});
+ const c=await req('/command',{command:'SCREENSHOT'},p.token);assert.equal(c.status,202);
+ await req('/device/poll',{...d,screenshotAllowed:true});
+ assert.equal((await req('/device/ack',{...d,commandId:c.id,ok:true,image:'<svg>unsafe</svg>'})).status,400);
+ const image='/9j/2Q==';assert.equal((await req('/device/ack',{...d,commandId:c.id,ok:true,image})).status,200);
+ assert.equal((await req('/screenshot')).status,401);
+ const other=await req('/device/register',{}),otherSession=await req('/pair',{code:other.code});assert.equal((await req('/screenshot',undefined,otherSession.token)).status,404);
+ assert.equal((await req('/screenshot',undefined,p.token)).image,'data:image/jpeg;base64,'+image);
+ clock+=60001;assert.equal((await req('/screenshot',undefined,p.token)).status,404);
+});
+test('captures are cleared by TV withdrawal and cannot accompany ordinary command acknowledgements',async t=>{
+ const req=await setup(t);const d=await req('/device/register',{}),p=await req('/pair',{code:d.code});
+ await req('/device/poll',{...d,screenshotAllowed:true});const c=await req('/command',{command:'HOME'},p.token);await req('/device/poll',{...d,screenshotAllowed:true});
+ assert.equal((await req('/device/ack',{...d,commandId:c.id,ok:true,image:'/9j/2Q=='})).status,400);await req('/device/ack',{...d,commandId:c.id,ok:true});
+ const shot=await req('/command',{command:'SCREENSHOT'},p.token);await req('/device/poll',{...d,screenshotAllowed:true});await req('/device/ack',{...d,commandId:shot.id,ok:true,image:'/9j/2Q=='});
+ await req('/device/poll',{...d,screenshotAllowed:false});assert.equal((await req('/screenshot',undefined,p.token)).status,404);
+ assert.equal((await req('/command',{command:'SCREENSHOT'},p.token)).status,403);
+});

@@ -23,3 +23,11 @@ O serviço de acessibilidade usa foco e clique de elementos expostos pelos apps;
 Voz depende do reconhecimento disponível no navegador; o ditado do teclado do iPhone é a alternativa. Nenhum áudio é recebido pelo bridge. O serviço não transmite textos de tela.
 
 Não houve teste físico na TCL ou em iPhone real. Testes automatizados usam API HTTP e WebKit quando disponível; não equivalem a validação de hardware.
+
+## Diagnóstico visual (1.1.0)
+
+Requer Android 11/API 30 ou superior. Na TV, o botão “Diagnóstico visual” pede confirmação explícita para autorizar capturas por dez minutos. O mesmo botão revoga a autorização. No site, o iPhone já pareado pode solicitar uma única captura por vez, com intervalo mínimo de cinco segundos. O serviço usa exclusivamente AccessibilityService.takeScreenshot; não grava vídeo nem contorna telas protegidas. Android 8–10 continuam com controle remoto, mas não oferecem capturas.
+
+O JPEG reduzido passa pelo bridge HTTPS e só pode ser consultado usando o token do iPhone pareado. A imagem não é gravada em disco e expira em até 60 segundos; o botão Apagar captura remove o acesso antes disso. Desautorizar na TV também remove a captura no próximo poll. Capturas podem conter dados pessoais da tela; salve apenas o necessário. Arquivos que o usuário salvar no iPhone não são apagados pelo app. O ChatGPT não recebe imagens automaticamente: salve a captura no iPhone e anexe-a à conversa para análise.
+
+Foram adicionados testes de API para autorização, isolamento entre dispositivos, validação da imagem, expiração e revogação. A exibição e exclusão da imagem foram verificadas em WebKit com dispositivo simulado. A captura real pela API Android ainda requer validação na TCL.

@@ -18,6 +18,7 @@ public class RemoteService extends AccessibilityService {
  static volatile boolean connected=false;
  private volatile boolean running;
  private Thread worker;
+ private final java.util.concurrent.ExecutorService screenshots=java.util.concurrent.Executors.newSingleThreadExecutor();
  private SharedPreferences prefs;
  private final Handler main=new Handler(Looper.getMainLooper());
  private void status(String s){prefs.edit().putString("status",s).apply();}
@@ -35,22 +36,49 @@ public class RemoteService extends AccessibilityService {
      JSONObject r=Bridge.post("/device/register",new JSONObject());id=r.getString("id");secret=r.getString("secret");
      prefs.edit().putString("id",id).putString("secret",secret).putString("code",r.getString("code")).putLong("expires",System.currentTimeMillis()+r.getLong("expiresIn")*1000).putBoolean("paired",false).apply();
     }
-    JSONObject auth=new JSONObject().put("id",id).put("secret",secret);
-    if(ack!=null){try{Bridge.post("/device/ack",ack);}catch(Bridge.AuthException e){throw e;}catch(Exception ignored){/* Poll never re-executes an unacknowledged command. */}ack=null;}
+    JSONObject auth=new JSONObject().put("id",id).put("secret",secret).put("screenshotAllowed",visualAllowed());
+    if(ack!=null){if(ack.has("image")&&!visualAllowed()){ack.remove("image");ack.put("ok",false).put("message","Autorização de captura encerrada");}try{Bridge.post("/device/ack",ack);}catch(Bridge.AuthException e){throw e;}catch(Exception ignored){/* Poll never re-executes an unacknowledged command. */}ack=null;}
     JSONObject response=Bridge.post("/device/poll",auth);
     prefs.edit().putBoolean("paired",response.optBoolean("paired")).apply();status("Servidor conectado.");
     JSONObject cmd=response.optJSONObject("command");
     if(cmd!=null){
      CountDownLatch latch=new CountDownLatch(1);String[] result={"Tempo de execução excedido"};
-     main.post(()->{try{if(running)result[0]=execute(cmd.optString("command"));}catch(Exception e){result[0]="Android recusou a ação";}finally{latch.countDown();}});
-     latch.await(5,TimeUnit.SECONDS);
+     String[] image={null};
+     main.post(()->{try{if(running && cmd.optString("command").equals("SCREENSHOT")){if(android.os.Build.VERSION.SDK_INT<30){result[0]="Capturas exigem Android 11+";return;}capture(result,image,latch);return;}if(running)result[0]=execute(cmd.optString("command"));}catch(Exception e){result[0]="Android recusou a ação";}finally{if(!cmd.optString("command").equals("SCREENSHOT")||result[0]!=null)latch.countDown();}});
+     if(!latch.await(5,TimeUnit.SECONDS))result[0]="Captura ou execução excedeu o prazo";
      ack=new JSONObject().put("id",id).put("secret",secret).put("commandId",cmd.getString("id")).put("ok",result[0]==null).put("message",result[0]==null?"Ação aceita pela API Android":result[0]);
+     if(result[0]==null && image[0]!=null && visualAllowed())ack.put("image",image[0]);
     }
    }catch(Bridge.AuthException e){prefs.edit().clear().apply();ack=null;status("Servidor reiniciou ou sessão revogada. Gere novo pareamento.");}
     catch(Exception e){status("Sem conexão. Reconectando automaticamente…");}
     try{Thread.sleep(1200);}catch(InterruptedException e){break;}
    }
   },"tv-bridge");worker.start();
+ }
+ private boolean visualAllowed(){return android.os.Build.VERSION.SDK_INT>=30 && prefs.getLong("visualUntil",0)>System.currentTimeMillis();}
+ @android.annotation.TargetApi(30)
+ private void capture(String[] result,String[] image,CountDownLatch latch){
+  if(android.os.Build.VERSION.SDK_INT<30 || !visualAllowed()){result[0]="Autorize diagnóstico visual na TV; requer Android 11+";return;}
+  result[0]=null;
+  takeScreenshot(android.view.Display.DEFAULT_DISPLAY,screenshots,new TakeScreenshotCallback(){
+   @Override public void onSuccess(ScreenshotResult shot){
+    android.hardware.HardwareBuffer buffer=shot.getHardwareBuffer();
+    android.graphics.Bitmap hardware=null,software=null,scaled=null;
+    try{
+     if(!running||!visualAllowed())throw new IllegalStateException();
+     hardware=android.graphics.Bitmap.wrapHardwareBuffer(buffer,shot.getColorSpace());
+     if(hardware==null)throw new IllegalStateException();
+     software=hardware.copy(android.graphics.Bitmap.Config.ARGB_8888,false);
+     int width=Math.min(960,software.getWidth()),height=Math.max(1,software.getHeight()*width/software.getWidth());
+     scaled=android.graphics.Bitmap.createScaledBitmap(software,width,height,true);
+     java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG,55,out);
+     if(out.size()>220000)throw new IllegalStateException();
+     image[0]=android.util.Base64.encodeToString(out.toByteArray(),android.util.Base64.NO_WRAP);
+    }catch(Exception e){result[0]="Não foi possível preparar a captura";}
+    finally{if(scaled!=null&&scaled!=software)scaled.recycle();if(software!=null)software.recycle();if(hardware!=null)hardware.recycle();buffer.close();latch.countDown();}
+   }
+   @Override public void onFailure(int code){result[0]="Android bloqueou a captura (código "+code+"). Conteúdo protegido pode não permitir imagens.";latch.countDown();}
+  });
  }
  private String execute(String c){
   AudioManager audio=(AudioManager)getSystemService(AUDIO_SERVICE);
@@ -85,5 +113,5 @@ public class RemoteService extends AccessibilityService {
  }
  @Override public void onAccessibilityEvent(AccessibilityEvent e){}
  @Override public void onInterrupt(){}
- @Override public void onDestroy(){running=false;connected=false;if(worker!=null)worker.interrupt();super.onDestroy();}
+ @Override public void onDestroy(){running=false;connected=false;if(worker!=null)worker.interrupt();screenshots.shutdownNow();super.onDestroy();}
 }
