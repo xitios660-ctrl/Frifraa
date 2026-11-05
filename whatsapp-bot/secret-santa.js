@@ -162,7 +162,7 @@ function createSecretSanta({db, roster=[],adminPhone='',isOriginalGroup,resolveI
     }
     if(groupId!==bound)return false;
     if(isPresent) {
-      if(who?.phone===admin) await publicSend(groupId,
+      await publicSend(groupId,
         '🎄🤖 *PRAZER, TURMA! EU SOU O BOT DO AMIGO SECRETO!* 🎁✨\n\n'+
         'Fui criado pelo *Gustavo* para deixar o nosso Amigo Secreto mais divertido e, principalmente, *misterioso*! 🤫\n\n'+
         '🎅 *Como vai funcionar?*\n'+
@@ -314,6 +314,7 @@ function createSecretSanta({db, roster=[],adminPhone='',isOriginalGroup,resolveI
     finally{busy=false}
   }
   return {init,bindVerifiedInvite,mightHandleGroup,isActivation,isBoundGroup,groupMessage,privateMessage,tick,
+    verifiedName:async(jids,groupId)=>(await identity(jids,groupId))?.name||null,
     rosterCount:()=>list.length,getBoundGroup:()=>bound};
 }
 module.exports={createSecretSanta,rosterFromJSON,drawCycle};
