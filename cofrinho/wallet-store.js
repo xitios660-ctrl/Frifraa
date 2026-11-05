@@ -1,7 +1,5 @@
 'use strict';
 const crypto=require('node:crypto');
-const {promisify}=require('node:util');
-const scrypt=promisify(crypto.scrypt);
 const {CATALOG,equipment,walletView}=require('./catalog');
 const PEOPLE=['mary','kaique','jheniffer','gustavo'];
 const hash=value=>crypto.createHash('sha256').update(value).digest('hex');
@@ -11,48 +9,25 @@ function createWalletStore(database,{prefix=''}={}){
  let indexes;
  async function db(){
   const source=await database(),value={collection:name=>source.collection(prefix+name)};
-  indexes??=Promise.all(['wallet_sessions','wallet_login_limits'].map(name=>value.collection(name).createIndex({expiresAt:1},{expireAfterSeconds:0}))).catch(error=>{indexes=null;throw error;});
+  indexes??=value.collection('wallet_sessions').createIndex({expiresAt:1},{expireAfterSeconds:0}).catch(error=>{indexes=null;throw error;});
   await indexes;return value;
  }
  async function session(token){
-  if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token))throw fail('Entre com o PIN do seu personagem.',401);
+  if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token))throw fail('Escolha seu personagem para abrir a carteira.',401);
   const d=await db(),s=await d.collection('wallet_sessions').findOne({_id:hash(token),expiresAt:{$gt:new Date()}});
   if(!s)throw fail('Sua sessão expirou. Entre novamente.',401);
   const account=await d.collection('wallet_accounts').findOne({_id:s.character});
-  if(!account||account.version!==s.version)throw fail('O PIN foi atualizado. Entre novamente.',401);
+  if(!account||account.version!==s.version)throw fail('Sua sessão expirou. Escolha o personagem novamente.',401);
   return{d,character:s.character};
  }
  return{
-  async bootstrap(pins){
-   const d=await db();
-   for(const character of PEOPLE){
-    const pin=pins[character];if(typeof pin!=='string'||!/^\d{8,12}$/.test(pin))continue;
-    const salt=crypto.randomBytes(16).toString('hex'),digest=(await scrypt(pin,salt,64)).toString('hex');
-    // A deployment must never reset an existing PIN or its session version.
-    await d.collection('wallet_accounts').updateOne({_id:character},{$setOnInsert:{salt,digest,version:1,createdAt:new Date()}},{upsert:true});
-   }
-  },
-  async setPin(character,pin){
-   if(!PEOPLE.includes(character)||typeof pin!=='string'||!/^\d{8,12}$/.test(pin))throw fail('Use um personagem válido e um PIN com 8 a 12 números.',400);
-   const d=await db(),salt=crypto.randomBytes(16).toString('hex'),digest=(await scrypt(pin,salt,64)).toString('hex');
-   await d.collection('wallet_accounts').updateOne({_id:character},{$set:{salt,digest,updatedAt:new Date()},$inc:{version:1}},{upsert:true});
-   return{ok:true,character};
-  },
-  async login(character,pin,address){
-   if(!PEOPLE.includes(character)||typeof pin!=='string'||pin.length>12)throw fail('Personagem ou PIN inválido.',401);
-   const d=await db(),limits=d.collection('wallet_login_limits'),key=hash(`${character}:${address}`),time=Date.now();
-   // One document per character/address; the increment is atomic across instances.
-   const windowExpired={$lt:[{$ifNull:['$until',0]},time]};
-   const attempt=await limits.findOneAndUpdate({_id:key},[{$set:{
-    attempts:{$cond:[windowExpired,1,{$add:[{$ifNull:['$attempts',0]},1]}]},
-    until:{$cond:[windowExpired,time+900000,'$until']},
-    expiresAt:new Date(time+900000)
-   }}],{upsert:true,returnDocument:'after'});
-   if(attempt.attempts>5)throw fail('Muitas tentativas. Aguarde 15 minutos.',429);
-   const account=await d.collection('wallet_accounts').findOne({_id:character});
-   const actual=await scrypt(pin,account?.salt||'bomba-party-dummy-salt',64);
-   if(!account||!crypto.timingSafeEqual(actual,Buffer.from(account.digest,'hex')))throw fail('Personagem ou PIN inválido. Peça seu PIN ao administrador.',401);
-   await limits.deleteOne({_id:key});
+   async login(character){
+    if(!PEOPLE.includes(character))throw fail('Escolha um personagem válido.',400);
+    const d=await db(),accounts=d.collection('wallet_accounts'),time=Date.now();
+    // No password or PIN: the selected character is the wallet identity.
+    // Keep existing account versions so balances and earlier sessions survive.
+    await accounts.updateOne({_id:character},{$setOnInsert:{version:1,createdAt:new Date()}},{upsert:true});
+    const account=await accounts.findOne({_id:character});
    const token=crypto.randomBytes(32).toString('hex');
    await d.collection('wallet_sessions').insertOne({_id:hash(token),character,version:account.version,expiresAt:new Date(time+30*86400000)});
    return{token,character};

@@ -100,7 +100,6 @@ async function deposit(amount) {
   if (networkBusy) return;
   if (!initialized) return setStatus('⚠️ Aguarde a conexão do banco antes de marcar um valor.', 'error');
   const character = selected;
-  if(window.BombaWallet?.identity!==character){window.BombaWallet?.open(character);return setStatus('🔒 Entre com o PIN deste personagem para alterar depósitos.','info');}
   const isMarked = people.get(character).saved.includes(amount);
   if (isMarked && !window.confirm(`Desmarcar o depósito de ${MONEY.format(amount)} do cofrinho de ${NAMES[character]}?`)) return;
   const button = savedButtons.get(amount);

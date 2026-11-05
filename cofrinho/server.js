@@ -109,19 +109,12 @@ function createApp(store = createMongoStore(),wallet = createWalletStore(()=>sto
     if(req.method==='POST'&&req.headers.origin&&req.headers.origin!==`${req.protocol}://${req.get('host')}`)return res.status(403).json({error:'Origem não autorizada.'});
     next();
   });
-  const access=installWallet(app,wallet);
-  let verifying=false;
-  app.post('/api/wallet/admin/verify',async(req,res,next)=>{
-    if(!require('./wallet-routes').equal(req.headers['x-wallet-admin'],process.env.WALLET_ADMIN_KEY))return res.status(403).json({error:'Acesso restrito ao administrador.'});
-    if(verifying)return res.status(409).json({error:'Verificação já está em andamento.'});
-    verifying=true;
-    try{res.json(await require('./wallet-verification').verifyWallet(()=>store.database()));}catch(error){next(error);}finally{verifying=false;}
-  });
+  installWallet(app,wallet);
 
   app.get('/api/health', (_req, res) => res.json({ service: 'cofrinho-bomba-party', status: 'up' }));
   // The old skin-only bridge is retired: a service key alone never identifies
   // the owner of a personal wallet. Keep the URL with an explicit upgrade error.
-  app.all('/api/game-wallet/:operation', (_req,res)=>res.status(410).json({error:'A loja agora exige seu PIN pessoal. Atualize o aplicativo e abra Minha Carteira.'}));
+  app.all('/api/game-wallet/:operation', (_req,res)=>res.status(410).json({error:'A loja está disponível em Minha Carteira. Atualize o aplicativo.'}));
 
   app.get('/api/state', async (_req, res, next) => {
     try { res.json({ target: TARGET, people: await store.getAll() }); }
@@ -133,7 +126,7 @@ function createApp(store = createMongoStore(),wallet = createWalletStore(()=>sto
     if (!PEOPLE.includes(character) || !Number.isInteger(amount) || amount < 1 || amount > MAX_AMOUNT || typeof marked !== 'boolean') {
       return res.status(400).json({ error: 'Informe personagem válido, valor inteiro entre 1 e 200 e se foi guardado.' });
     }
-    try { await access.authorizeDeposit(req);return res.json({ target: TARGET, person: await store.setMarked(character, amount, marked) }); }
+    try { return res.json({ target: TARGET, person: await store.setMarked(character, amount, marked) }); }
     catch (error) { return next(error); }
   });
 
@@ -157,7 +150,6 @@ if (require.main === module) {
     console.log(`Cofrinho Bomba Party no porto ${port}`);
     store.getAll().then(people => {
       console.log(`[cofrinho] MongoDB conectado e consulta realizada para ${people.length} cofrinhos.`);
-      return wallet.bootstrap(Object.fromEntries(PEOPLE.map(character=>[character,process.env[`WALLET_PIN_${character.toUpperCase()}`]])));
     }).catch(() => {
       console.error('[cofrinho] MongoDB ainda indisponível; depósitos continuam bloqueados.');
     });

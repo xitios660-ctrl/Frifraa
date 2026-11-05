@@ -24,15 +24,14 @@ test('salvamentos e remoções permanecem independentes por personagem', async (
       return publicState(person, [...set]);
     }
   };
-  const wallet={async identity(token){if(!['mary','kaique','jheniffer','gustavo'].includes(token))throw Object.assign(new Error('Entre com seu PIN.'),{status:401});return token;}};
-  const server = createApp(store,wallet).listen(0, '127.0.0.1');
+  const server = createApp(store,{}).listen(0, '127.0.0.1');
   try {
     await new Promise((resolve, reject) => {
       server.once('listening', resolve);
       server.once('error', reject);
     });
     const url = `http://127.0.0.1:${server.address().port}`;
-    const send = (character, amount, marked) => fetch(`${url}/api/deposit`, { method: 'POST', headers: { 'Content-Type': 'application/json',Authorization:`Bearer ${character}` }, body: JSON.stringify({ character, amount, marked }) });
+    const send = (character, amount, marked) => fetch(`${url}/api/deposit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ character, amount, marked }) });
     assert.equal((await send('mary', 200, true)).status, 200);
     assert.equal((await send('kaique', 1, true)).status, 200);
     assert.equal((await send('mary', 200, true)).status, 200);

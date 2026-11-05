@@ -1,4 +1,4 @@
-/* Shared game/cofrinho wallet. Credentials remain in HttpOnly cookies. */
+/* Shared game/cofrinho wallet. No player password or PIN is required. */
 (()=>{
  'use strict';
  const NAMES={mary:'Mary',kaique:'Kaique',jheniffer:'Jheniffer',gustavo:'Gustavo'};
@@ -12,9 +12,8 @@
  dialog.innerHTML=`<div class="wallet-head"><div><small>BOMBA PARTY · CLUBE DOS QUATRO</small><h2>Minha Carteira <span>🪙</span></h2></div><button type="button" class="wallet-close" aria-label="Fechar carteira">✕</button></div>
  <p class="wallet-note">R$ 1 registrado = 1 moeda. Comprar poderes nunca retira dinheiro do cofrinho.</p>
  <p class="wallet-status" role="status" aria-live="polite"></p>
- <form class="wallet-login"><label>Seu personagem<select name="character" aria-label="Personagem da carteira"></select></label><label>PIN pessoal<input name="pin" type="password" inputmode="numeric" autocomplete="current-password" pattern="[0-9]{8,12}" minlength="8" maxlength="12" placeholder="8 a 12 números" required></label><button type="submit">Entrar na carteira</button><p>O administrador cria um PIN para cada pessoa. Escolher uma skin na sala não dá acesso às moedas dela.</p></form>
- <section class="wallet-account" hidden><div class="wallet-person"><h3></h3><button type="button" class="wallet-logout">Sair da carteira</button></div><div class="wallet-balances"></div><p class="wallet-deficit" hidden></p><h3>Loja de melhorias</h3><p>Desbloqueie uma vez, use nas próximas partidas. Escolha o que equipar; um nível por tipo. Mudanças valem na próxima rodada.</p><div class="wallet-catalog"></div><h3>Histórico de compras</h3><ol class="wallet-history"></ol></section>
- <details class="wallet-admin"><summary>Administrar acesso dos quatro amigos</summary><p>Somente o dono do serviço: consulte <b>WALLET_ADMIN_KEY</b> em Environment, no Render do cofrinho. Crie um PIN diferente para cada pessoa e compartilhe somente com ela. Atualizar o PIN encerra as sessões anteriores.</p><form><label>Chave do administrador<input type="password" name="adminKey" autocomplete="off" required></label><label>Personagem<select name="character"></select></label><label>Novo PIN<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{8,12}" minlength="8" maxlength="12" autocomplete="new-password" required></label><button type="submit">Salvar PIN pessoal</button></form></details>`;
+ <form class="wallet-login"><label>Seu personagem<select name="character" aria-label="Personagem da carteira"></select></label><button type="submit">Abrir carteira</button><p>Sem senha: escolha um personagem para consultar moedas e melhorias.</p></form>
+ <section class="wallet-account" hidden><div class="wallet-person"><h3></h3><button type="button" class="wallet-logout">Trocar personagem</button></div><div class="wallet-balances"></div><p class="wallet-deficit" hidden></p><h3>Loja de melhorias</h3><p>Desbloqueie uma vez, use nas próximas partidas. Escolha o que equipar; um nível por tipo. Mudanças valem na próxima rodada.</p><div class="wallet-catalog"></div><h3>Histórico de compras</h3><ol class="wallet-history"></ol></section>`;
  document.body.append(dialog);
  for(const select of dialog.querySelectorAll('select'))for(const[id,name]of Object.entries(NAMES)){const option=document.createElement('option');option.value=id;option.textContent=name;select.append(option);}
  const $=selector=>dialog.querySelector(selector);
@@ -28,7 +27,7 @@
  function render(){
   $('.wallet-login').hidden=!!wallet;$('.wallet-account').hidden=!wallet;
   button.textContent=wallet?`🪙 ${fmt(wallet.available)} · ${NAMES[wallet.character]}`:'🪙 Minha Carteira';
-  const summary=document.querySelector('#coinWalletSummary');if(summary)summary.textContent=wallet?`🪙 ${NAMES[wallet.character]} · ${fmt(wallet.available)} moedas disponíveis`:'🪙 Entre com seu PIN para consultar moedas';
+  const summary=document.querySelector('#coinWalletSummary');if(summary)summary.textContent=wallet?`🪙 ${NAMES[wallet.character]} · ${fmt(wallet.available)} moedas disponíveis`:'🪙 Escolha seu personagem para consultar moedas';
   if(!wallet)return;
   $('.wallet-person h3').textContent=`${NAMES[wallet.character]} · Carteira pessoal`;
   const balances=$('.wallet-balances');balances.replaceChildren();
@@ -53,17 +52,13 @@
   if(!wallet.history.length){const row=document.createElement('li');row.textContent='Nenhuma compra ainda. Todos podem jogar e coletar poderes gratuitamente.';history.append(row);}
  }
  async function mutate(fn){if(busy)return;busy=true;revision++;render();try{await fn();window.dispatchEvent(new Event('bomba-wallet-changed'));}catch(error){status(error.message,true);}finally{busy=false;render();}}
- async function refresh(quiet=false){if(busy)return;const current=revision;try{const fresh=await api('/api/wallet');if(busy||current!==revision)return;wallet=fresh;await link();if(busy||current!==revision)return;render();if(!quiet)status('Carteira sincronizada. Suas compras ficam salvas online.');}catch(error){if(busy||current!==revision)return;if(error.status===401){wallet=null;render();if(!quiet)status('Entre com seu PIN pessoal para acessar as moedas.');}else if(!quiet)status(error.message,true);}}
- async function open(character){if(!character&&!cofrinho)character=Object.keys(NAMES)[Number(localStorage.getItem('arena-skin')||0)];if(NAMES[character])$('.wallet-login select').value=character;if(!dialog.open)dialog.showModal();await refresh();}
+ async function refresh(quiet=false){if(busy)return;const current=revision;try{const fresh=await api('/api/wallet');if(busy||current!==revision)return;wallet=fresh;await link();if(busy||current!==revision)return;render();if(!quiet)status('Carteira sincronizada. Suas compras ficam salvas online.');}catch(error){if(busy||current!==revision)return;if(error.status===401){wallet=null;render();if(!quiet)status('Escolha seu personagem para abrir a carteira.');}else if(!quiet)status(error.message,true);}}
+ async function selectCharacter(character){if(!NAMES[character])throw new Error('Personagem inválido.');await api('/api/wallet/login',{character});wallet=await api('/api/wallet');await link();render();}
+ async function open(character){if(!character&&!cofrinho)character=Object.keys(NAMES)[Number(localStorage.getItem('arena-skin')||0)];if(NAMES[character])$('.wallet-login select').value=character;if(!dialog.open)dialog.showModal();if(NAMES[character]&&wallet?.character!==character)await mutate(async()=>{await selectCharacter(character);status('Carteira aberta sem senha.');});else await refresh();}
  for(const id of ['openCoinShop','openCoinShopFinished'])document.getElementById(id)?.addEventListener('click',()=>open());
  button.onclick=()=>open();$('.wallet-close').onclick=()=>dialog.close();
- $('.wallet-login').onsubmit=event=>{event.preventDefault();const form=event.currentTarget,character=form.elements.character.value,pin=form.elements.pin.value;form.elements.pin.value='';mutate(async()=>{await api('/api/wallet/login',{character,pin});wallet=await api('/api/wallet');await link();status('Carteira protegida conectada.');});};
- $('.wallet-logout').onclick=()=>mutate(async()=>{await api('/api/wallet/logout',{});wallet=null;status('Você saiu da carteira. O jogo continua disponível.');});
- $('.wallet-admin form').onsubmit=event=>{event.preventDefault();const form=event.currentTarget,adminKey=form.elements.adminKey.value,character=form.elements.character.value,pin=form.elements.pin.value;mutate(async()=>{
-   if(!cofrinho)throw new Error('Abra o cofrinho para administrar os PINs pessoais.');
-   await api('/api/wallet/admin/pin',{character,pin},{'x-wallet-admin':adminKey});form.reset();status(`PIN de ${NAMES[character]} salvo. Compartilhe somente com essa pessoa.`);
-  });};
- if(!cofrinho){$('.wallet-admin').replaceChildren();const a=document.createElement('a');a.href='https://cofrinho-bomba-party.onrender.com/';a.textContent='Administrar PINs no cofrinho ↗';a.target='_blank';a.rel='noopener';$('.wallet-admin').replaceWith(a);}
+ $('.wallet-login').onsubmit=event=>{event.preventDefault();const character=event.currentTarget.elements.character.value;mutate(async()=>{await selectCharacter(character);status('Carteira aberta sem senha.');});};
+ $('.wallet-logout').onclick=()=>mutate(async()=>{await api('/api/wallet/logout',{});wallet=null;status('Escolha outro personagem.');});
  window.addEventListener('bomba-wallet-connection',event=>{connection=event.detail;refresh(true);});
  window.addEventListener('bomba-round',event=>{if(['countdown','playing'].includes(event.detail.phase)&&dialog.open)dialog.close();});
  window.addEventListener('focus',()=>refresh(true));

@@ -1,5 +1,5 @@
 'use strict';
-// Owner-only integration verification. All writes target random QA collections
+// Integration verification. All writes target random QA collections
 // inside bomba_party_cofrinho; the four real deposit records are read only.
 const assert=require('node:assert/strict'),crypto=require('node:crypto');
 const {createWalletStore}=require('./wallet-store');
@@ -10,8 +10,8 @@ async function verifyWallet(database){
  const deposits=async()=>JSON.stringify(await d.collection('cofrinhos').find({_id:{$in:['mary','kaique','jheniffer','gustavo']}},{projection:{saved:1}}).sort({_id:1}).toArray());
  const before=await deposits();
  try{
-  await records.insertOne({_id:'mary',saved:[10]});await store.setPin('mary','12345678');
-  const {token}=await store.login('mary','12345678','integration');
+  await records.insertOne({_id:'mary',saved:[10]});
+  const {token}=await store.login('mary');
   let w=await store.get(token);assert.equal(w.realTotal,10);assert.equal(w.earned,10);assert.equal(w.available,10);checks.push('R$ 10 = 10 moedas');
   await assert.rejects(store.get('a'.repeat(64)),e=>e.status===401);checks.push('Sessão forjada recusada');
   const requestId=crypto.randomUUID();const attempts=await Promise.all(Array.from({length:16},()=>store.purchase(token,'bomb2',requestId)));
@@ -24,7 +24,7 @@ async function verifyWallet(database){
   await records.updateOne({_id:'mary'},{$addToSet:{saved:200}});
   const concurrent=await Promise.allSettled(Array.from({length:16},(_,i)=>store.purchase(token,i%2?'fire3':'speed3',crypto.randomUUID())));
   assert.equal(concurrent.filter(r=>r.status==='fulfilled').length,2);w=await store.get(token);assert.equal(w.history.length,3);assert.equal(w.spent,105);assert.equal(w.available,95);checks.push('Compras concorrentes de itens diferentes não duplicam gastos');
-  await store.setPin('mary','87654321');await assert.rejects(store.get(token),e=>e.status===401);checks.push('Troca de PIN invalida sessões antigas');
+  const other=await store.login('kaique');assert.equal((await store.get(other.token)).character,'kaique');assert.equal((await store.get(token)).character,'mary');checks.push('Trocar personagem preserva sessões e saldos separados');
   assert.equal(await deposits(),before);checks.push('Depósitos reais preservados integralmente');
   return{ok:true,checks,depositHash:crypto.createHash('sha256').update(before).digest('hex')};
  }finally{for(const name of names)await d.collection(prefix+name).drop().catch(e=>{if(e.code!==26)throw e;});}
