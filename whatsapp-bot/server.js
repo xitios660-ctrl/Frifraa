@@ -12,6 +12,7 @@ const { getWeatherReply } = require('./weather');
 const { createStopGame } = require('./stop-game');
 const { createBlackjack } = require('./blackjack');
 const { createSecretSanta, rosterFromJSON } = require('./secret-santa');
+const { createSantaChat } = require('./santa-chat');
 const { IMAGE_MODEL, DAILY_IMAGE_LIMIT, parseImageRequest, reserveImage, generateImage, imageErrorMessage } = require('./image');
 
 const makeWASocket = baileys.default || baileys.makeWASocket;
@@ -97,7 +98,7 @@ app.post('/api/logout', guard, (_req, res) => {
 });
 
 const status = { phase: 'iniciando', connected: false, qr: null, lastError: '', since: null, received: 0, sent: 0, profileName: 'Pendente', profilePhoto: 'Pendente' };
-let client, db, authStore, sock, reconnectTimer, launching = false, stopGame = null, blackjack = null, secretSanta = null, gameClock = null;
+let client, db, authStore, sock, reconnectTimer, launching = false, stopGame = null, blackjack = null, secretSanta = null, santaChat = null, gameClock = null;
 let botEnabled = true, imagesEnabled = false, geminiKey = '', selectedGroupId = '', ready = false, stopping = false;
 const history = new Map();
 const queues = new Map();
@@ -437,7 +438,23 @@ async function handleSecretSantaGroupMessage(message) {
   const handled=await secretSanta.groupMessage({
     groupId,text,jids:participantJids(message)
   });
-  if(handled)status.received++;
+  if(handled){status.received++;return;}
+  if(!santaChat?.canChat(text))return;
+  const senderKey=groupId+':santa:'+(participantJids(message)[0]||'unknown');
+  if(!rateAllowed(senderKey))return;
+  const authorName=await secretSanta.verifiedName(participantJids(message),groupId).catch(()=>null);
+  const socket=sock;
+  if(socket && status.connected)void socket.sendPresenceUpdate('composing',groupId).catch(()=>{});
+  const started=Date.now();
+  try {
+    const replied=await santaChat.handle({groupId,text,authorName});
+    if(replied){
+      status.received++;
+      console.log('[santa-chat] Resposta enviada em '+(Date.now()-started)+'ms');
+    }
+  }finally {
+    if(socket===sock)void socket.sendPresenceUpdate('paused',groupId).catch(()=>{});
+  }
 }
 async function handlePrivateMessage(msg) {
   if(!ready||!status.connected||!botEnabled||!sock)return;
@@ -811,7 +828,21 @@ async function main() {
       }
     });
     await secretSanta.init();
-    console.log('[santa] Amigo Secreto preparado: '+secretSanta.rosterCount()+' convidados; grupo independente.');
+    santaChat=createSantaChat({
+      db,
+      isActive:()=>botEnabled&&status.connected&&!!sock,
+      reply:({text,history,authorName,systemInstruction,disableRanking})=>reply({
+        key:geminiKey,model:MODEL,text,history,authorName,systemInstruction,disableRanking,
+        useWebSearch:false
+      }),
+      sendGroup:async(groupId,text)=>{
+        if(!sock||!botEnabled||!status.connected||!secretSanta?.isBoundGroup(groupId))return;
+        const current=sock;
+        const sent=await current.sendMessage(groupId,{text});
+        if(current===sock&&sent?.key?.id)status.sent++;
+      }
+    });
+    console.log('[santa] Amigo Secreto preparado: '+secretSanta.rosterCount()+' convidados; grupo independente, chat com memória separada.');
   }
   stopGame = createStopGame({
     db,
