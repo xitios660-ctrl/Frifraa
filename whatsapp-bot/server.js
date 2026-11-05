@@ -42,13 +42,14 @@ app.use((req, res, next) => {
 
 const secretBytes = Buffer.from(SESSION_SECRET);
 const accessHash = crypto.createHash('sha256').update(PANEL_ACCESS_TOKEN).digest();
+const cookieSigningKey=crypto.createHmac('sha256',secretBytes).update(accessHash).digest();
 const SESSION_MAX_AGE_SEC = 30 * 86400;
 function isValidAccessToken(input){
   if(typeof input!=='string'||input.length>150)return false;
   const provided=crypto.createHash('sha256').update(input).digest();
   return crypto.timingSafeEqual(provided,accessHash);
 }
-function sign(value) { return crypto.createHmac('sha256', secretBytes).update(value).digest('base64url'); }
+function sign(value) { return crypto.createHmac('sha256', cookieSigningKey).update(value).digest('base64url'); }
 function authCookie() {
   const payload = Buffer.from(JSON.stringify({ t: Date.now(), nonce: crypto.randomBytes(16).toString('hex') })).toString('base64url');
   return payload + '.' + sign(payload);
