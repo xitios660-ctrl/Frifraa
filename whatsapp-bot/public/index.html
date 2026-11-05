@@ -1,15 +1,53 @@
 <!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#130c26"><title>Bomba Party · Central WhatsApp</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script><script src="/group.js" defer></script><script src="/profile.js" defer></script><script src="/image-settings.js" defer></script></head>
-<body><main class="shell">
-<header><strong>💣 BOMBA <span>PARTY</span></strong><div class="pill"><i id="dot"></i><b id="phase">Iniciando</b></div></header>
-<section id="login" class="card small" hidden><p class="tag">ÁREA PRIVADA</p><h1>Central WhatsApp</h1><p>Digite a senha do painel definida no Render para acessar o QR Code.</p><form id="loginForm"><label for="password">Senha de administração</label><input id="password" type="password" required autocomplete="current-password" placeholder="Sua senha"><button class="primary">Entrar</button></form><div id="loginStatus" class="notice">Acesso restrito ao administrador.</div></section>
-<section id="dashboard" hidden><p class="tag">PAINEL DE ADMINISTRAÇÃO</p><h1>Seu bot. <span>Seu controle.</span></h1><p>Robô do grupo Mary, Kaique, Gustavo e Jheniffer. Conversas naturais, perguntas gerais e informações do Bomba Party, Cofrinho e TV.</p><div class="notice" id="banner">Verificando conexão…</div>
-<div class="grid"><article class="card"><p class="tag">01 · WHATSAPP</p><h2>📱 Conectar por QR Code</h2><p>WhatsApp → Dispositivos conectados → Conectar dispositivo.</p><div id="qrWrap" class="qr"><div>Aguardando o QR Code…</div></div><div id="waSignal" class="notice">Carregando estado…</div><div class="actions"><button id="reconnect" type="button">↻ Reconectar</button><button id="reset" type="button" class="danger">Novo QR Code</button></div><small>O QR Code é privado. A sessão vinculada fica criptografada no MongoDB.</small></article>
-<article class="card"><p class="tag">02 · GRUPO AUTORIZADO</p><h2>👥 Onde o Bot responde</h2><p>Este robô responderá somente no grupo que você enviou pelo convite. Conversas privadas e outros grupos são ignorados.</p><label for="groupSelect">Grupo do WhatsApp</label><select id="groupSelect"><option value="">Nenhum grupo selecionado — bot em silêncio</option></select><div class="actions"><button id="refreshGroups" type="button">↻ Atualizar grupos</button><button id="saveGroup" class="primary" type="button">Salvar grupo</button></div><div id="groupStatus" class="notice">Conecte seu WhatsApp e selecione um grupo.</div><small>Ele só responde quando a mensagem contém a palavra “bot”, em maiúsculas ou minúsculas. Exemplo: “Bot, quem está ganhando no Cofrinho?”. Sem “bot”, ele fica em silêncio.</small></article>
-<article class="card"><p class="tag">03 · INTELIGÊNCIA</p><h2>✨ Assistente Gemini</h2><p>Configure sua chave de API para gerar respostas naturais.</p><label for="geminiKey">Chave API Gemini</label><input id="geminiKey" type="password" autocomplete="off" placeholder="Cole sua chave"><small id="keyStatus"></small><div class="actions"><button class="primary" id="saveKey" type="button">Salvar chave</button></div>
-<label class="toggle"><input id="enabled" type="checkbox"> Responder somente no grupo selecionado</label><div class="metrics"><div><b id="received">0</b><small>Recebidas</small></div><div><b id="sent">0</b><small>Respondidas</small></div></div><h3>Testar o bot</h3><input id="testText" value="Como acesso o Cofrinho?"><div class="actions"><button id="testBtn" type="button">Testar resposta</button></div><div id="testAnswer" class="notice">A resposta aparece aqui sem enviar WhatsApp.</div></article>
-<article class="card"><p class="tag">04 · IMAGENS COM GEMINI</p><h2>🎨 Criar e enviar imagens</h2><p>Quando alguém escrever “Bot, cria uma imagem de…” no grupo autorizado, o Bot pode gerar uma imagem e enviá-la na conversa, mantendo os detalhes de estilo, cores e formato do pedido.</p><label class="toggle"><input id="imagesEnabled" type="checkbox"> Ativar geração de imagens (serviço pago do Google)</label><div id="imageStatus" class="notice">Verificando configuração…</div><small>Modelo Gemini Flash-Lite Image • imagem 1K • até 4 tentativas por dia para o grupo • intervalo mínimo de 2 minutos. A API de imagens não oferece nível gratuito; ativar pode gerar cobrança na conta do Google. Só funciona no grupo autorizado e com “bot” na mensagem.</small></article>
-<article class="card wide"><p class="tag">05 · PERFIL DO ROBÔ</p><h2>🤖 Nome e foto do Bot</h2><p>O nome da conta conectada será definido como <strong>Bot</strong>. Para aplicar a foto do robô, selecione a imagem e toque no botão abaixo.</p><label for="profilePhoto">Foto de perfil</label><input id="profilePhoto" type="file" accept="image/jpeg,image/png,image/webp"><div class="actions"><button id="applyProfile" class="primary" type="button">Aplicar no WhatsApp</button></div><div id="profileMessage" class="notice">Aguardando conexão.</div><small>Os contatos podem continuar exibindo nomes salvos na agenda deles até serem alterados.</small></article>
-<article class="card wide"><p class="tag">06 · LINKS DA TURMA</p><h2>O bot conversa sobre todos os assuntos e também conhece estes sites</h2><nav><a href="https://bomberman-i7lu.onrender.com/" target="_blank" rel="noopener noreferrer">💣 Bomba Party</a><a href="https://cofrinho-bomba-party.onrender.com/" target="_blank" rel="noopener noreferrer">🐷 Cofrinho</a><a href="https://saimo-tv.pages.dev/movies" target="_blank" rel="noopener noreferrer">📺 Saimo TV</a></nav><p>Mensagens curtas e naturais, indicador de digitação e limites de respostas. Baileys é uma integração não oficial e não garante ausência de bloqueios.</p><button id="logout" type="button">Sair do painel</button></article></div></section>
-<footer>Sessão persistente e criptografada no banco exclusivo do WhatsApp.</footer></main></body></html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101126">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>Bomba Party · Conectar Bot</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<div class="ambient" aria-hidden="true"></div>
+<main class="wrap">
+  <header class="header">
+    <div class="brand"><span class="brand-icon">🤖</span><div><strong>BOMBA <em>PARTY</em></strong><small>WHATSAPP BOT · BAILEYS</small></div></div>
+    <div class="status-chip"><span id="dot" class="dot"></span><strong id="phase">Verificando</strong></div>
+  </header>
+  <section class="hero">
+    <span class="eyebrow">PAINEL DE CONEXÃO</span>
+    <h1>Seu Bot, <span>sempre por perto.</span></h1>
+    <p>Conecte seu WhatsApp pelo QR Code. Depois de vinculado, a sessão fica salva e os dois grupos continuam funcionando separadamente.</p>
+  </section>
+  <section class="pairing" id="pairing">
+    <div id="accessNotice" class="access-notice" hidden>
+      <span class="access-icon">🔐</span><h2>Acesso por link privado</h2>
+      <p>Para proteger o WhatsApp, abra o <strong>link privado de conexão</strong> enviado pelo administrador. Não é preciso digitar senha.</p>
+      <div id="accessError" class="error-text" role="alert"></div>
+    </div>
+    <div id="connectPanel" hidden>
+      <div class="panel-head">
+        <span class="panel-caption">01 · CONEXÃO WHATSAPP</span>
+        <h2>📱 QR Code do Baileys</h2>
+        <p>Abra o WhatsApp no celular da conta do Bot, entre em <strong>Dispositivos conectados → Conectar dispositivo</strong> e escaneie o QR Code.</p>
+      </div>
+      <div class="qr-shell" id="qrWrap" role="status" aria-live="polite"><div class="qr-loading"><span class="loader"></span>Aguardando QR Code…</div></div>
+      <div id="banner" class="notice">Conferindo a conexão do WhatsApp…</div>
+      <div class="actions">
+        <button id="reconnect" type="button">↻ Verificar conexão</button>
+        <button id="reset" type="button" class="secondary" hidden>Gerar novo QR Code</button>
+      </div>
+      <div class="heartbeat">
+        <div><span class="heartbeat-dot" aria-hidden="true"></span><strong>Verificação automática ativa</strong></div>
+        <p>Esta página consulta o servidor periodicamente para ajudar a mantê-lo acordado enquanto estiver aberta e ativa. O WhatsApp continua ligado à sessão salva, mesmo sem um QR na tela.</p>
+        <small id="lastCheck">Última verificação: aguardando</small>
+      </div>
+      <p class="caution">O QR Code é uma credencial temporária: não compartilhe capturas da tela ou o link privado. No plano gratuito do Render, o site pode hibernar quando o navegador fica inativo; abrir a página não garante funcionamento 24h.</p>
+    </div>
+  </section>
+  <footer><span>💣 Bomba Party</span> · Baileys + sessão persistente no MongoDB</footer>
+</main>
+</body>
+</html>
