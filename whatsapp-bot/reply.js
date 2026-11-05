@@ -87,8 +87,8 @@ async function bounded(promise,timeoutMs){
   try{return await Promise.race([promise,expired]);}
   finally{clearTimeout(timer);}
 }
-async function reply({ key, text, history = [], model = 'gemini-3.5-flash-lite', authorName = null, useWebSearch = false }) {
-  const ranking = await liveRanking(text);
+async function reply({ key, text, history = [], model = 'gemini-3.5-flash-lite', authorName = null, useWebSearch = false, systemInstruction = SYSTEM, disableRanking = false }) {
+  const ranking = disableRanking ? null : await liveRanking(text);
   if (ranking) return ranking;
   if (!key) return fallback(text);
   const ai = clientFor(key);
@@ -109,7 +109,7 @@ async function reply({ key, text, history = [], model = 'gemini-3.5-flash-lite',
       const result = await bounded(ai.models.generateContent({
         model: models[i],
         contents,
-        config: { systemInstruction: SYSTEM, maxOutputTokens: 680, thinkingConfig: { thinkingLevel: 'low' }, ...(useWebSearch ? { tools: [{ googleSearch: {} }] } : {}) }
+        config: { systemInstruction, maxOutputTokens: 680, thinkingConfig: { thinkingLevel: 'low' }, ...(useWebSearch ? { tools: [{ googleSearch: {} }] } : {}) }
       }),Math.min(9500,remaining));
       const answer = String(result.text || '').trim();
       if (answer) {
