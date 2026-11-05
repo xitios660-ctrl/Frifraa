@@ -18,6 +18,30 @@ const restrict=s=>{
  return RESTRICTED.test(t)||PERSONAL.test(t)||
   /(quem\s+ficou\s+com\s+quem|mostrar\s+todos\s+os\s+sorteados|revelar\s+o\s+sorteio)/.test(t);
 };
+function localResponse(text){
+ const q=normalize(text).replace(/(^|[^\p{L}\p{N}_])bot(?=$|[^\p{L}\p{N}_])/giu,' ').trim();
+ if(/(me ajuda|ajud[aá]|idei[as]|escolh|sugest|dica|compr|dar|ganh|present)/i.test(q) &&
+    /(presen|ganh|compr|idei|escolh|ajud|sugest|dica)/i.test(q))
+   return '🎁 Bora escolher! Até R$ 30: chocolates, caneca ou meias divertidas. Até R$ 70: livro, kit de autocuidado ou fone simples. Até R$ 120: perfume, mochila ou acessório. Me fala o orçamento e o que a pessoa gosta que eu afino as ideias! 💜';
+ if(/burro|burra|lerdo|lento|nao funciona|nao responde|cade voce|caiu|travou|bug/i.test(q))
+   return '😂 Essa foi merecida! O Google deu uma engasgada na minha IA, mas eu continuo aqui. Me manda uma pergunta ou me pede ideias de presentes e vou tentar resolver sem enrolação. 🎄';
+ if(/^(?:bom dia|boa tarde|boa noite|oi|ola|e ai|eai|fala|tudo bem)[!?.\s]*$/i.test(q))
+   return 'Oiii, pessoal! 🎄💜 Tô por aqui. Contem comigo para ajudar com o Natal, presentes e brincadeiras!';
+ if(/piada|faz rir|engracad|me anima/i.test(q))
+   return '🎄 Por que o Papai Noel não usa elevador? Porque ele prefere descer pela chaminé! 😅 Tem que respeitar o humor natalino duvidoso.';
+ if(/quem (e|criou)|quem te fez|se apresenta|se apresente|sobre voce/i.test(q))
+   return '🤖 Fui criado pelo Gustavo para animar a turma e organizar o Amigo Secreto com sigilo! Posso ajudar com presentes, perguntas e brincadeiras. 🎁';
+ if(/amigo secreto|sorteio|inscricao|participar|como funciona/i.test(q))
+   return '🎁 Gustavo abre as inscrições com *bot começa o sorteio*. Quem participa manda *EU*. Quando o sorteio acontecer, o nome chega só no privado. Depois cada pessoa manda suas ideias de presentes e eu encaminho para quem a tirou, em segredo. 🤫';
+ if(/natal|ceia|decorac|familia/i.test(q))
+   return '🎄 Para entrar no clima: um amigo secreto com valor combinado, comidas que todo mundo goste e uma lembrança especial para a família. O que vocês estão planejando para o Natal?';
+ if(/obrigad|valeu|brigad/i.test(q))
+   return 'Imagina! 💜 Tô aqui pra ajudar, mesmo que às vezes os servidores precisem de um puxão de orelha. 🤖';
+ if(/^(?:sim|nao|ok|kkkk+|rsrs+|haha+|beleza)$/i.test(q))
+   return '😂 Tô acompanhando! Se precisarem de uma mãozinha com o Natal ou com os presentes, é só chamar.';
+ return '🤖 Estou com uma instabilidade temporária na IA para perguntas abertas. O sorteio continua funcionando! Se for sobre presentes, me diga para quem é e qual o orçamento que consigo sugerir opções. 🎁';
+}
+
 function createSantaChat({db,reply,sendGroup,isActive,logger=console}){
  const collection=db.collection('secret_santa_conversations');
  const canChat=(text)=>BOT_WORD.test(String(text||''));
@@ -40,9 +64,7 @@ function createSantaChat({db,reply,sendGroup,isActive,logger=console}){
   }catch(error){
    const e=String(error?.message||error);
    logger.warn('[santa-chat] IA indisponível: '+e.slice(0,85));
-   answer=/^(?:bot\s+)?(?:oi|ola|bom\s+dia|boa\s+tarde|boa\s+noite)[!?.\s]*$/i.test(normalize(input))
-    ?'Oi, turma! 🎄 Tô aqui! O que vamos aprontar hoje?'
-    :'🎄 Minha IA está demorando um pouquinho agora. Continuo aqui para o Amigo Secreto! Podem tentar me perguntar novamente em instantes. 🤖';
+   answer=localResponse(input);
   }
   if(!isActive()||!answer)return true;
   await sendGroup(groupId,String(answer).slice(0,1150));
@@ -59,4 +81,4 @@ function createSantaChat({db,reply,sendGroup,isActive,logger=console}){
  }
  return{handle,canChat};
 }
-module.exports={createSantaChat,SYSTEM,restrict};
+module.exports={createSantaChat,SYSTEM,restrict,localResponse};
