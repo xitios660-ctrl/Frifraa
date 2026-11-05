@@ -106,7 +106,8 @@ app.post('/api/logout',guard,(_req,res)=>{
 });
 
 const status = { phase: 'iniciando', connected: false, qr: null, lastError: '', since: null, received: 0, sent: 0, profileName: 'Pendente', profilePhoto: 'Pendente' };
-let client, db, authStore, sock, reconnectTimer, launching = false, stopGame = null, blackjack = null, secretSanta = null, santaChat = null, gameClock = null;
+let client, db, authStore, sock, reconnectTimer, launching = false, stopGame = null, blackjack = null, secretSanta = null, santaChat = null, gameClock = null, watchdogTimer = null;
+let lastConnectionChangeAt=Date.now(),lastWatchdogRestartAt=0,lastInboundAt=0;
 let botEnabled = true, imagesEnabled = false, geminiKey = '', selectedGroupId = '', ready = false, stopping = false;
 const history = new Map();
 const queues = new Map();
@@ -541,6 +542,30 @@ function scheduleReconnect(delay = 4500) {
   if (stopping || reconnectTimer) return;
   reconnectTimer = setTimeout(() => { reconnectTimer = null; startWhatsApp().catch(e => console.error('[whatsapp] Reconexão:', e.message)); }, delay);
 }
+function socketTransportDead(socket) {
+  const transport=socket?.ws;
+  if(!transport)return false;
+  if(typeof transport.isOpen==='boolean')return !transport.isOpen;
+  if(typeof transport.readyState==='number')return transport.readyState!==1;
+  return false;
+}
+function connectionWatchdog(){
+  if(stopping||!ready||launching||status.phase==='desvinculado'||status.phase==='aguardando-qr')return;
+  const now=Date.now();
+  if(now-lastWatchdogRestartAt<90000)return;
+  const lostTransport=status.connected && socketTransportDead(sock);
+  const stuckConnecting=!status.connected && ['conectando','reconectando','erro','iniciando'].includes(status.phase) &&
+    now-lastConnectionChangeAt>60000;
+  if(!lostTransport&&!stuckConnecting)return;
+  lastWatchdogRestartAt=now;
+  lastConnectionChangeAt=now;
+  status.connected=false;
+  status.phase='reconectando';
+  status.lastError='Conexão inativa; recuperação automática em andamento.';
+  console.warn('[whatsapp] Monitor de conexão solicitou recuperação automática'+(lostTransport?' (transporte fechado)':' (tempo de conexão excedido)'));
+  scheduleReconnect(1000);
+}
+
 async function activateInvitedGroup(socket) {
   if (!GROUP_INVITE_CODE || !status.connected || socket !== sock || stopping) return;
   try {
@@ -593,6 +618,7 @@ async function startWhatsApp() {
     if (previous) { previous.ev.removeAllListeners('connection.update'); previous.ev.removeAllListeners('messages.upsert'); previous.ev.removeAllListeners('creds.update'); try { previous.ws.close(); } catch {} }
     const auth = await authStore.initialize();
     status.phase = 'conectando';
+    lastConnectionChangeAt=Date.now();
     status.connected = false;
     status.qr = null;
     const socket = makeWASocket({
@@ -609,32 +635,46 @@ async function startWhatsApp() {
       status.lastError = 'Falha ao salvar a sessão do WhatsApp.';
     }));
     socket.ev.on('messages.upsert', update => {
-      if (update.type !== 'notify' || !Array.isArray(update.messages)) return;
-      for (const msg of update.messages) queueContact(msg);
+      if(!['notify','append'].includes(update.type)||!Array.isArray(update.messages))return;
+      for(const msg of update.messages){
+        // After a sleeping service resumes, Baileys can deliver missed recent
+        // messages as 'append'. Never execute old commands from history.
+        if(update.type==='append'){
+          const ts=Number(msg.messageTimestamp||0);
+          if(!ts||Date.now()/1000-ts>90||ts-Date.now()/1000>30)continue;
+        }
+        lastInboundAt=Date.now();
+        queueContact(msg);
+      }
     });
     socket.ev.on('connection.update', async update => {
       if (socket !== sock || stopping) return;
       if (update.qr) {
+        lastConnectionChangeAt=Date.now();
         status.qr = update.qr;
         status.phase = 'aguardando-qr';
         status.connected = false;
       }
       if (update.connection === 'open') {
+        lastConnectionChangeAt=Date.now();
+        console.log('[whatsapp] Sessão conectada ao WhatsApp.');
         status.qr = null;
         status.phase = 'conectado';
         status.connected = true;
         status.since = new Date().toISOString();
         status.lastError = '';
-        await socket.sendPresenceUpdate('available').catch(() => {});
+        void socket.sendPresenceUpdate('available').catch(() => {});
         activateInvitedGroup(socket).catch(error => console.error('[grupo] Vinculação:', String(error.message).slice(0, 100)));
         activateSantaInvitedGroup(socket).catch(error=>console.error('[santa] Vinculação:',String(error.message).slice(0,100)));
         applyBotName(socket).catch(error => console.error('[perfil] Nome:', String(error.message).slice(0, 90)));
       }
       if (update.connection === 'close') {
+        lastConnectionChangeAt=Date.now();
         status.connected = false;
         status.qr = null;
         const code = update.lastDisconnect && update.lastDisconnect.error && update.lastDisconnect.error.output && update.lastDisconnect.error.output.statusCode;
         const loggedOut = code === (baileys.DisconnectReason && baileys.DisconnectReason.loggedOut) || code === 401;
+        console.warn('[whatsapp] Conexão encerrada: código '+(Number.isInteger(code)?code:'não informado')+(loggedOut?' (sessão desvinculada)':' (reconexão automática)'));
         status.phase = loggedOut ? 'desvinculado' : 'reconectando';
         status.lastError = loggedOut ? 'O WhatsApp desvinculou a sessão. Gere um QR Code novo no painel.' : 'Conexão interrompida; tentando reconectar.';
         if (!loggedOut) scheduleReconnect();
@@ -651,6 +691,7 @@ app.get('/api/health', (_req, res) => res.status(ready ? 200 : 503).json({ servi
 app.get('/api/status', guard, (_req, res) => res.json({
   phase: status.phase, connected: status.connected, since: status.since,
   lastError: status.lastError, received: status.received, sent: status.sent,
+  lastInboundAt:lastInboundAt?new Date(lastInboundAt).toISOString():null,
   botEnabled, geminiConfigured: !!geminiKey, model: MODEL, groupOnly: true, selectedGroupId, profileName: status.profileName, profilePhoto: status.profilePhoto,
   imagesEnabled, imageModel: IMAGE_MODEL, dailyImageLimit: DAILY_IMAGE_LIMIT, imagesSent
 }));
@@ -916,6 +957,7 @@ async function main() {
     secretSanta?.tick().catch(e => console.error('[santa] Timer:',String(e.message).slice(0,100)));
   },1000);
   ready = true;
+  if(!watchdogTimer)watchdogTimer=setInterval(connectionWatchdog,30000);
   console.log('[bot] MongoDB conectado; configurações e sessão persistidas.');
   await startWhatsApp();
 }
@@ -926,5 +968,6 @@ process.on('SIGTERM', () => {
   stopping = true;
   if (reconnectTimer) clearTimeout(reconnectTimer);
   if (gameClock) clearInterval(gameClock);
+  if (watchdogTimer) clearInterval(watchdogTimer);
   server.close(() => { if (client) client.close().catch(() => {}); });
 });
