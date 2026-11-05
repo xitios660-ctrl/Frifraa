@@ -37,3 +37,20 @@ Foram adicionados testes de API para autorização, isolamento entre dispositivo
 Na TV, “Diagnóstico de apps” permite compartilhar espaço livre, RAM e apps visíveis com o iPhone por dez minutos. O acesso opcional ao uso libera as medições públicas de StorageStatsManager quando a TCL permitir. Nenhum dado é apagado automaticamente. O site solicita as telas oficiais de armazenamento/detalhes e permite ao dono pedir a desinstalação, ainda sujeita à confirmação do Android. Apps do sistema e o próprio bridge são protegidos dessas solicitações.
 
 O site permite gerar um código de assistência temporária para enviar nesta conversa. Seu resgate concede até cinco minutos de acesso, revogável pelo iPhone. Não há IA rodando permanentemente nem acesso ao chat sem esse código. Consulte [o fluxo da API de assistência](../tv-bridge/README.md) para escopo, expiração, limites e operação responsável.
+
+## Teste MediaProjection no Android 9 (1.3.0)
+
+A versão 1.3.0 adiciona o botão “Teste Android 9: compartilhar tela / parar”. Primeiro há uma explicação no app e depois a autorização oficial do Android. Não há contorno da autorização do sistema. Se a TCL não expuser essa tela ou recusar a projeção, o app informa o erro; a compatibilidade com a TCL ainda não foi validada fisicamente.
+
+Após autorizar, um serviço foreground com notificação e ação Parar mantém uma MediaProjection e um VirtualDisplay por no máximo dez minutos. Uma única imagem de tela permanece no ImageReader local, substituída conforme novos frames chegam, sem compressão contínua. Somente o comando autenticado SCREENSHOT converte a imagem disponível em JPEG e a envia pelo relay existente. A imagem pode conter informações pessoais; telas protegidas podem aparecer pretas. Não se trata de vídeo transmitido ao servidor.
+
+O compartilhamento para quando o usuário toca no botão novamente, usa a ação Parar da notificação, o Android revoga a projeção, o serviço é destruído ou o prazo termina. Desativar o serviço de acessibilidade também encerra a projeção. Tokens de autorização MediaProjection não são persistidos nem reutilizados após reinício. A versão anterior de captura por AccessibilityService continua disponível no Android 11+.
+
+### Teste físico necessário
+
+1. Instalar a atualização 1.3.0 sobre o APK anterior. Abrir o app, manter Acessibilidade ativa e parear novamente se o servidor tiver reiniciado.
+2. Escolher Teste Android 9: compartilhar tela, Continuar e aceitar a tela oficial do sistema.
+3. Confirmar no app a mensagem “Compartilhamento Android autorizado”. Se aparecer erro ou a autorização oficial não abrir, enviar foto do erro antes de continuar.
+4. No iPhone, solicitar Capturar tela da TV. Verificar se a imagem corresponde à TCL e se muda após uma navegação manual.
+5. Gerar um novo código de assistência para que o assistente consiga inspecionar a imagem autorizada e verificar o resultado de cada ação. Até receber uma imagem válida, não afirmar que a visão remota funciona.
+6. Parar o compartilhamento e confirmar que novos pedidos de captura são recusados. Conteúdo DRM não será usado para validar a captura.

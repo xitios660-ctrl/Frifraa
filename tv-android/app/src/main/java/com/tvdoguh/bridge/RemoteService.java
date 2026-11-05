@@ -30,7 +30,7 @@ public class RemoteService extends AccessibilityService {
     String id=prefs.getString("id",""),secret=prefs.getString("secret","");
     if(prefs.getBoolean("reset",false)){
      if(!id.isEmpty())Bridge.post("/device/revoke",new JSONObject().put("id",id).put("secret",secret));
-     prefs.edit().clear().apply();id="";ack=null;
+     stopService(new Intent(this,ProjectionService.class));prefs.edit().clear().apply();id="";ack=null;
     }
     if(id.isEmpty()){
      JSONObject r=Bridge.post("/device/register",new JSONObject());id=r.getString("id");secret=r.getString("secret");
@@ -47,21 +47,21 @@ public class RemoteService extends AccessibilityService {
      if(cmd.optString("command").equals("DIAGNOSE")){
       try{if(!diagnosticAllowed())result[0]="Autorize o diagnóstico de apps na TV";else{report=Diagnostics.collect(this);result[0]=null;}}catch(Exception e){result[0]="Não foi possível ler o diagnóstico Android";}
      }else{
-     main.post(()->{try{if(running && cmd.optString("command").equals("SCREENSHOT")){if(android.os.Build.VERSION.SDK_INT<30){result[0]="Capturas exigem Android 11+";return;}capture(result,image,latch);return;}if(running)result[0]=execute(cmd);}catch(Exception e){result[0]="Android recusou a ação";}finally{if(!cmd.optString("command").equals("SCREENSHOT")||result[0]!=null)latch.countDown();}});
+     main.post(()->{try{if(running && cmd.optString("command").equals("SCREENSHOT")){if(ProjectionService.available()){result[0]=null;screenshots.execute(()->{try{if(!visualAllowed())throw new IllegalStateException();image[0]=ProjectionService.capture();result[0]=null;}catch(Exception e){result[0]=e.getMessage()==null?"Falha na captura Android":e.getMessage();}finally{latch.countDown();}});return;}if(android.os.Build.VERSION.SDK_INT<30){result[0]="Capturas exigem Android 11+";return;}capture(result,image,latch);return;}if(running)result[0]=execute(cmd);}catch(Exception e){result[0]="Android recusou a ação";}finally{if(!cmd.optString("command").equals("SCREENSHOT")||result[0]!=null)latch.countDown();}});
      if(!latch.await(5,TimeUnit.SECONDS))result[0]="Captura ou execução excedeu o prazo";
      }
      ack=new JSONObject().put("id",id).put("secret",secret).put("commandId",cmd.getString("id")).put("ok",result[0]==null).put("message",result[0]==null?successMessage(cmd.optString("command")):result[0]);
      if(result[0]==null && report!=null && diagnosticAllowed())ack.put("diagnostic",report);
      if(result[0]==null && image[0]!=null && visualAllowed())ack.put("image",image[0]);
     }
-   }catch(Bridge.AuthException e){prefs.edit().clear().apply();ack=null;status("Servidor reiniciou ou sessão revogada. Gere novo pareamento.");}
+   }catch(Bridge.AuthException e){stopService(new Intent(this,ProjectionService.class));prefs.edit().clear().apply();ack=null;status("Servidor reiniciou ou sessão revogada. Gere novo pareamento.");}
     catch(Exception e){status("Sem conexão. Reconectando automaticamente…");}
     try{Thread.sleep(1200);}catch(InterruptedException e){break;}
    }
   },"tv-bridge");worker.start();
  }
  private boolean diagnosticAllowed(){return prefs.getLong("diagnosticUntil",0)>System.currentTimeMillis();}
- private boolean visualAllowed(){return android.os.Build.VERSION.SDK_INT>=30 && prefs.getLong("visualUntil",0)>System.currentTimeMillis();}
+ private boolean visualAllowed(){return (android.os.Build.VERSION.SDK_INT>=30 || ProjectionService.available()) && prefs.getLong("visualUntil",0)>System.currentTimeMillis();}
  @android.annotation.TargetApi(30)
  private void capture(String[] result,String[] image,CountDownLatch latch){
   if(android.os.Build.VERSION.SDK_INT<30 || !visualAllowed()){result[0]="Autorize diagnóstico visual na TV; requer Android 11+";return;}
@@ -134,5 +134,5 @@ public class RemoteService extends AccessibilityService {
  }
  @Override public void onAccessibilityEvent(AccessibilityEvent e){}
  @Override public void onInterrupt(){}
- @Override public void onDestroy(){running=false;connected=false;if(worker!=null)worker.interrupt();screenshots.shutdownNow();super.onDestroy();}
+ @Override public void onDestroy(){running=false;connected=false;if(worker!=null)worker.interrupt();stopService(new Intent(this,ProjectionService.class));screenshots.shutdownNow();super.onDestroy();}
 }

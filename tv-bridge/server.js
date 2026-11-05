@@ -39,7 +39,7 @@ function createServer({now = Date.now, pairTTL = 600000, sessionTTL = 86400000} 
   try {
    prune();
    if(req.method==='OPTIONS')return reply(204,{});
-   if(req.url==='/health' && req.method==='GET')return reply(200,{ok:true,version:'1.2.0',storage:'memory',restartRequiresPairing:true});
+   if(req.url==='/health' && req.method==='GET')return reply(200,{ok:true,version:'1.3.0',storage:'memory',restartRequiresPairing:true});
    if(req.headers.origin && req.headers.origin!=='https://tv-do-guh-ai.onrender.com')return reply(403,{error:'Origem não permitida'});
    // Use the socket peer, never an untrusted forwarded address, for the global
    // registration, pairing and support-redemption budgets.
@@ -158,7 +158,7 @@ function createServer({now = Date.now, pairTTL = 600000, sessionTTL = 86400000} 
      if(body.command==='REQUEST_UNINSTALL' && (app.system||body.confirmed!==true))return reply(403,{error:'Confirmação necessária; apps do sistema são protegidos'});
     }
     if(body.command==='SCREENSHOT'){
-     if(!d.screenshotAllowed)return reply(403,{error:'Ative o diagnóstico visual na TV (Android 11 ou superior)'});
+     if(!d.screenshotAllowed)return reply(403,{error:'Autorize capturas na TV; no Android 9 use Teste Android 9: compartilhar tela'});
      if(d.lastShot!==undefined && now()-d.lastShot<5000)return reply(429,{error:'Aguarde cinco segundos entre capturas'});
      d.lastShot=now();d.screenshot=null;
     }
