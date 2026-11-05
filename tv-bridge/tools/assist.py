@@ -27,7 +27,7 @@ def main():
         data=call('/status',token=token)
         print(json.dumps({key:data.get(key) for key in ['online','screenshotAllowed','diagnosticAllowed','supportActive']},ensure_ascii=False));return
     body={'command':'SCREENSHOT'} if mode=='capture' else {'command':sys.argv[2],'observe':True}
-    if len(sys.argv)>3:body['package']=sys.argv[3]
+    if len(sys.argv)>3:body['text' if body['command'] in ['TYPE_TEXT','SAIMO_TEXT'] else 'package']=sys.argv[3]
     started=time.monotonic();queued=call('/command',body,token)
     cid=queued.get('observationId',queued['id'])
     for _ in range(3):

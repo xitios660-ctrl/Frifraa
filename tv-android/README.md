@@ -62,3 +62,9 @@ Substitui os limites voluntários de dez minutos das versões anteriores: o dono
 Long-poll evita a espera periódica de 1,2 segundo. Após uma ação confirmada, a captura dependente espera 200 ms antes de copiar a imagem disponível. Isso reduz o atraso, mas animações e aplicativos lentos ainda podem exigir nova captura. OPEN_APP abre diretamente um aplicativo visível pelo launcher público do Android. Nenhum comando é tratado como visualmente concluído sem conferir a imagem retornada.
 
 O iPhone e a assistência permanecem autorizados até revogação; detalhes de persistência e as limitações do sistema de arquivos do Render estão no README do bridge. Imagens e relatórios continuam temporários (60 segundos e dez minutos), independentemente da duração do acesso.
+
+## Nome completo em um comando (1.5.0)
+
+O site tem um campo para enviar o nome completo à TV. Abra primeiro a busca desejada. TYPE_TEXT utiliza a inserção pública do Android em campo editável não marcado como senha. SAIMO_TEXT planeja a sequência completa para o teclado de busca do Saimo e a executa localmente, com verificação do app/teclas e tentativa de confirmar o texto final. Aceita até 40 letras/números/espaços normalizados, sem pontuação. Interrompe se a interface mudar ou exceder o prazo, e não inicia reprodução automaticamente.
+
+Há testes unitários para o plano, normalização e limites, além dos testes de API. A inserção real no teclado do Saimo precisa ser validada na TCL após instalar a atualização; o episódio atualmente em reprodução não foi interrompido para esse teste.

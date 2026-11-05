@@ -47,8 +47,11 @@ public class RemoteService extends AccessibilityService {
      if(cmd.optString("command").equals("DIAGNOSE")){
       try{if(!diagnosticAllowed())result[0]="Autorize o diagnóstico de apps na TV";else{report=Diagnostics.collect(this);result[0]=null;}}catch(Exception e){result[0]="Não foi possível ler o diagnóstico Android";}
      }else{
-     main.post(()->{try{if(running && cmd.optString("command").equals("SCREENSHOT")){if(ProjectionService.available()){result[0]=null;main.postDelayed(()->{try{screenshots.execute(()->{try{if(!visualAllowed())throw new IllegalStateException();image[0]=ProjectionService.capture();result[0]=null;}catch(Exception e){result[0]=e.getMessage()==null?"Falha na captura Android":e.getMessage();}finally{latch.countDown();}});}catch(RuntimeException e){result[0]="Serviço de captura encerrado";latch.countDown();}},200);return;}if(android.os.Build.VERSION.SDK_INT<30){result[0]="Capturas exigem Android 11+";return;}capture(result,image,latch);return;}if(running)result[0]=execute(cmd);}catch(Exception e){result[0]="Android recusou a ação";}finally{if(!cmd.optString("command").equals("SCREENSHOT")||result[0]!=null)latch.countDown();}});
-     if(!latch.await(5,TimeUnit.SECONDS))result[0]="Captura ou execução excedeu o prazo";
+     boolean typing=cmd.optString("command").equals("TYPE_TEXT")||cmd.optString("command").equals("SAIMO_TEXT");
+     long typingDeadline=android.os.SystemClock.elapsedRealtime()+11000;
+     if(typing){main.post(()->TextEntry.start(this,main,cmd.optString("command"),cmd.optString("text"),()->running&&android.os.SystemClock.elapsedRealtime()<typingDeadline,error->{result[0]=error;latch.countDown();}));}
+     else main.post(()->{try{if(running && cmd.optString("command").equals("SCREENSHOT")){if(ProjectionService.available()){result[0]=null;main.postDelayed(()->{try{screenshots.execute(()->{try{if(!visualAllowed())throw new IllegalStateException();image[0]=ProjectionService.capture();result[0]=null;}catch(Exception e){result[0]=e.getMessage()==null?"Falha na captura Android":e.getMessage();}finally{latch.countDown();}});}catch(RuntimeException e){result[0]="Serviço de captura encerrado";latch.countDown();}},200);return;}if(android.os.Build.VERSION.SDK_INT<30){result[0]="Capturas exigem Android 11+";return;}capture(result,image,latch);return;}if(running)result[0]=execute(cmd);}catch(Exception e){result[0]="Android recusou a ação";}finally{if(!cmd.optString("command").equals("SCREENSHOT")||result[0]!=null)latch.countDown();}});
+     if(!latch.await(typing?12:5,TimeUnit.SECONDS))result[0]="Captura ou execução excedeu o prazo";
      }
      ack=new JSONObject().put("id",id).put("secret",secret).put("commandId",cmd.getString("id")).put("ok",result[0]==null).put("message",result[0]==null?successMessage(cmd.optString("command")):result[0]);
      if(result[0]==null && report!=null && diagnosticAllowed())ack.put("diagnostic",report);
@@ -88,6 +91,7 @@ public class RemoteService extends AccessibilityService {
  }
  private String successMessage(String command){
   switch(command){
+   case "TYPE_TEXT":case "SAIMO_TEXT":return "Nome completo inserido e conferido no campo de busca";
    case "DIAGNOSE":return "Diagnóstico coletado; nada foi apagado";
    case "APP_SETTINGS":return "Solicitação de abrir detalhes aceita; limpeza não realizada";
    case "REQUEST_UNINSTALL":return "Tela de desinstalação solicitada; confirme na TCL e atualize o diagnóstico";

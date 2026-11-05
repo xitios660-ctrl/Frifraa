@@ -2,7 +2,7 @@
 const http = require('node:http');
 const crypto = require('node:crypto');
 const fs=require('node:fs'),path=require('node:path');
-const COMMANDS = new Set(['UP','DOWN','LEFT','RIGHT','OK','HOME','BACK','VOLUME_UP','VOLUME_DOWN','MUTE','YOUTUBE','NETFLIX','PLAY_PAUSE','SCREENSHOT','DIAGNOSE','STORAGE_SETTINGS','APP_SETTINGS','REQUEST_UNINSTALL','OPEN_APP']);
+const COMMANDS = new Set(['UP','DOWN','LEFT','RIGHT','OK','HOME','BACK','VOLUME_UP','VOLUME_DOWN','MUTE','YOUTUBE','NETFLIX','PLAY_PAUSE','SCREENSHOT','DIAGNOSE','STORAGE_SETTINGS','APP_SETTINGS','REQUEST_UNINSTALL','OPEN_APP','TYPE_TEXT','SAIMO_TEXT']);
 function diagnosticReport(value){
  if(!value || typeof value!=='object'||!Array.isArray(value.apps)||value.apps.length>100)return null;
  const result={};
@@ -42,11 +42,11 @@ function createServer({now = Date.now, pairTTL = 600000, sessionTTL = 86400000, 
  function take(d){
   while(d.queue.length){const c=d.queue.shift();let error;
    if(!sessions.has(c.sessionKey))error='Acesso revogado antes da entrega';
-   else if(now()-c.created>10000)error='Comando expirou';
+   else if(now()-(c.dependsOn?d.results.get(c.dependsOn)?.completedAt??c.created:c.created)>10000)error='Comando expirou';
    else if(c.dependsOn && d.results.get(c.dependsOn)?.state!=='executed')error='A ação anterior não foi executada';
    if(error){d.results.set(c.id,{...d.results.get(c.id),state:'failed',message:error});notify(d);continue;}
    d.pending={id:c.id,command:c.command,sent:now()};
-   return {id:c.id,command:c.command,...(c.package?{package:c.package,confirmed:c.confirmed}:{})};
+   return {id:c.id,command:c.command,...(c.text!==undefined?{text:c.text}:{}),...(c.package?{package:c.package,confirmed:c.confirmed}:{})};
   }return null;
  }
  function prune() {
@@ -62,7 +62,7 @@ function createServer({now = Date.now, pairTTL = 600000, sessionTTL = 86400000, 
   try {
    prune();
    if(req.method==='OPTIONS')return reply(204,{});
-   if(req.url==='/health' && req.method==='GET')return reply(200,{ok:true,version:'1.4.0',storage:storePath?'local-file-identities':'memory',restartRequiresPairing:!storePath,persistentUntilRevoked:true,deployMayRequirePairing:true});
+   if(req.url==='/health' && req.method==='GET')return reply(200,{ok:true,version:'1.5.0',storage:storePath?'local-file-identities':'memory',restartRequiresPairing:!storePath,persistentUntilRevoked:true,deployMayRequirePairing:true});
    if(req.headers.origin && req.headers.origin!=='https://tv-do-guh-ai.onrender.com')return reply(403,{error:'Origem não permitida'});
    // Use the socket peer, never an untrusted forwarded address, for the global
    // registration, pairing and support-redemption budgets.
@@ -104,7 +104,7 @@ function createServer({now = Date.now, pairTTL = 600000, sessionTTL = 86400000, 
       const shot={image:body.image,id:body.commandId,expires:now()+60000};d.screenshot=shot;
       const shotId=body.commandId;const timer=setTimeout(()=>{if(d.screenshot && d.screenshot.id===shotId)d.screenshot=null;},60000);timer.unref();
      }
-     d.results.set(body.commandId,{...d.results.get(body.commandId),state:body.ok===true?'executed':'failed',message:String(body.message||'').slice(0,160)});d.pending=null;notify(d);
+     d.results.set(body.commandId,{...d.results.get(body.commandId),state:body.ok===true?'executed':'failed',completedAt:now(),message:String(body.message||'').slice(0,160)});d.pending=null;notify(d);
      return reply(200,{ok:true});
     }
     if(req.url==='/device/poll') {
@@ -200,6 +200,7 @@ function createServer({now = Date.now, pairTTL = 600000, sessionTTL = 86400000, 
      if(d.lastDiagnostic!==undefined && now()-d.lastDiagnostic<5000)return reply(429,{error:'Aguarde cinco segundos entre diagnósticos'});
      d.lastDiagnostic=now();d.diagnostic=null;
     }
+    if(['TYPE_TEXT','SAIMO_TEXT'].includes(body.command) && (typeof body.text!=='string'||!body.text.trim()||body.text.length>80||/[\x00-\x1f]/.test(body.text)))return reply(400,{error:'Envie texto de busca com 1 a 80 caracteres, sem controles'});
     if(body.command==='OPEN_APP' && (typeof body.package!=='string'||body.package.length>200||!/^([A-Za-z][A-Za-z0-9_]*\.)+[A-Za-z0-9_]+$/.test(body.package)))return reply(400,{error:'Pacote de aplicativo inválido'});
     if(body.observe===true && (!d.screenshotAllowed||['SCREENSHOT','DIAGNOSE'].includes(body.command)))return reply(403,{error:'Autorize capturas antes de solicitar ação com observação'});
     if(['APP_SETTINGS','REQUEST_UNINSTALL'].includes(body.command)){
@@ -213,7 +214,7 @@ function createServer({now = Date.now, pairTTL = 600000, sessionTTL = 86400000, 
      d.lastShot=now();d.screenshot=null;
     }
     if(d.queue.length>(body.observe===true?8:9))return reply(429,{error:'Aguarde a execução dos comandos'});
-    const id=random();d.queue.push({id,command:body.command,created:now(),sessionKey:hash(token[1]),...(['APP_SETTINGS','REQUEST_UNINSTALL','OPEN_APP'].includes(body.command)?{package:body.package,confirmed:body.confirmed===true}:{})});d.results.set(id,{state:'queued',command:body.command,actor:s.role==='support'?'support':'iphone'});
+    const id=random();d.queue.push({id,command:body.command,created:now(),sessionKey:hash(token[1]),...(['TYPE_TEXT','SAIMO_TEXT'].includes(body.command)?{text:body.text}:{}),...(['APP_SETTINGS','REQUEST_UNINSTALL','OPEN_APP'].includes(body.command)?{package:body.package,confirmed:body.confirmed===true}:{})});d.results.set(id,{state:'queued',command:body.command,actor:s.role==='support'?'support':'iphone'});
     while(d.results.size>50)d.results.delete(d.results.keys().next().value);
     let observationId;
     if(body.observe===true){

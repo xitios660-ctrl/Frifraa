@@ -39,3 +39,13 @@ A resposta contém id e observationId. O servidor entrega a ação, aguarda sua 
 O cliente `tools/assist.py` usa esse caminho, guarda o token em arquivo local 0600 e escreve a imagem sem imprimir base64 ou credenciais. Exemplos: `python3 tv-bridge/tools/assist.py redeem CODIGO`, depois `python3 tv-bridge/tools/assist.py act OPEN_APP br.com.saimo.tv`. Use a ferramenta de visualização sobre imagePath retornado. O tempo reportado mede transporte completo nessa execução; não é garantia de latência para a TCL.
 
 O site mantém o token do iPhone em localStorage (com fallback em sessionStorage quando o navegador bloquear persistência), para preservar o pareamento ao fechar e abrir a aba. Desconectar remove o token dos dois locais. Limpar os dados do Safari ou usar navegação privada pode exigir parear novamente.
+
+## Digitação planejada (1.5.0)
+
+TYPE_TEXT envia o texto completo (1–80 caracteres, sem controles) para o campo editável atualmente focado usando ACTION_SET_TEXT. Campos marcados como senha são recusados. O Android confere o valor final antes de confirmar. Não procura campos arbitrários em outras telas nem injeta teclas por APIs privadas.
+
+SAIMO_TEXT é limitado ao pacote br.com.saimo.tv e ao teclado de busca acessível conhecido. O plano inteiro é calculado e validado antes de qualquer alteração: Limpar, depois cada letra/número/espaço do nome normalizado (até 40 caracteres). O serviço localiza o menor contêiner acessível com as teclas esperadas, clica nos controles por seus rótulos e interrompe se o app ou o teclado mudar. Não há viagens ao servidor nem screenshots entre as teclas. Ao final tenta confirmar o texto na caixa de busca acima do teclado; sem confirmação não declara sucesso. A compatibilidade dessa execução local com o Saimo instalado ainda precisa de teste físico. Não há promessa de funcionar em qualquer teclado de TV.
+
+Exemplo durante atendimento: depois de abrir e conferir a tela de busca, `python3 tv-bridge/tools/assist.py act SAIMO_TEXT 'Os Simpsons'`. O cliente envia um comando com o nome completo e observe=true; a captura final só é solicitada após sucesso. Se houver erro ou confirmação incompleta, pedir uma captura separada e não repetir a digitação cegamente.
+
+Isso não transmite um vídeo ao modelo do chat. O assistente continua recebendo imagens por solicitações explícitas e conferindo o estado antes/depois das ações. O plano de digitação não concede comandos de shell, scripts de UI arbitrários nem acesso a senhas.

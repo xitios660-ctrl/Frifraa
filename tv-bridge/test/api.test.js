@@ -121,3 +121,16 @@ test('identity persistence survives process restart and time advance; file conta
  await new Promise(r=>server.close(r));server=null;clock+=365*86400000;req=await start();assert.equal((await req('/status',undefined,p.token)).status,200);assert.equal((await req('/status',undefined,s.token)).status,200);
  await req('/support',{action:'cancel'},p.token);assert.equal((await req('/status',undefined,s.token)).status,401);
 });
+test('full search text travels as one command and is absent from status/history; validation rejects controls',async t=>{
+ const req=await setup(t);const d=await req('/device/register',{}),p=await req('/pair',{code:d.code});await req('/device/poll',{...d,screenshotAllowed:true});
+ for(const text of ['',null,'a\nb','a'.repeat(81)])assert.equal((await req('/command',{command:'SAIMO_TEXT',text},p.token)).status,400);
+ const c=await req('/command',{command:'SAIMO_TEXT',text:'Os Simpsons',observe:true},p.token);
+ const poll=await req('/device/poll',{...d,screenshotAllowed:true});assert.equal(poll.command.text,'Os Simpsons');assert.equal(poll.command.command,'SAIMO_TEXT');
+ assert.equal(JSON.stringify(await req('/status',undefined,p.token)).includes('Os Simpsons'),false);
+ await req('/device/ack',{...d,commandId:c.id,ok:true});assert.equal((await req('/device/poll',{...d,screenshotAllowed:true})).command.id,c.observationId);
+});
+test('observation freshness starts after a longer text operation finishes',async t=>{
+ let clock=1000;const req=await setup(t,{now:()=>clock});const d=await req('/device/register',{}),p=await req('/pair',{code:d.code});await req('/device/poll',{...d,screenshotAllowed:true});
+ const c=await req('/command',{command:'TYPE_TEXT',text:'Os Simpsons',observe:true},p.token);await req('/device/poll',{...d,screenshotAllowed:true});clock+=11000;
+ await req('/device/ack',{...d,commandId:c.id,ok:true});assert.equal((await req('/device/poll',{...d,screenshotAllowed:true})).command.id,c.observationId);
+});
