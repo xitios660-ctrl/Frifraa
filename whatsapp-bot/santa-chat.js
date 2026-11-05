@@ -19,7 +19,7 @@ const restrict=s=>{
   /(quem\s+ficou\s+com\s+quem|mostrar\s+todos\s+os\s+sorteados|revelar\s+o\s+sorteio)/.test(t);
 };
 function localResponse(text){
- const q=normalize(text).replace(/(^|[^\p{L}\p{N}_])bot(?=$|[^\p{L}\p{N}_])/giu,' ').trim();
+ const q=normalize(text).replace(/(^|[^\p{L}\p{N}_])bot(?=$|[^\p{L}\p{N}_])/giu,' ').trim().replace(/^[\s,:.!?;-]+/,'').trim();
  if(/(me ajuda|ajud[aá]|idei[as]|escolh|sugest|dica|compr|dar|ganh|present)/i.test(q) &&
     /(presen|ganh|compr|idei|escolh|ajud|sugest|dica)/i.test(q))
    return '🎁 Bora escolher! Até R$ 30: chocolates, caneca ou meias divertidas. Até R$ 70: livro, kit de autocuidado ou fone simples. Até R$ 120: perfume, mochila ou acessório. Me fala o orçamento e o que a pessoa gosta que eu afino as ideias! 💜';
