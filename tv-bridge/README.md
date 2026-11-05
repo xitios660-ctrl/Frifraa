@@ -1,0 +1,23 @@
+# TV DO GUH AI — assistência temporária
+
+O controle continua sendo um app Android TV com APIs públicas, um relay HTTPS e um site pareado. Não há modelo de IA nem agente autônomo executando no servidor. O assistente desta conversa pode usar a API enquanto estiver atendendo, após o dono fornecer um código de assistência criado pelo iPhone já pareado.
+
+## Fluxo de assistência
+
+1. O dono instala a versão 1.2.0, habilita Acessibilidade e pareia o iPhone.
+2. Na TV, autoriza o diagnóstico de apps e/ou as capturas por dez minutos. Acesso ao uso é opcional e necessário para medir dados e cache de outros apps.
+3. No site, escolhe Gerar código de assistência e aceita o aviso de controle temporário. O código de 48 bits expira em cinco minutos e só pode ser resgatado uma vez. Uma nova geração revoga os códigos e sessões de assistência anteriores.
+4. O dono envia o código somente neste chat. O assistente usa `POST /support/redeem` com JSON `{ "code": "CODIGO" }` no bridge `https://tv-do-guh-bridge.onrender.com`. A resposta contém um token de 256 bits com validade de cinco minutos a partir do resgate. Não imprimir ou compartilhar esse token; não colocá-lo em URL, repositório ou logs.
+5. Usar o token no cabeçalho `Authorization: Bearer ...`. `GET /status` informa se a TV está online e o resultado dos comandos. `POST /command` recebe `{ "command": "DIAGNOSE" }` ou `SCREENSHOT`, que exigem a autorização temporária da TV. Guardar o ID e aguardar o resultado: uma resposta 202 indica apenas fila, não execução.
+6. Após confirmação, `GET /diagnostic` retorna o relatório, ou `GET /screenshot` retorna JPEG em data URL. A captura expira em 60 segundos e o relatório em dez minutos. Para inspecionar a imagem, decodificar em arquivo local sem imprimir base64 no chat e usar a ferramenta de visualização de imagens. Confirmar que o ID do relatório/captura corresponde ao pedido atual.
+7. Navegação, volume, mídia e abrir YouTube/Netflix usam os comandos documentados no código. `APP_SETTINGS` exige pacote presente no relatório atual, no campo `package`; apenas solicita a tela oficial de detalhes. `STORAGE_SETTINGS` solicita a tela de armazenamento.
+8. A assistência não pode solicitar `REQUEST_UNINSTALL`, gerar novos códigos nem desconectar o pareamento principal. A navegação ainda pode interagir com telas do Android; isso não é isolamento absoluto de efeitos. Não confirmar ações destrutivas ou mudanças não autorizadas. Não afirmar que apagou, desinstalou ou acelerou a TV sem evidência real. Usar capturas e um diagnóstico atualizado para verificar resultados, quando disponíveis.
+9. O dono pode revogar em `/support` com `{ "action": "cancel" }` usando o token principal do iPhone. Comandos ainda não entregues são descartados na expiração/revogação. Ações já entregues à TV podem terminar. A sessão nunca continua fora do atendimento ativo por iniciativa do assistente.
+
+## Diagnóstico e limpeza
+
+Lista apenas apps com atividades Launcher/Leanback visíveis ao Android, até 100 e com coleta limitada no tempo. Não solicita QUERY_ALL_PACKAGES, root, ADB nem privilégios de sistema. A lista pode ser parcial. Sem Acesso ao uso, o tamanho permanece desconhecido. Com acesso, usa StorageStatsManager; total = appBytes + dataBytes, pois cache já está incluído em dataBytes. RAM é um retrato do sistema, não uma classificação de CPU ou consumo de cada app. Espaço ocupado não comprova lentidão.
+
+O pedido de texto “limpa os aplicativos” inicia DIAGNOSE e não apaga nada. Limpar cache, forçar parada e apagar dados só pelas telas oficiais, com escolha consciente do dono. A solicitação de desinstalação no iPhone exige confirmação explícita e é bloqueada para apps do sistema e o próprio bridge; o Android ainda apresenta sua confirmação na TV. Não há limpeza silenciosa, desinstalação automática nem alegação de ganho de desempenho.
+
+Todas as sessões e relatórios ficam em memória numa única instância. Reinício exige novo pareamento. Testes de transporte e WebKit usam dispositivos simulados; APIs e telas reais da TCL dependem de teste físico.

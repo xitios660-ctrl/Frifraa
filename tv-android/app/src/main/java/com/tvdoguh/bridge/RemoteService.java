@@ -36,17 +36,22 @@ public class RemoteService extends AccessibilityService {
      JSONObject r=Bridge.post("/device/register",new JSONObject());id=r.getString("id");secret=r.getString("secret");
      prefs.edit().putString("id",id).putString("secret",secret).putString("code",r.getString("code")).putLong("expires",System.currentTimeMillis()+r.getLong("expiresIn")*1000).putBoolean("paired",false).apply();
     }
-    JSONObject auth=new JSONObject().put("id",id).put("secret",secret).put("screenshotAllowed",visualAllowed());
-    if(ack!=null){if(ack.has("image")&&!visualAllowed()){ack.remove("image");ack.put("ok",false).put("message","Autorização de captura encerrada");}try{Bridge.post("/device/ack",ack);}catch(Bridge.AuthException e){throw e;}catch(Exception ignored){/* Poll never re-executes an unacknowledged command. */}ack=null;}
+    JSONObject auth=new JSONObject().put("id",id).put("secret",secret).put("screenshotAllowed",visualAllowed()).put("diagnosticAllowed",diagnosticAllowed());
+    if(ack!=null){if(ack.has("diagnostic")&&!diagnosticAllowed()){ack.remove("diagnostic");ack.put("ok",false).put("message","Autorização de diagnóstico encerrada");}if(ack.has("image")&&!visualAllowed()){ack.remove("image");ack.put("ok",false).put("message","Autorização de captura encerrada");}try{Bridge.post("/device/ack",ack);}catch(Bridge.AuthException e){throw e;}catch(Exception ignored){/* Poll never re-executes an unacknowledged command. */}ack=null;}
     JSONObject response=Bridge.post("/device/poll",auth);
     prefs.edit().putBoolean("paired",response.optBoolean("paired")).apply();status("Servidor conectado.");
     JSONObject cmd=response.optJSONObject("command");
     if(cmd!=null){
      CountDownLatch latch=new CountDownLatch(1);String[] result={"Tempo de execução excedido"};
-     String[] image={null};
-     main.post(()->{try{if(running && cmd.optString("command").equals("SCREENSHOT")){if(android.os.Build.VERSION.SDK_INT<30){result[0]="Capturas exigem Android 11+";return;}capture(result,image,latch);return;}if(running)result[0]=execute(cmd.optString("command"));}catch(Exception e){result[0]="Android recusou a ação";}finally{if(!cmd.optString("command").equals("SCREENSHOT")||result[0]!=null)latch.countDown();}});
+     String[] image={null};JSONObject report=null;
+     if(cmd.optString("command").equals("DIAGNOSE")){
+      try{if(!diagnosticAllowed())result[0]="Autorize o diagnóstico de apps na TV";else{report=Diagnostics.collect(this);result[0]=null;}}catch(Exception e){result[0]="Não foi possível ler o diagnóstico Android";}
+     }else{
+     main.post(()->{try{if(running && cmd.optString("command").equals("SCREENSHOT")){if(android.os.Build.VERSION.SDK_INT<30){result[0]="Capturas exigem Android 11+";return;}capture(result,image,latch);return;}if(running)result[0]=execute(cmd);}catch(Exception e){result[0]="Android recusou a ação";}finally{if(!cmd.optString("command").equals("SCREENSHOT")||result[0]!=null)latch.countDown();}});
      if(!latch.await(5,TimeUnit.SECONDS))result[0]="Captura ou execução excedeu o prazo";
-     ack=new JSONObject().put("id",id).put("secret",secret).put("commandId",cmd.getString("id")).put("ok",result[0]==null).put("message",result[0]==null?"Ação aceita pela API Android":result[0]);
+     }
+     ack=new JSONObject().put("id",id).put("secret",secret).put("commandId",cmd.getString("id")).put("ok",result[0]==null).put("message",result[0]==null?successMessage(cmd.optString("command")):result[0]);
+     if(result[0]==null && report!=null && diagnosticAllowed())ack.put("diagnostic",report);
      if(result[0]==null && image[0]!=null && visualAllowed())ack.put("image",image[0]);
     }
    }catch(Bridge.AuthException e){prefs.edit().clear().apply();ack=null;status("Servidor reiniciou ou sessão revogada. Gere novo pareamento.");}
@@ -55,6 +60,7 @@ public class RemoteService extends AccessibilityService {
    }
   },"tv-bridge");worker.start();
  }
+ private boolean diagnosticAllowed(){return prefs.getLong("diagnosticUntil",0)>System.currentTimeMillis();}
  private boolean visualAllowed(){return android.os.Build.VERSION.SDK_INT>=30 && prefs.getLong("visualUntil",0)>System.currentTimeMillis();}
  @android.annotation.TargetApi(30)
  private void capture(String[] result,String[] image,CountDownLatch latch){
@@ -80,9 +86,24 @@ public class RemoteService extends AccessibilityService {
    @Override public void onFailure(int code){result[0]="Android bloqueou a captura (código "+code+"). Conteúdo protegido pode não permitir imagens.";latch.countDown();}
   });
  }
- private String execute(String c){
+ private String successMessage(String command){
+  switch(command){
+   case "DIAGNOSE":return "Diagnóstico coletado; nada foi apagado";
+   case "APP_SETTINGS":return "Solicitação de abrir detalhes aceita; limpeza não realizada";
+   case "REQUEST_UNINSTALL":return "Tela de desinstalação solicitada; confirme na TCL e atualize o diagnóstico";
+   case "STORAGE_SETTINGS":return "Solicitação de abrir armazenamento aceita pelo Android";
+   default:return "Ação aceita pela API Android";
+  }
+ }
+ private String execute(JSONObject command){
+  String c=command.optString("command");
   AudioManager audio=(AudioManager)getSystemService(AUDIO_SERVICE);
   switch(c){
+   case "STORAGE_SETTINGS":startActivity(new Intent(android.provider.Settings.ACTION_INTERNAL_STORAGE_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));return null;
+   case "APP_SETTINGS":case "REQUEST_UNINSTALL":
+    if(!diagnosticAllowed())return "Autorize diagnóstico de apps na TV";
+    if(c.equals("REQUEST_UNINSTALL")&&!command.optBoolean("confirmed"))return "Confirme a solicitação no iPhone";
+    return Diagnostics.openApp(this,command.optString("package"),c.equals("REQUEST_UNINSTALL"));
    case "HOME":return performGlobalAction(GLOBAL_ACTION_HOME)?null:"Início indisponível";
    case "BACK":return performGlobalAction(GLOBAL_ACTION_BACK)?null:"Voltar indisponível";
    case "VOLUME_UP":case "VOLUME_DOWN":case "MUTE":

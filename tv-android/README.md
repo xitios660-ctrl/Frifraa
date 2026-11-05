@@ -31,3 +31,9 @@ Requer Android 11/API 30 ou superior. Na TV, o botão “Diagnóstico visual” 
 O JPEG reduzido passa pelo bridge HTTPS e só pode ser consultado usando o token do iPhone pareado. A imagem não é gravada em disco e expira em até 60 segundos; o botão Apagar captura remove o acesso antes disso. Desautorizar na TV também remove a captura no próximo poll. Capturas podem conter dados pessoais da tela; salve apenas o necessário. Arquivos que o usuário salvar no iPhone não são apagados pelo app. O ChatGPT não recebe imagens automaticamente: salve a captura no iPhone e anexe-a à conversa para análise.
 
 Foram adicionados testes de API para autorização, isolamento entre dispositivos, validação da imagem, expiração e revogação. A exibição e exclusão da imagem foram verificadas em WebKit com dispositivo simulado. A captura real pela API Android ainda requer validação na TCL.
+
+## Diagnóstico de apps e assistência (1.2.0)
+
+Na TV, “Diagnóstico de apps” permite compartilhar espaço livre, RAM e apps visíveis com o iPhone por dez minutos. O acesso opcional ao uso libera as medições públicas de StorageStatsManager quando a TCL permitir. Nenhum dado é apagado automaticamente. O site solicita as telas oficiais de armazenamento/detalhes e permite ao dono pedir a desinstalação, ainda sujeita à confirmação do Android. Apps do sistema e o próprio bridge são protegidos dessas solicitações.
+
+O site permite gerar um código de assistência temporária para enviar nesta conversa. Seu resgate concede até cinco minutos de acesso, revogável pelo iPhone. Não há IA rodando permanentemente nem acesso ao chat sem esse código. Consulte [o fluxo da API de assistência](../tv-bridge/README.md) para escopo, expiração, limites e operação responsável.

@@ -43,3 +43,50 @@ test('captures are cleared by TV withdrawal and cannot accompany ordinary comman
  await req('/device/poll',{...d,screenshotAllowed:false});assert.equal((await req('/screenshot',undefined,p.token)).status,404);
  assert.equal((await req('/command',{command:'SCREENSHOT'},p.token)).status,403);
 });
+function reportFixture(){return {capturedAt:1000,storageTotal:10000,storageFree:1000,ramTotal:5000,ramAvailable:1000,visibleCount:3,android:'12',usageAccess:true,apps:[{package:'com.example.test',label:'Test <script>',system:false,self:false,appBytes:200,dataBytes:100,cacheBytes:20,totalBytes:300},{package:'com.example.system',label:'Sistema',system:true},{package:'com.tvdoguh.bridge',label:'Bridge',self:true}]};}
+test('diagnostic permission, isolated reports and explicit uninstall targeting',async t=>{
+ const req=await setup(t);const d=await req('/device/register',{}),p=await req('/pair',{code:d.code});
+ assert.equal((await req('/command',{command:'DIAGNOSE'},p.token)).status,403);
+ await req('/device/poll',{...d,diagnosticAllowed:true});const c=await req('/command',{command:'DIAGNOSE'},p.token);await req('/device/poll',{...d,diagnosticAllowed:true});
+ const bad=reportFixture();bad.apps[0].totalBytes=999;assert.equal((await req('/device/ack',{...d,commandId:c.id,ok:true,diagnostic:bad})).status,400);
+ assert.equal((await req('/device/ack',{...d,commandId:c.id,ok:true,diagnostic:reportFixture()})).status,200);
+ assert.equal((await req('/diagnostic')).status,401);assert.equal((await req('/diagnostic',undefined,p.token)).report.apps[0].cacheBytes,20);
+ const other=await req('/device/register',{}),o=await req('/pair',{code:other.code});assert.equal((await req('/diagnostic',undefined,o.token)).status,404);
+ assert.equal((await req('/command',{command:'REQUEST_UNINSTALL',package:'com.example.test'},p.token)).status,403);
+ assert.equal((await req('/command',{command:'REQUEST_UNINSTALL',package:'com.example.system',confirmed:true},p.token)).status,403);
+ assert.equal((await req('/command',{command:'APP_SETTINGS',package:'com.not.in.report'},p.token)).status,400);
+ assert.equal((await req('/command',{command:'REQUEST_UNINSTALL',package:'com.tvdoguh.bridge',confirmed:true},p.token)).status,400);
+ const remove=await req('/command',{command:'REQUEST_UNINSTALL',package:'com.example.test',confirmed:true},p.token);assert.equal(remove.status,202);
+ assert.deepEqual((await req('/device/poll',{...d,diagnosticAllowed:true})).command,{id:remove.id,command:'REQUEST_UNINSTALL',package:'com.example.test',confirmed:true});
+ await req('/device/poll',{...d,diagnosticAllowed:false});assert.equal((await req('/diagnostic',undefined,p.token)).status,404);
+});
+test('diagnostic reports expire; unknown app sizes remain unknown',async t=>{
+ let clock=1000;const req=await setup(t,{now:()=>clock});const d=await req('/device/register',{}),p=await req('/pair',{code:d.code});await req('/device/poll',{...d,diagnosticAllowed:true});const c=await req('/command',{command:'DIAGNOSE'},p.token);await req('/device/poll',{...d,diagnosticAllowed:true});
+ const report=reportFixture();report.usageAccess=false;await req('/device/ack',{...d,commandId:c.id,ok:true,diagnostic:report});assert.equal((await req('/diagnostic',undefined,p.token)).report.apps[0].totalBytes,undefined);
+ clock+=600001;assert.equal((await req('/diagnostic',undefined,p.token)).status,404);
+});
+test('temporary support is single-use, visible to owner, restricted, revocable and discards undelivered commands',async t=>{
+ let clock=1000;const req=await setup(t,{now:()=>clock});const d=await req('/device/register',{}),p=await req('/pair',{code:d.code});
+ assert.equal((await req('/support',{action:'create'})).status,401);
+ const invite=await req('/support',{action:'create'},p.token);assert.match(invite.code,/^[A-F0-9]{12}$/);
+ const support=await req('/support/redeem',{code:invite.code});assert.equal(support.expiresIn,300);
+ assert.equal((await req('/support/redeem',{code:invite.code})).status,404);
+ assert.equal((await req('/status',undefined,p.token)).supportActive,true);
+ assert.equal((await req('/support',{action:'create'},support.token)).status,403);
+ assert.equal((await req('/unpair',{},support.token)).status,403);
+ assert.equal((await req('/command',{command:'REQUEST_UNINSTALL',package:'com.example.test',confirmed:true},support.token)).status,403);
+ const c=await req('/command',{command:'HOME'},support.token);assert.equal(c.status,202);
+ assert.equal((await req('/status',undefined,p.token)).results[c.id].actor,'support');
+ await req('/support',{action:'cancel'},p.token);assert.equal((await req('/status',undefined,support.token)).status,401);
+ assert.equal((await req('/device/poll',d)).command,null);assert.equal((await req('/status',undefined,p.token)).results[c.id].state,'failed');
+ const next=await req('/support',{action:'create'},p.token),access=await req('/support/redeem',{code:next.code});clock+=300001;
+ assert.equal((await req('/status',undefined,access.token)).status,401);
+ const expired=await req('/support',{action:'create'},p.token); // Device is offline; no new invitation.
+ assert.equal(expired.status,409);
+});
+test('support invitation expiry and replacing a code revoke previous invitations and sessions',async t=>{
+ let clock=1000;const req=await setup(t,{now:()=>clock});const d=await req('/device/register',{}),p=await req('/pair',{code:d.code});
+ const a=await req('/support',{action:'create'},p.token),b=await req('/support',{action:'create'},p.token);assert.equal((await req('/support/redeem',{code:a.code})).status,404);
+ const s=await req('/support/redeem',{code:b.code});await req('/support',{action:'create'},p.token);assert.equal((await req('/status',undefined,s.token)).status,401);
+ const c=await req('/support',{action:'create'},p.token);clock+=300001;assert.equal((await req('/support/redeem',{code:c.code})).status,404);
+});
