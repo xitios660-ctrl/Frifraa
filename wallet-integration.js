@@ -41,7 +41,7 @@ function createIntegration(clients,{url=process.env.COFRINHO_URL||'https://cofri
    const setCookie=value=>`bp_wallet=${value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${value?2592000:0}${secure?'; Secure':''}`;
    if(pathname==='/api/wallet/login'&&req.method==='POST'){
     const address=(req.headers['x-forwarded-for']||req.socket.remoteAddress||'').split(',').at(-1).trim();
-    const result=await request(pathname,null,{character:body.character,pin:body.pin},address);
+    const result=await request(pathname,null,{character:body.character},address);
     json(200,{character:result.character},{'set-cookie':setCookie(result.token)});return true;
    }
    if(pathname==='/api/wallet/link'&&req.method==='POST'){

@@ -446,9 +446,9 @@ de bots agora ativam a opção explicitamente antes de iniciar.
 O jogo consulta o serviço existente do cofrinho por HTTPS, configurado em
 `COFRINHO_URL` (padrão: https://cofrinho-bomba-party.onrender.com). Configure
 `WALLET_SERVICE_KEY` com o mesmo segredo nos dois serviços. O jogo não recebe
-credenciais do MongoDB e não acessa outros bancos. A identidade da carteira vem
-exclusivamente de uma sessão autenticada por PIN no cofrinho; trocar a skin ou
-forjar um personagem na compra não concede acesso à carteira de outra pessoa.
+credenciais do MongoDB e não acessa outros bancos. A carteira pode ser aberta
+sem PIN ou senha: basta escolher um dos quatro personagens. Qualquer pessoa
+com o link pode consultar e operar a carteira daquele personagem.
 
 `Minha Carteira` funciona na entrada e no lobby. O cookie de sessão é HttpOnly,
 SameSite=Strict e Secure em HTTPS. O vínculo ao WebSocket exige um segredo

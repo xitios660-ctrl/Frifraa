@@ -18,7 +18,7 @@ test('game wallet gateway uses HttpOnly sessions, strips browser prices and iden
  const server=http.createServer((req,res)=>gateway.handle(req,res));server.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));
  const base=`http://127.0.0.1:${server.address().port}`,post=(path,body,headers={})=>fetch(base+path,{method:'POST',headers:{'content-type':'application/json',...headers},body:JSON.stringify(body)});
  try{
-  const login=await post('/api/wallet/login',{character:'mary',pin:'12345678'});assert.equal(login.status,200);assert.ok(login.headers.get('set-cookie').includes('HttpOnly'));assert.equal((await login.json()).token,undefined);
+  const login=await post('/api/wallet/login',{character:'mary'});assert.equal(login.status,200);assert.ok(login.headers.get('set-cookie').includes('HttpOnly'));assert.equal((await login.json()).token,undefined);
   const cookie=login.headers.get('set-cookie').split(';')[0];
   assert.equal((await post('/api/wallet/link',{playerId:'socket-id',walletLink:'forged'},{cookie})).status,403);
   assert.equal((await post('/api/wallet/link',{playerId:'socket-id',walletLink:'private-link'},{cookie})).status,200);assert.equal(ws.walletToken,'f'.repeat(64));assert.equal(ws.walletCharacter,'mary');

@@ -13,7 +13,7 @@ const {createWalletStore}=require(path.join(cofrinho,'wallet-store'));
  try{
   process.env.NODE_ENV='test';process.env.WALLET_SERVICE_KEY='integration-service-key-for-tests-only';
   mongo=await MongoMemoryServer.create();store=createMongoStore({uri:mongo.getUri()});const wallet=createWalletStore(()=>store.database());
-  await wallet.setPin('mary','12345678');await store.setMarked('mary',200,true);
+  await store.setMarked('mary',200,true);
   backend=createApp(store,wallet).listen(0,'127.0.0.1');await new Promise(resolve=>backend.once('listening',resolve));
   const bank=`http://127.0.0.1:${backend.address().port}`;
   game=spawn(process.execPath,['server.js'],{cwd:path.join(__dirname,'..'),env:{...process.env,PORT:String(port),COFRINHO_URL:bank,BOT_AI_PROVIDER:'local'},stdio:['ignore','pipe','pipe']});
@@ -25,7 +25,7 @@ const {createWalletStore}=require(path.join(cofrinho,'wallet-store'));
    await context.addInitScript(()=>{const Native=WebSocket;window.WebSocket=class extends Native{constructor(...args){super(...args);this.addEventListener('message',event=>{const m=JSON.parse(event.data);if(m.type==='state')window.latestState=m;if(m.type==='joined')window.myId=m.playerId;});}};});
    const page=await context.newPage();pages.push(page);page.on('pageerror',error=>errors.push(error.message));await page.goto(base);await page.waitForFunction(()=>document.querySelector('#serverDot').classList.contains('live'));
    if(i===0){
-    await page.locator('.wallet-open').first().click();await page.locator('.wallet-login').waitFor({state:'visible'});await page.selectOption('.wallet-login select','mary');await page.fill('.wallet-login input','12345678');await page.click('.wallet-login button[type=submit]');await page.locator('.wallet-account').waitFor({state:'visible'});
+    await page.locator('.wallet-open').first().click();await page.locator('.wallet-account').waitFor({state:'visible'});
     for(const id of ['bomb2','fire2','speed2','life2','shield']){
      await page.click(`[data-item-id=${id}] button`);await page.waitForFunction(id=>document.querySelector(`[data-item-id=${id}] button`)?.dataset.action==='equip',id);
      await page.click(`[data-item-id=${id}] button`);await page.waitForFunction(id=>document.querySelector(`[data-item-id=${id}] button`)?.getAttribute('aria-pressed')==='true',id);
@@ -40,7 +40,7 @@ const {createWalletStore}=require(path.join(cofrinho,'wallet-store'));
   const host=pages[0];await host.waitForTimeout(1200);assert.equal(await host.evaluate(()=>latestState.phase),'lobby');assert.equal(await host.evaluate(()=>latestState.players.length),4);
   // Another device updates a real deposit in the temporary Mongo database.
   const bankContext=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});const bankPage=await bankContext.newPage();bankPage.on('pageerror',error=>errors.push(error.message));await bankPage.goto(bank);
-  await bankPage.locator('.wallet-open').click();await bankPage.fill('.wallet-login input','12345678');await bankPage.click('.wallet-login button[type=submit]');await bankPage.locator('.wallet-account').waitFor({state:'visible'});await bankPage.click('.wallet-close');await bankPage.locator('[data-amount="5"]').click();await bankPage.waitForFunction(()=>document.querySelector('[data-amount="5"]').classList.contains('done'));
+  await bankPage.locator('[data-amount="5"]').click();await bankPage.waitForFunction(()=>document.querySelector('[data-amount="5"]').classList.contains('done'));
   await host.evaluate(()=>window.BombaWallet.refresh());await host.locator('.wallet-open').first().click();await host.waitForFunction(()=>document.querySelector('.wallet-balances').textContent.includes('105'));await host.click('.wallet-close');
   await host.click('#startBtn');for(const page of pages)await page.waitForFunction(()=>window.latestState?.phase==='playing');
   const snapshots=await Promise.all(pages.map(page=>page.evaluate(()=>latestState.players.map(p=>({skin:p.skin,lives:p.lives,range:p.range,bombs:p.bombs,speedLevel:p.speedLevel,shield:p.shield})))));
@@ -49,6 +49,6 @@ const {createWalletStore}=require(path.join(cofrinho,'wallet-store'));
   // Reload the banking service and Mongo client; the same cookie and purchases survive.
   await new Promise(resolve=>backend.close(resolve));await store.close();store=createMongoStore({uri:mongo.getUri()});backend=createApp(store).listen(Number(new URL(bank).port),'127.0.0.1');await new Promise(resolve=>backend.once('listening',resolve));await bankPage.reload();await bankPage.locator('.wallet-open').click();await bankPage.locator('.wallet-account').waitFor({state:'visible'});assert.equal(await bankPage.locator('.wallet-history li').count(),5);assert.match(await bankPage.locator('.wallet-balances').innerText(),/105/);
   assert.deepEqual(errors,[]);assert.ok(!/Unhandled|Error:/.test(logs),logs);
-  console.log('PASS: real MongoDB; five permanent unlocks and optional equipment; protected wallet; mobile portrait/landscape; cross-device deposits; four synchronized players; purchased initial stats; free defaults; banking restart persistence; no browser errors.');
+  console.log('PASS: real MongoDB; five permanent unlocks and optional equipment; passwordless wallet; mobile portrait/landscape; cross-device deposits; four synchronized players; purchased initial stats; free defaults; banking restart persistence; no browser errors.');
  }finally{await browser?.close();game?.kill('SIGTERM');if(backend)await new Promise(resolve=>backend.close(resolve));await store?.close();await mongo?.stop();}
 })().catch(error=>{console.error(error);process.exit(1);});
