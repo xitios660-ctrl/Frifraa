@@ -65,11 +65,11 @@ test('diagnostic reports expire; unknown app sizes remain unknown',async t=>{
  const report=reportFixture();report.usageAccess=false;await req('/device/ack',{...d,commandId:c.id,ok:true,diagnostic:report});assert.equal((await req('/diagnostic',undefined,p.token)).report.apps[0].totalBytes,undefined);
  clock+=600001;assert.equal((await req('/diagnostic',undefined,p.token)).status,404);
 });
-test('temporary support is single-use, visible to owner, restricted, revocable and discards undelivered commands',async t=>{
+test('persistent support is single-use, visible to owner, restricted, revocable and discards undelivered commands',async t=>{
  let clock=1000;const req=await setup(t,{now:()=>clock});const d=await req('/device/register',{}),p=await req('/pair',{code:d.code});
  assert.equal((await req('/support',{action:'create'})).status,401);
  const invite=await req('/support',{action:'create'},p.token);assert.match(invite.code,/^[A-F0-9]{12}$/);
- const support=await req('/support/redeem',{code:invite.code});assert.equal(support.expiresIn,300);
+ const support=await req('/support/redeem',{code:invite.code});assert.equal(support.expiresIn,null);assert.equal(support.persistent,true);
  assert.equal((await req('/support/redeem',{code:invite.code})).status,404);
  assert.equal((await req('/status',undefined,p.token)).supportActive,true);
  assert.equal((await req('/support',{action:'create'},support.token)).status,403);
@@ -80,7 +80,7 @@ test('temporary support is single-use, visible to owner, restricted, revocable a
  await req('/support',{action:'cancel'},p.token);assert.equal((await req('/status',undefined,support.token)).status,401);
  assert.equal((await req('/device/poll',d)).command,null);assert.equal((await req('/status',undefined,p.token)).results[c.id].state,'failed');
  const next=await req('/support',{action:'create'},p.token),access=await req('/support/redeem',{code:next.code});clock+=300001;
- assert.equal((await req('/status',undefined,access.token)).status,401);
+ assert.equal((await req('/status',undefined,access.token)).status,200);
  const expired=await req('/support',{action:'create'},p.token); // Device is offline; no new invitation.
  assert.equal(expired.status,409);
 });
@@ -89,4 +89,35 @@ test('support invitation expiry and replacing a code revoke previous invitations
  const a=await req('/support',{action:'create'},p.token),b=await req('/support',{action:'create'},p.token);assert.equal((await req('/support/redeem',{code:a.code})).status,404);
  const s=await req('/support/redeem',{code:b.code});await req('/support',{action:'create'},p.token);assert.equal((await req('/status',undefined,s.token)).status,401);
  const c=await req('/support',{action:'create'},p.token);clock+=300001;assert.equal((await req('/support/redeem',{code:c.code})).status,404);
+});
+test('long-poll wakes immediately; action plus observation returns image and real action acknowledgement',async t=>{
+ const req=await setup(t);const d=await req('/device/register',{}),p=await req('/pair',{code:d.code});
+ const polling=req('/device/poll',{...d,screenshotAllowed:true,waitMs:10000});await new Promise(r=>setTimeout(r,30));
+ const start=Date.now(),queued=await req('/command',{command:'OPEN_APP',package:'br.com.saimo.tv',observe:true},p.token);
+ const poll=await polling;assert.equal(poll.command.command,'OPEN_APP');assert.equal(poll.command.package,'br.com.saimo.tv');assert.ok(Date.now()-start<2000,'wake instead of waiting for idle timer');
+ const waiting=req('/wait',{id:queued.observationId,timeoutMs:10000},p.token);await new Promise(r=>setTimeout(r,20));
+ await req('/device/ack',{...d,commandId:queued.id,ok:true});
+ assert.equal((await req('/device/poll',{...d,screenshotAllowed:true})).command.id,queued.observationId);
+ await req('/device/ack',{...d,commandId:queued.observationId,ok:true,image:'/9j/2Q=='});
+ const observed=await waiting;assert.equal(observed.image,'data:image/jpeg;base64,/9j/2Q==');assert.equal(observed.actionResult.state,'executed');assert.equal(observed.result.state,'executed');
+ assert.equal((await req('/command',{command:'OPEN_APP',package:'../unsafe'},p.token)).status,400);
+});
+test('a failed action skips the observation and never reports a screenshot as success',async t=>{
+ const req=await setup(t);const d=await req('/device/register',{}),p=await req('/pair',{code:d.code});await req('/device/poll',{...d,screenshotAllowed:true});
+ const c=await req('/command',{command:'HOME',observe:true},p.token);await req('/device/poll',{...d,screenshotAllowed:true});await req('/device/ack',{...d,commandId:c.id,ok:false,message:'Recusado'});
+ assert.equal((await req('/device/poll',{...d,screenshotAllowed:true})).command,null);
+ const observed=await req('/wait',{id:c.observationId},p.token);assert.equal(observed.result.state,'failed');assert.equal(observed.image,undefined);assert.equal(observed.actionResult.state,'failed');
+});
+test('revocation cancels an open result wait without leaking data',async t=>{
+ const req=await setup(t);const d=await req('/device/register',{}),p=await req('/pair',{code:d.code}),invite=await req('/support',{action:'create'},p.token),s=await req('/support/redeem',{code:invite.code});
+ const c=await req('/command',{command:'HOME'},s.token),wait=req('/wait',{id:c.id,timeoutMs:10000},s.token);await new Promise(r=>setTimeout(r,20));await req('/support',{action:'cancel'},p.token);assert.equal((await wait).status,401);
+});
+test('identity persistence survives process restart and time advance; file contains hashes, no raw credentials',async t=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');const dir=fs.mkdtempSync(path.join(os.tmpdir(),'tv-state-'));const storePath=path.join(dir,'identities.json');let clock=1000,server;
+ t.after(async()=>{if(server)await new Promise(r=>server.close(r));fs.rmSync(dir,{recursive:true,force:true});});
+ async function start(){server=createServer({storePath,now:()=>clock});await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port;return async(path,body,token)=>{const r=await fetch(base+path,{method:body===undefined?'GET':'POST',headers:{'content-type':'application/json',...(token?{authorization:'Bearer '+token}:{})},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,...await r.json()};};}
+ let req=await start();const d=await req('/device/register',{}),p=await req('/pair',{code:d.code}),invite=await req('/support',{action:'create'},p.token),s=await req('/support/redeem',{code:invite.code});
+ const disk=fs.readFileSync(storePath,'utf8');assert.equal(disk.includes(d.secret),false);assert.equal(disk.includes(p.token),false);assert.equal(disk.includes(s.token),false);assert.equal(fs.statSync(storePath).mode&0o777,0o600);
+ await new Promise(r=>server.close(r));server=null;clock+=365*86400000;req=await start();assert.equal((await req('/status',undefined,p.token)).status,200);assert.equal((await req('/status',undefined,s.token)).status,200);
+ await req('/support',{action:'cancel'},p.token);assert.equal((await req('/status',undefined,s.token)).status,401);
 });

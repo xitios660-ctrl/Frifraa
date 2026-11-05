@@ -54,3 +54,11 @@ O compartilhamento para quando o usuário toca no botão novamente, usa a ação
 4. No iPhone, solicitar Capturar tela da TV. Verificar se a imagem corresponde à TCL e se muda após uma navegação manual.
 5. Gerar um novo código de assistência para que o assistente consiga inspecionar a imagem autorizada e verificar o resultado de cada ação. Até receber uma imagem válida, não afirmar que a visão remota funciona.
 6. Parar o compartilhamento e confirmar que novos pedidos de captura são recusados. Conteúdo DRM não será usado para validar a captura.
+
+## Controle persistente e mais rápido (1.4.0)
+
+Substitui os limites voluntários de dez minutos das versões anteriores: o dono pode autorizar capturas e diagnóstico até desligar o recurso. A projeção não é reiniciada automaticamente após encerramento do Android, reinício da TV ou morte do processo: é obrigatório autorizar uma nova sessão no sistema. O botão Parar e a notificação continuam funcionando, e desativar a acessibilidade encerra a projeção. Não há agente autônomo em segundo plano enviando comandos.
+
+Long-poll evita a espera periódica de 1,2 segundo. Após uma ação confirmada, a captura dependente espera 200 ms antes de copiar a imagem disponível. Isso reduz o atraso, mas animações e aplicativos lentos ainda podem exigir nova captura. OPEN_APP abre diretamente um aplicativo visível pelo launcher público do Android. Nenhum comando é tratado como visualmente concluído sem conferir a imagem retornada.
+
+O iPhone e a assistência permanecem autorizados até revogação; detalhes de persistência e as limitações do sistema de arquivos do Render estão no README do bridge. Imagens e relatórios continuam temporários (60 segundos e dez minutos), independentemente da duração do acesso.

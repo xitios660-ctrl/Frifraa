@@ -26,7 +26,7 @@ public class RemoteService extends AccessibilityService {
   if(running)return;connected=true;running=true;prefs=getSharedPreferences("bridge",MODE_PRIVATE);
   worker=new Thread(()->{
    JSONObject ack=null;
-   while(running){try{
+   while(running){boolean failed=false;try{
     String id=prefs.getString("id",""),secret=prefs.getString("secret","");
     if(prefs.getBoolean("reset",false)){
      if(!id.isEmpty())Bridge.post("/device/revoke",new JSONObject().put("id",id).put("secret",secret));
@@ -36,7 +36,7 @@ public class RemoteService extends AccessibilityService {
      JSONObject r=Bridge.post("/device/register",new JSONObject());id=r.getString("id");secret=r.getString("secret");
      prefs.edit().putString("id",id).putString("secret",secret).putString("code",r.getString("code")).putLong("expires",System.currentTimeMillis()+r.getLong("expiresIn")*1000).putBoolean("paired",false).apply();
     }
-    JSONObject auth=new JSONObject().put("id",id).put("secret",secret).put("screenshotAllowed",visualAllowed()).put("diagnosticAllowed",diagnosticAllowed());
+    JSONObject auth=new JSONObject().put("id",id).put("secret",secret).put("screenshotAllowed",visualAllowed()).put("diagnosticAllowed",diagnosticAllowed()).put("waitMs",10000);
     if(ack!=null){if(ack.has("diagnostic")&&!diagnosticAllowed()){ack.remove("diagnostic");ack.put("ok",false).put("message","Autorização de diagnóstico encerrada");}if(ack.has("image")&&!visualAllowed()){ack.remove("image");ack.put("ok",false).put("message","Autorização de captura encerrada");}try{Bridge.post("/device/ack",ack);}catch(Bridge.AuthException e){throw e;}catch(Exception ignored){/* Poll never re-executes an unacknowledged command. */}ack=null;}
     JSONObject response=Bridge.post("/device/poll",auth);
     prefs.edit().putBoolean("paired",response.optBoolean("paired")).apply();status("Servidor conectado.");
@@ -47,16 +47,16 @@ public class RemoteService extends AccessibilityService {
      if(cmd.optString("command").equals("DIAGNOSE")){
       try{if(!diagnosticAllowed())result[0]="Autorize o diagnóstico de apps na TV";else{report=Diagnostics.collect(this);result[0]=null;}}catch(Exception e){result[0]="Não foi possível ler o diagnóstico Android";}
      }else{
-     main.post(()->{try{if(running && cmd.optString("command").equals("SCREENSHOT")){if(ProjectionService.available()){result[0]=null;screenshots.execute(()->{try{if(!visualAllowed())throw new IllegalStateException();image[0]=ProjectionService.capture();result[0]=null;}catch(Exception e){result[0]=e.getMessage()==null?"Falha na captura Android":e.getMessage();}finally{latch.countDown();}});return;}if(android.os.Build.VERSION.SDK_INT<30){result[0]="Capturas exigem Android 11+";return;}capture(result,image,latch);return;}if(running)result[0]=execute(cmd);}catch(Exception e){result[0]="Android recusou a ação";}finally{if(!cmd.optString("command").equals("SCREENSHOT")||result[0]!=null)latch.countDown();}});
+     main.post(()->{try{if(running && cmd.optString("command").equals("SCREENSHOT")){if(ProjectionService.available()){result[0]=null;main.postDelayed(()->{try{screenshots.execute(()->{try{if(!visualAllowed())throw new IllegalStateException();image[0]=ProjectionService.capture();result[0]=null;}catch(Exception e){result[0]=e.getMessage()==null?"Falha na captura Android":e.getMessage();}finally{latch.countDown();}});}catch(RuntimeException e){result[0]="Serviço de captura encerrado";latch.countDown();}},200);return;}if(android.os.Build.VERSION.SDK_INT<30){result[0]="Capturas exigem Android 11+";return;}capture(result,image,latch);return;}if(running)result[0]=execute(cmd);}catch(Exception e){result[0]="Android recusou a ação";}finally{if(!cmd.optString("command").equals("SCREENSHOT")||result[0]!=null)latch.countDown();}});
      if(!latch.await(5,TimeUnit.SECONDS))result[0]="Captura ou execução excedeu o prazo";
      }
      ack=new JSONObject().put("id",id).put("secret",secret).put("commandId",cmd.getString("id")).put("ok",result[0]==null).put("message",result[0]==null?successMessage(cmd.optString("command")):result[0]);
      if(result[0]==null && report!=null && diagnosticAllowed())ack.put("diagnostic",report);
      if(result[0]==null && image[0]!=null && visualAllowed())ack.put("image",image[0]);
     }
-   }catch(Bridge.AuthException e){stopService(new Intent(this,ProjectionService.class));prefs.edit().clear().apply();ack=null;status("Servidor reiniciou ou sessão revogada. Gere novo pareamento.");}
-    catch(Exception e){status("Sem conexão. Reconectando automaticamente…");}
-    try{Thread.sleep(1200);}catch(InterruptedException e){break;}
+   }catch(Bridge.AuthException e){failed=true;stopService(new Intent(this,ProjectionService.class));prefs.edit().clear().apply();ack=null;status("Servidor reiniciou ou sessão revogada. Gere novo pareamento.");}
+    catch(Exception e){failed=true;status("Sem conexão. Reconectando automaticamente…");}
+    try{Thread.sleep(failed?1500:0);}catch(InterruptedException e){break;}
    }
   },"tv-bridge");worker.start();
  }
@@ -109,6 +109,7 @@ public class RemoteService extends AccessibilityService {
    case "VOLUME_UP":case "VOLUME_DOWN":case "MUTE":
     if(audio.isVolumeFixed())return "Volume fixo nesta saída de áudio";
     audio.adjustStreamVolume(AudioManager.STREAM_MUSIC,c.equals("MUTE")?AudioManager.ADJUST_TOGGLE_MUTE:c.equals("VOLUME_UP")?AudioManager.ADJUST_RAISE:AudioManager.ADJUST_LOWER,AudioManager.FLAG_SHOW_UI);return null;
+   case "OPEN_APP":if(!Diagnostics.packages(this).contains(command.optString("package")))return "Aplicativo não encontrado";return launch(command.optString("package"));
    case "YOUTUBE":return launch("com.google.android.youtube.tv");
    case "NETFLIX":return launch("com.netflix.ninja");
    case "PLAY_PAUSE":
@@ -134,5 +135,5 @@ public class RemoteService extends AccessibilityService {
  }
  @Override public void onAccessibilityEvent(AccessibilityEvent e){}
  @Override public void onInterrupt(){}
- @Override public void onDestroy(){running=false;connected=false;if(worker!=null)worker.interrupt();stopService(new Intent(this,ProjectionService.class));screenshots.shutdownNow();super.onDestroy();}
+ @Override public void onDestroy(){running=false;connected=false;main.removeCallbacksAndMessages(null);if(worker!=null)worker.interrupt();stopService(new Intent(this,ProjectionService.class));screenshots.shutdownNow();super.onDestroy();}
 }

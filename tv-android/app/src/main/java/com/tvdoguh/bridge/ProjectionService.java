@@ -50,7 +50,7 @@ public class ProjectionService extends Service {
   notifications.createNotificationChannel(new NotificationChannel("screen","Compartilhamento de tela",NotificationManager.IMPORTANCE_LOW));
   Intent stop=new Intent(this,ProjectionService.class).setAction("STOP");
   PendingIntent pending=PendingIntent.getService(this,0,stop,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
-  Notification notification=new Notification.Builder(this,"screen").setSmallIcon(android.R.drawable.ic_menu_camera).setContentTitle("TV DO GUH AI: tela compartilhada").setContentText("Capturas autorizadas por até 10 minutos. Toque para parar.").setContentIntent(pending).addAction(new Notification.Action.Builder(null,"Parar",pending).build()).setOngoing(true).build();
+  Notification notification=new Notification.Builder(this,"screen").setSmallIcon(android.R.drawable.ic_menu_camera).setContentTitle("TV DO GUH AI: tela compartilhada").setContentText("Capturas autorizadas até você parar. Toque para encerrar.").setContentIntent(pending).addAction(new Notification.Action.Builder(null,"Parar",pending).build()).setOngoing(true).build();
   try{
    if(Build.VERSION.SDK_INT>=29)startForeground(13,notification,android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);else startForeground(13,notification);
    Intent consent=intent.getParcelableExtra("consent");
@@ -64,9 +64,9 @@ public class ProjectionService extends Service {
    reader=ImageReader.newInstance(width,height,PixelFormat.RGBA_8888,3);
    reader.setOnImageAvailableListener(source->{synchronized(lock){try{Image fresh=source.acquireLatestImage();if(fresh!=null){if(latest!=null)latest.close();latest=fresh;}}catch(IllegalStateException ignored){}}},new Handler(frames.getLooper()));
    display=projection.createVirtualDisplay("TV DO GUH capture",width,height,metrics.densityDpi,DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,reader.getSurface(),null,main);
-   until=SystemClock.elapsedRealtime()+600000;instance=this;
-   getSharedPreferences("bridge",MODE_PRIVATE).edit().putLong("visualUntil",System.currentTimeMillis()+600000).putString("projectionStatus","Compartilhamento Android autorizado. Solicite uma captura no iPhone.").apply();
-   main.postDelayed(expiry,600000);
+   until=Long.MAX_VALUE;instance=this;
+   getSharedPreferences("bridge",MODE_PRIVATE).edit().putLong("visualUntil",Long.MAX_VALUE).putString("projectionStatus","Compartilhamento Android autorizado. Solicite uma captura no iPhone.").apply();
+   // User-authorized sharing remains active until explicitly stopped or revoked by Android.
   }catch(Exception e){getSharedPreferences("bridge",MODE_PRIVATE).edit().putString("projectionStatus","A TCL recusou iniciar compartilhamento ("+e.getClass().getSimpleName()+").").apply();stopSelf();}
   return START_NOT_STICKY;
  }

@@ -21,3 +21,19 @@ Lista apenas apps com atividades Launcher/Leanback visíveis ao Android, até 10
 O pedido de texto “limpa os aplicativos” inicia DIAGNOSE e não apaga nada. Limpar cache, forçar parada e apagar dados só pelas telas oficiais, com escolha consciente do dono. A solicitação de desinstalação no iPhone exige confirmação explícita e é bloqueada para apps do sistema e o próprio bridge; o Android ainda apresenta sua confirmação na TV. Não há limpeza silenciosa, desinstalação automática nem alegação de ganho de desempenho.
 
 Todas as sessões e relatórios ficam em memória numa única instância. Reinício exige novo pareamento. Testes de transporte e WebKit usam dispositivos simulados; APIs e telas reais da TCL dependem de teste físico.
+
+## Alterações da versão 1.4.0 (substituem os prazos de sessão anteriores)
+
+A pedido do proprietário, o pareamento principal e o acesso de assistência resgatado não expiram por tempo. Continuam autenticados e revogáveis. O código de convite mantém validade de cinco minutos e uso único; não é necessário gerar códigos durante uma assistência já conectada. Gerar outro convite revoga as assistências anteriores. Não há agente executando fora do atendimento ativo.
+
+As identidades e hashes de tokens/segredos são gravados atomicamente em arquivo local de modo 0600 (`TV_STATE_PATH`, padrão `.data/identities.json`), sem imagens, relatórios, filas ou tokens em texto puro. Isso permite reiniciar o processo usando o mesmo sistema de arquivos sem perder o pareamento. **O sistema de arquivos padrão do Render não é um disco persistente: um deploy ou substituição da instância pode perder esse arquivo e exigir novo pareamento.** Configure TV_STATE_PATH em um volume persistente para sobreviver a essas operações. Nenhum recurso pago foi criado automaticamente. A revogação é salva imediatamente.
+
+### Caminho rápido para controle com visão
+
+A TV faz long-poll de até dez segundos e o servidor acorda essa requisição assim que há um comando. Foi removida a pausa de 1,2 segundo entre entrega e confirmação. Capturas têm intervalo mínimo de 300 ms, em vez de cinco segundos. Não há transmissão contínua de imagens; o compartilhamento local continua sujeito à autorização do Android.
+
+`POST /command` pode receber `{ "command": "OPEN_APP", "package": "br.com.saimo.tv", "observe": true }`. OPEN_APP usa apenas o launcher público de um pacote com interface visível no Android, sem injeção de intents arbitrários. A TV valida o pacote antes de abrir. Isso evita navegar toda a lista de favoritos. Os comandos existentes também aceitam observe=true, exceto SCREENSHOT e DIAGNOSE.
+
+A resposta contém id e observationId. O servidor entrega a ação, aguarda sua confirmação e só então entrega a captura dependente. Se a ação falhar ou a autorização for revogada, a captura dependente não é executada. `POST /wait` com `{ "id": "observationId", "timeoutMs": 12000 }` aguarda o evento e retorna actionResult, result e image (JPEG em data URL) apenas se houver uma captura correspondente. Valida a autorização novamente antes de responder. Não considere a ação visualmente verificada até inspecionar a imagem retornada.
+
+O cliente `tools/assist.py` usa esse caminho, guarda o token em arquivo local 0600 e escreve a imagem sem imprimir base64 ou credenciais. Exemplos: `python3 tv-bridge/tools/assist.py redeem CODIGO`, depois `python3 tv-bridge/tools/assist.py act OPEN_APP br.com.saimo.tv`. Use a ferramenta de visualização sobre imagePath retornado. O tempo reportado mede transporte completo nessa execução; não é garantia de latência para a TCL.
