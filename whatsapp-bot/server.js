@@ -11,6 +11,7 @@ const { reply, shouldWebSearch } = require('./reply');
 const { getWeatherReply } = require('./weather');
 const { createStopGame } = require('./stop-game');
 const { createBlackjack } = require('./blackjack');
+const { createSecretSanta, rosterFromJSON } = require('./secret-santa');
 const { IMAGE_MODEL, DAILY_IMAGE_LIMIT, parseImageRequest, reserveImage, generateImage, imageErrorMessage } = require('./image');
 
 const makeWASocket = baileys.default || baileys.makeWASocket;
@@ -20,6 +21,7 @@ const MONGODB_URI = process.env.MONGODB_URI || '';
 const DB_NAME = process.env.MONGODB_DB || 'bomba_party_whatsapp';
 const MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 const GROUP_INVITE_CODE = String(process.env.WHATSAPP_GROUP_INVITE_CODE || '').trim();
+const PRIMARY_GROUP_PROTECTION = process.env.PRIMARY_GROUP_ID || '120363433794510714@g.us';
 if (ADMIN_PASSWORD.length < 8) throw new Error('Defina ADMIN_PASSWORD de ao menos 8 caracteres no Render (16 ou mais recomendado).');
 if (!MONGODB_URI || SESSION_SECRET.length < 24) throw new Error('Defina MONGODB_URI e SESSION_SECRET no Render.');
 if (DB_NAME !== 'bomba_party_whatsapp') throw new Error('Somente o banco separado bomba_party_whatsapp é permitido.');
@@ -94,7 +96,7 @@ app.post('/api/logout', guard, (_req, res) => {
 });
 
 const status = { phase: 'iniciando', connected: false, qr: null, lastError: '', since: null, received: 0, sent: 0, profileName: 'Pendente', profilePhoto: 'Pendente' };
-let client, db, authStore, sock, reconnectTimer, launching = false, stopGame = null, blackjack = null, gameClock = null;
+let client, db, authStore, sock, reconnectTimer, launching = false, stopGame = null, blackjack = null, secretSanta = null, gameClock = null;
 let botEnabled = true, imagesEnabled = false, geminiKey = '', selectedGroupId = '', ready = false, stopping = false;
 const history = new Map();
 const queues = new Map();
@@ -158,6 +160,7 @@ const e164 = jid => /^\d+@s\.whatsapp\.net$/.test(jid)
   ? '+' + (jid.split('@')[0].startsWith('55') ? jid.split('@')[0] : '55'+jid.split('@')[0]) : '';
 let lastGroupIdentitySync = 0;
 const verifiedSenderCache = new Map();
+const santaIdentityCache = new Map();
 async function syncKnownGroupIdentities(socket, groupId) {
   if (!socket || !groupId || !db) return;
   let group;
@@ -220,6 +223,50 @@ async function getVerifiedGroupSender(message, groupId) {
   if(verifiedSenderCache.size>80)verifiedSenderCache.clear();
   return identity;
 }
+async function resolveSantaIdentity({jids,groupId,phones}) {
+  if(!sock||!Array.isArray(jids)||!Array.isArray(phones))return null;
+  const aliases=[...new Set(jids.map(normalizedJid).filter(j=>/^\d+@(lid|s\.whatsapp\.net)$/.test(j)))];
+  if(!aliases.length)return null;
+  const cacheKey=groupId+':'+aliases.slice().sort().join(':');
+  const prior=santaIdentityCache.get(cacheKey);
+  if(prior&&prior.until>Date.now())return prior.member;
+  const allowed=new Set(phones.map(x=>String(x).replace(/\D/g,'')));
+  // Resolve the WhatsApp sender via signed PN/LID mappings, never by pushName.
+  const candidateSet=new Set(aliases);
+  const mapping=sock.signalRepository?.lidMapping;
+  for(const lid of aliases.filter(j=>j.endsWith('@lid'))){
+    try {
+      const pn=normalizedJid(await mapping?.getPNForLID?.(lid));
+      if(pn.endsWith('@s.whatsapp.net'))candidateSet.add(pn);
+    }catch{}
+  }
+  if(groupId&&![...candidateSet].some(x=>x.endsWith('@s.whatsapp.net'))){
+    try{
+      const meta=await sock.groupMetadata(groupId);
+      for(const p of meta.participants||[]){
+        const ids=[p.id,p.lid,p.phoneNumber,p.pn,p.participantAlt].map(normalizedJid);
+        if(ids.some(j=>candidateSet.has(j)))for(const val of ids)if(val)candidateSet.add(val);
+      }
+    }catch(e){console.warn('[santa] Não foi possível consultar identidades do grupo.')}
+  }
+  let matches=phones.filter(phone=>candidateSet.has(phone+'@s.whatsapp.net'));
+  if(matches.length===0){
+    // A verified LID-to-phone lookup is also sufficient for private chats.
+    for(const phone of allowed){
+      try{
+        const lid=normalizedJid(await mapping?.getLIDForPN?.(phone+'@s.whatsapp.net'));
+        if(lid.endsWith('@lid')&&candidateSet.has(lid))matches.push(phone);
+      }catch{}
+    }
+  }
+  if(matches.length!==1)return null;
+  const phone=matches[0];
+  const member={phone,aliases:[...candidateSet].filter(j=>j===phone+'@s.whatsapp.net'||aliases.includes(j))};
+  santaIdentityCache.set(cacheKey,{member,until:Date.now()+60000});
+  if(santaIdentityCache.size>120)santaIdentityCache.clear();
+  return member;
+}
+
 function asksOwnIdentity(text) {
   const q=String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
   return /\b(quem sou eu|quem ta falando|quem esta falando|sabe quem eu sou|qual e meu nome|me reconhece|quem esta te chamando)\b/.test(q);
@@ -374,42 +421,70 @@ async function handleMessage(message) {
     if (history.size > 200) history.clear();
   } finally { await socket.sendPresenceUpdate('paused', jid).catch(() => {}); }
 }
-async function handleBlackjackPrivateMessage(msg) {
-  if(!ready || !status.connected || !botEnabled || !blackjack || !sock || !selectedGroupId)return;
-  const jid=normalizedJid(msg.key?.remoteJid);
-  if(!/^\d+@(lid|s\.whatsapp\.net)$/.test(jid) || msg.key?.fromMe || !msg.key?.id)return;
-  const text=extractText(msg).trim().slice(0,500);
+async function handleSecretSantaGroupMessage(message) {
+  if(!ready||!status.connected||!botEnabled||!secretSanta||!sock)return;
+  const groupId=message.key?.remoteJid;
+  if(!secretSanta.mightHandleGroup(groupId,extractText(message)))return;
+  if(message.key.fromMe||!message.key.id)return;
+  const text=extractText(message).trim().slice(0,650);
   if(!text)return;
-  const sentAt=Number(msg.messageTimestamp || 0);
-  if(sentAt && Math.abs(Date.now()/1000-sentAt)>600)return;
+  const sentAt=Number(message.messageTimestamp||0);
+  if(sentAt&&Math.abs(Date.now()/1000-sentAt)>600)return;
+  const seen=await db.collection('whatsapp_seen').updateOne(
+    {_id:'santa:'+groupId+':'+message.key.id},{$setOnInsert:{createdAt:new Date()}},{upsert:true});
+  if(!seen.upsertedCount)return;
+  const handled=await secretSanta.groupMessage({
+    groupId,text,jids:participantJids(message)
+  });
+  if(handled)status.received++;
+}
+async function handlePrivateMessage(msg) {
+  if(!ready||!status.connected||!botEnabled||!sock)return;
+  const jid=normalizedJid(msg.key?.remoteJid);
+  if(!/^\d+@(lid|s\.whatsapp\.net)$/.test(jid)||msg.key?.fromMe||!msg.key?.id)return;
+  const text=extractText(msg).trim().slice(0,550);
+  if(!text)return;
+  const sentAt=Number(msg.messageTimestamp||0);
+  if(sentAt&&Math.abs(Date.now()/1000-sentAt)>600)return;
   const seen=await db.collection('whatsapp_seen').updateOne(
     {_id:'private:'+jid+':'+msg.key.id},{$setOnInsert:{createdAt:new Date()}},{upsert:true});
   if(!seen.upsertedCount)return;
-  const identityMessage={key:{participant:jid,participantAlt:normalizedJid(msg.key.remoteJidAlt)},participant:jid};
-  const identity=await getVerifiedGroupSender(identityMessage,selectedGroupId)
-    .catch(()=>({name:null,jids:[jid]}));
-  if(!identity?.phoneE164)return; // Never expose cards without verified group identity.
-  await blackjack.handlePrivate({text,identity,remoteJid:jid});
+  if(blackjack && selectedGroupId) {
+    const identityMessage={key:{participant:jid,participantAlt:normalizedJid(msg.key.remoteJidAlt)},participant:jid};
+    const identity=await getVerifiedGroupSender(identityMessage,selectedGroupId)
+      .catch(()=>({name:null,jids:[jid]}));
+    if(identity?.phoneE164){
+      const handled=await blackjack.handlePrivate({text,identity,remoteJid:jid});
+      if(handled){status.received++;return;}
+    }
+  }
+  if(secretSanta){
+    const handled=await secretSanta.privateMessage({text,
+      jids:[jid,normalizedJid(msg.key.remoteJidAlt)].filter(Boolean)});
+    if(handled)status.received++;
+  }
 }
 
+
 function queueContact(msg) {
-  const jid=msg.key && msg.key.remoteJid;
-  const isGroup=isSelectedGroup(jid);
-  const isPrivate=typeof jid==='string' && /^\d+@(lid|s\.whatsapp\.net)$/.test(jid);
-  if(!isGroup&&!isPrivate)return;
-  // Order each member's messages; never let another player's slow AI reply
-  // block STOP submissions or Blackjack actions for the whole group.
-  const sender=isGroup ? participantJids(msg).slice().sort()[0]||'unknown' : '';
-  const queueKey=isGroup ? jid+':'+sender : jid;
+  const jid=msg.key&&msg.key.remoteJid;
+  const oldGroup=isSelectedGroup(jid);
+  const santaGroup=!oldGroup&&secretSanta?.mightHandleGroup(jid,extractText(msg));
+  const privateChat=typeof jid==='string'&&/^\d+@(lid|s\.whatsapp\.net)$/.test(jid);
+  if(!oldGroup&&!santaGroup&&!privateChat)return;
+  const sender=oldGroup||santaGroup?participantJids(msg).slice().sort()[0]||'unknown':'';
+  const queueKey=privateChat?jid:jid+':'+sender;
   const receivedAt=Date.now();
   const prior=queues.get(queueKey)||Promise.resolve();
-  const next=prior.catch(()=>{}).then(async ()=>{
+  const next=prior.catch(()=>{}).then(async()=>{
     const waited=Date.now()-receivedAt;
     if(waited>=1500)console.warn('[latency] Fila WhatsApp aguardou '+waited+'ms');
-    return isGroup ? handleMessage(msg) : handleBlackjackPrivateMessage(msg);
+    if(oldGroup)return handleMessage(msg);
+    if(santaGroup)return handleSecretSantaGroupMessage(msg);
+    return handlePrivateMessage(msg);
   });
   queues.set(queueKey,next);
-  next.catch(err=>console.error('[whatsapp] Mensagem não processada:',err.message)).finally(()=>{
+  next.catch(e=>console.error('[whatsapp] Mensagem não processada:',String(e.message).slice(0,130))).finally(()=>{
     if(queues.get(queueKey)===next)queues.delete(queueKey);
   });
 }
@@ -615,7 +690,7 @@ app.post('/api/settings', guard, async (req, res) => {
     await db.collection('settings').updateOne({ _id: 'bot' }, { $set: update }, { upsert: true });
     if ('enabled' in update) botEnabled = update.enabled;
     if ('imagesEnabled' in update) imagesEnabled = update.imagesEnabled;
-    if ('groupId' in update) { selectedGroupId = update.groupId; stopGame?.setGroupId(selectedGroupId); blackjack?.setGroupId(selectedGroupId); history.clear(); queues.clear(); verifiedSenderCache.clear(); }
+    if ('groupId' in update) { selectedGroupId = update.groupId; stopGame?.setGroupId(selectedGroupId); blackjack?.setGroupId(selectedGroupId); history.clear(); queues.clear(); verifiedSenderCache.clear(); santaIdentityCache.clear(); }
     if ('geminiKey' in update) geminiKey = String(req.body.geminiKey).trim();
     return res.json({ ok: true, botEnabled, geminiConfigured: !!geminiKey, selectedGroupId, imagesEnabled });
   } catch (error) {
@@ -648,7 +723,7 @@ app.post('/api/reset-session', guard, async (req, res) => {
     sock = null;
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     await db.collection('whatsapp_auth').deleteMany({});
-    history.clear(); queues.clear(); counters.clear(); lastMessageAt.clear(); verifiedSenderCache.clear();
+    history.clear(); queues.clear(); counters.clear(); lastMessageAt.clear(); verifiedSenderCache.clear(); santaIdentityCache.clear();
     status.qr = null; status.connected = false; status.phase = 'conectando';
     await db.collection('settings').updateOne({ _id: 'bot' }, { $set: { enabled: true } }, { upsert: true });
     botEnabled = true;
@@ -673,6 +748,45 @@ async function main() {
   selectedGroupId = !GROUP_INVITE_CODE && typeof record?.groupId === 'string' && record.groupId.endsWith('@g.us') ? record.groupId : '';
   if (record && record.geminiKey) try { geminiKey = authStore.codec.decrypt(record.geminiKey); } catch { console.error('[settings] Chave Gemini indisponível; recadastre-a.'); }
   if (!geminiKey && process.env.GEMINI_API_KEY) geminiKey = process.env.GEMINI_API_KEY.trim();
+  // The Secret Santa group is deliberately independent of the legacy bot group.
+  const santaRoster=rosterFromJSON(process.env.SECRET_SANTA_PARTICIPANTS||'[]');
+  if(santaRoster.length>=3) {
+    secretSanta=createSecretSanta({
+      db,roster:santaRoster,adminPhone:process.env.SECRET_SANTA_ADMIN_PHONE||'',
+      isOriginalGroup:groupId=>groupId===selectedGroupId||groupId===PRIMARY_GROUP_PROTECTION,
+      resolveIdentity:resolveSantaIdentity,
+      isActive:()=>botEnabled&&status.connected&&!!sock,
+      sendGroup:async(groupId,text)=>{
+        if(!sock||!botEnabled||!status.connected||!secretSanta?.isBoundGroup(groupId))return;
+        const socket=sock;
+        await socket.sendMessage(groupId,{text});
+        if(socket===sock)status.sent++;
+      },
+      sendPrivate:async (recipient,text)=>{
+        if(!sock||!botEnabled||!status.connected||!secretSanta?.getBoundGroup())throw new Error('Bot offline');
+        const phone=String(recipient?.phone||'').replace(/\D/g,'');
+        if(!santaRoster.some(p=>p.phone===phone))throw new Error('Destinatário não autorizado');
+        const pn=phone+'@s.whatsapp.net',socket=sock;
+        let verifiedLid=null;
+        try{
+          const lid=normalizedJid(await socket.signalRepository?.lidMapping?.getLIDForPN?.(pn));
+          if(/^\d+@lid$/.test(lid))verifiedLid=lid;
+        }catch{}
+        const candidates=[...new Set([verifiedLid,pn].filter(Boolean))];
+        let failure;
+        for(const to of candidates) {
+          try{
+            const sent=await socket.sendMessage(to,{text});
+            if(!sent?.key?.id)throw new Error('WhatsApp não aceitou o envio');
+            status.sent++;return {messageId:sent.key.id,jid:to};
+          }catch(e){failure=e}
+        }
+        throw failure||new Error('Não foi possível enviar a mensagem privada');
+      }
+    });
+    await secretSanta.init();
+    console.log('[santa] Amigo Secreto preparado: '+secretSanta.rosterCount()+' convidados; grupo independente.');
+  }
   stopGame = createStopGame({
     db,
     groupId: selectedGroupId || null,
@@ -733,6 +847,7 @@ async function main() {
   gameClock = setInterval(() => {
     stopGame?.tick().catch(e => console.error('[stop] Timer:',e.message));
     blackjack?.tick().catch(e => console.error('[blackjack] Timer:',e.message));
+    secretSanta?.tick().catch(e => console.error('[santa] Timer:',String(e.message).slice(0,100)));
   },1000);
   ready = true;
   console.log('[bot] MongoDB conectado; configurações e sessão persistidas.');
