@@ -28,8 +28,9 @@ async function showDiagnostic(id,ready){const session=token;try{
 
 function clearShot(){clearTimeout(shotTimer);document.getElementById("shot").removeAttribute("src");document.getElementById("shot").hidden=true;}
 async function showShot(id,ready){const requestedToken=token;try{const s=ready||await request("/screenshot");if(token!==requestedToken)return;if(s.id!==id)throw Error("Captura não corresponde ao pedido");clearShot();const img=document.getElementById("shot");img.src=s.image;img.hidden=false;document.getElementById("shot-status").textContent="Captura recebida. Salve e envie neste chat se quiser minha análise.";shotTimer=setTimeout(clearShot,s.expiresIn*1000);}catch(e){document.getElementById("shot-status").textContent=e.message;}}
-try{token=sessionStorage.getItem('tvtoken');}catch{}
-function store(){try{if(token)sessionStorage.setItem('tvtoken',token);else sessionStorage.removeItem('tvtoken');}catch{}}
+try{token=localStorage.getItem('tvtoken');}catch{}
+if(!token)try{token=sessionStorage.getItem('tvtoken');}catch{}
+function store(){for(const name of ['localStorage','sessionStorage']){try{if(token)window[name].setItem('tvtoken',token);else window[name].removeItem('tvtoken');}catch{}}}
 function message(text){statusView.textContent=text;}
 function controls(){document.querySelectorAll('[data-cmd]').forEach(b=>b.disabled=!token||!online);}
 async function request(path,body){
@@ -69,7 +70,7 @@ document.getElementById('mic').onclick=()=>{
  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){message('Use o microfone do teclado do iPhone no campo de texto.');return;}
  const r=new SR();r.lang='pt-BR';r.onresult=e=>{document.getElementById('voice').value=e.results[0][0].transcript;message('Texto reconhecido. Toque em Enviar para executar.');};r.onerror=()=>message('Não foi possível reconhecer a fala. Use o teclado.');try{r.start();}catch{message('Microfone indisponível. Use o teclado.');}
 };
-controls();check();setInterval(()=>{if(!document.hidden)check();},1800);document.addEventListener('visibilitychange',()=>{if(!document.hidden)check();});
+controls();if(token)store();check();setInterval(()=>{if(!document.hidden)check();},1800);document.addEventListener('visibilitychange',()=>{if(!document.hidden)check();});
 
 document.getElementById("clear-shot").onclick=async()=>{clearShot();try{if(token)await request("/screenshot",{});document.getElementById("shot-status").textContent="Captura apagada.";}catch(e){document.getElementById("shot-status").textContent=e.message;}};
 
