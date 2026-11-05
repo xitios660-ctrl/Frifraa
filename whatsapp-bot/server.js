@@ -16,7 +16,7 @@ const { createSantaChat } = require('./santa-chat');
 const { IMAGE_MODEL, DAILY_IMAGE_LIMIT, parseImageRequest, reserveImage, generateImage, imageErrorMessage } = require('./image');
 
 const makeWASocket = baileys.default || baileys.makeWASocket;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
+const PANEL_ACCESS_TOKEN = process.env.PANEL_ACCESS_TOKEN || '';
 const SESSION_SECRET = process.env.SESSION_SECRET || '';
 const MONGODB_URI = process.env.MONGODB_URI || '';
 const DB_NAME = process.env.MONGODB_DB || 'bomba_party_whatsapp';
@@ -24,7 +24,7 @@ const MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 const GROUP_INVITE_CODE = String(process.env.WHATSAPP_GROUP_INVITE_CODE || '').trim();
 const PRIMARY_GROUP_PROTECTION = process.env.PRIMARY_GROUP_ID || '120363433794510714@g.us';
 const SECRET_SANTA_INVITE_CODE = String(process.env.SECRET_SANTA_GROUP_INVITE_CODE || '').trim();
-if (ADMIN_PASSWORD.length < 8) throw new Error('Defina ADMIN_PASSWORD de ao menos 8 caracteres no Render (16 ou mais recomendado).');
+if (PANEL_ACCESS_TOKEN.length < 40) throw new Error('Configure PANEL_ACCESS_TOKEN com um token aleatório privado de pelo menos 40 caracteres.');
 if (!MONGODB_URI || SESSION_SECRET.length < 24) throw new Error('Defina MONGODB_URI e SESSION_SECRET no Render.');
 if (DB_NAME !== 'bomba_party_whatsapp') throw new Error('Somente o banco separado bomba_party_whatsapp é permitido.');
 
@@ -41,7 +41,13 @@ app.use((req, res, next) => {
 });
 
 const secretBytes = Buffer.from(SESSION_SECRET);
-const passwordHash = crypto.createHash('sha256').update(ADMIN_PASSWORD).digest();
+const accessHash = crypto.createHash('sha256').update(PANEL_ACCESS_TOKEN).digest();
+const SESSION_MAX_AGE_SEC = 30 * 86400;
+function isValidAccessToken(input){
+  if(typeof input!=='string'||input.length>150)return false;
+  const provided=crypto.createHash('sha256').update(input).digest();
+  return crypto.timingSafeEqual(provided,accessHash);
+}
 function sign(value) { return crypto.createHmac('sha256', secretBytes).update(value).digest('base64url'); }
 function authCookie() {
   const payload = Buffer.from(JSON.stringify({ t: Date.now(), nonce: crypto.randomBytes(16).toString('hex') })).toString('base64url');
@@ -59,42 +65,43 @@ function authorized(req) {
   if (sig.length !== wanted.length || !crypto.timingSafeEqual(sig, wanted)) return false;
   try {
     const t = JSON.parse(Buffer.from(payload, 'base64url').toString()).t;
-    return Number.isFinite(t) && t <= Date.now() && Date.now() - t < 7 * 86400000;
+    return Number.isFinite(t) && t <= Date.now() && Date.now() - t < SESSION_MAX_AGE_SEC * 1000;
   } catch { return false; }
 }
-function verifyPassword(guess) {
-  const hash = crypto.createHash('sha256').update(String(guess || '')).digest();
-  return crypto.timingSafeEqual(hash, passwordHash);
+function guard(req,res,next){
+  if(!authorized(req))return res.status(401).json({error:'Abra o link privado do QR Code para acessar.'});
+  next();
 }
-function guard(req, res, next) { if (!authorized(req)) return res.status(401).json({ error: 'Entre com a senha do painel.' }); next(); }
-app.use('/api', (req, res, next) => {
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
-    const origin = req.get('origin');
-    if (origin) {
-      try { if (new URL(origin).host !== req.get('host')) return res.status(403).json({ error: 'Origem não permitida.' }); }
-      catch { return res.status(403).json({ error: 'Origem não permitida.' }); }
+app.use('/api',(req,res,next)=>{
+  if(req.method!=='GET'&&req.method!=='HEAD'){
+    const origin=req.get('origin');
+    if(origin){
+      try{if(new URL(origin).host!==req.get('host'))return res.status(403).json({error:'Origem não permitida.'})}
+      catch{return res.status(403).json({error:'Origem não permitida.'})}
     }
   }
   next();
 });
-const loginAttempts = new Map();
-app.post('/api/login', (req, res) => {
-  const addr = req.ip;
-  const item = loginAttempts.get(addr) || { n: 0, until: 0 };
-  if (item.until > Date.now()) return res.status(429).json({ error: 'Muitas tentativas. Tente em alguns minutos.' });
-  if (!verifyPassword(req.body && req.body.password)) {
-    item.n++; if (item.n >= 8) { item.until = Date.now() + 15 * 60 * 1000; item.n = 0; }
-    loginAttempts.set(addr, item);
-    return res.status(401).json({ error: 'Senha incorreta.' });
+const accessAttempts=new Map();
+app.post('/api/activate',(req,res)=>{
+  const address=req.ip;
+  const state=accessAttempts.get(address)||{count:0,blockedUntil:0};
+  if(state.blockedUntil>Date.now())return res.status(429).json({error:'Muitas tentativas. Aguarde alguns minutos.'});
+  if(!isValidAccessToken(req.body?.token)){
+    state.count++;
+    if(state.count>=6){state.count=0;state.blockedUntil=Date.now()+15*60000}
+    accessAttempts.set(address,state);
+    if(accessAttempts.size>500)accessAttempts.clear();
+    return res.status(403).json({error:'O link de acesso não é válido.'});
   }
-  loginAttempts.delete(addr);
-  res.setHeader('Set-Cookie', 'bpwa=' + authCookie() + '; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=604800');
-  res.json({ ok: true });
+  accessAttempts.delete(address);
+  res.setHeader('Set-Cookie','bpwa='+authCookie()+'; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age='+SESSION_MAX_AGE_SEC);
+  res.json({ok:true});
 });
-app.get('/api/me', (req, res) => res.json({ loggedIn: authorized(req) }));
-app.post('/api/logout', guard, (_req, res) => {
-  res.setHeader('Set-Cookie', 'bpwa=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0');
-  res.json({ ok: true });
+app.get('/api/me',(req,res)=>res.json({loggedIn:authorized(req)}));
+app.post('/api/logout',guard,(_req,res)=>{
+  res.setHeader('Set-Cookie','bpwa=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0');
+  res.json({ok:true});
 });
 
 const status = { phase: 'iniciando', connected: false, qr: null, lastError: '', since: null, received: 0, sent: 0, profileName: 'Pendente', profilePhoto: 'Pendente' };
