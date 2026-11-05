@@ -75,6 +75,9 @@ function shouldWebSearch(text) {
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 let cachedAi=null,cachedKey=null;
+const modelCooldowns=new Map();
+const availableModels=(main,now=Date.now())=>[...new Set([main,'gemini-3.1-flash-lite','gemini-3.5-flash-lite','gemini-3.6-flash'])]
+  .filter(name=>name&&(!modelCooldowns.has(name)||modelCooldowns.get(name)<=now)).slice(0,3);
 function clientFor(key){
   if(!cachedAi || cachedKey!==key){cachedAi=new GoogleGenAI({apiKey:key});cachedKey=key;}
   return cachedAi;
@@ -97,22 +100,24 @@ async function reply({ key, text, history = [], model = 'gemini-3.5-flash-lite',
     parts: [{ text: String(m.text || '').slice(0, 650) }]
   }));
   const contents = [...context, { role: 'user', parts: [{ text: (authorName ? 'Participante confirmado pelo WhatsApp: ' + authorName + '. ' : 'Participante não identificado com segurança pelo WhatsApp. ') + 'Mensagem: ' + String(text).slice(0, 850) }] }];
-  // Prefer Flash-Lite for conversational speed; keep a single stronger fallback.
-  const models=[...new Set([model,'gemini-3.5-flash-lite','gemini-3.8-flash'])].slice(0,2);
+  // Move to another stable endpoint on overload, without repeatedly hammering
+  // an unavailable model. Other chats and groups keep separate prompts.
+  const models=availableModels(model);
   const startedAt=Date.now();
-  const TOTAL_BUDGET_MS=13500;
+  const TOTAL_BUDGET_MS=16000;
   let lastError;
   for (let i = 0; i < models.length; i++) {
     try {
       const remaining=TOTAL_BUDGET_MS-(Date.now()-startedAt);
-      if(remaining<2000)break;
+      if(remaining<1400)break;
       const result = await bounded(ai.models.generateContent({
         model: models[i],
         contents,
         config: { systemInstruction, maxOutputTokens: 680, thinkingConfig: { thinkingLevel: 'low' }, ...(useWebSearch ? { tools: [{ googleSearch: {} }] } : {}) }
-      }),Math.min(9500,remaining));
+      }),Math.min(6500,remaining));
       const answer = String(result.text || '').trim();
       if (answer) {
+        modelCooldowns.delete(models[i]);
         const pages = useWebSearch ? (result.candidates?.[0]?.groundingMetadata?.groundingChunks || [])
           .map(chunk => chunk.web)
           .filter(web => web && typeof web.uri === 'string' && /^https:\/\//i.test(web.uri))
@@ -126,11 +131,15 @@ async function reply({ key, text, history = [], model = 'gemini-3.5-flash-lite',
       lastError = err;
       const msg=String(err?.message||err);
       const code=Number(err?.status||err?.code||(msg.match(/"code"\s*:\s*(\d+)/)||[])[1]);
-      // Quota errors are generally account-wide; retrying only delays the answer.
-      if(code===429||/RESOURCE_EXHAUSTED|quota|rate limit/i.test(msg))throw err;
+      // Invalid keys and account-wide quota exhaustion cannot be fixed by
+      // blindly switching models.
+      if(code===401||code===403||code===429||/API_KEY_INVALID|RESOURCE_EXHAUSTED|quota|rate limit/i.test(msg))throw err;
       if(!isTemporaryModelError(err))throw err;
-      console.warn('[gemini] Modelo indisponível:',models[i],'·',Math.round(Date.now()-startedAt)+'ms');
-      if(i<models.length-1 && Date.now()-startedAt<TOTAL_BUDGET_MS-2000)await pause(150);
+      const backoff=code===404?10*60000:code===503?90000:code===504||/tempo limite/i.test(msg)?40000:45000;
+      modelCooldowns.set(models[i],Date.now()+backoff);
+      if(modelCooldowns.size>30)modelCooldowns.clear();
+      console.warn('[gemini] Modelo indisponível:',models[i],'('+ (code||'timeout') +') · '+Math.round(Date.now()-startedAt)+'ms');
+      if(i<models.length-1 && Date.now()-startedAt<TOTAL_BUDGET_MS-1600)await pause(80);
     }
   }
   throw lastError || new Error('Gemini temporariamente indisponível');
