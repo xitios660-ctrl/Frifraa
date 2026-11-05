@@ -5,7 +5,8 @@ const START=/^bot\s+(?:come[cç]a|comecar|comece|inicia|iniciar)\s+(?:o\s+)?sort
 const DRAW=/^bot\s+(?:sortear(?:\s+agora)?|finalizar(?:\s+inscri[cç][oõ]es)?|encerrar\s+inscri[cç][oõ]es)[!?.\s]*$/i;
 const STATUS=/^bot\s+(?:status(?:\s+do)?\s+sorteio|lista\s+do\s+sorteio|participantes(?:\s+do\s+sorteio)?)[!?.\s]*$/i;
 const HELP=/^bot\s+(?:regras(?:\s+do)?\s+amigo\s+secreto|ajuda\s+sorteio)[!?.\s]*$/i;
-const JOIN=/^(?:eu|eu\s+quero|eu\s+vou|eu\s+participo|eu\s+topo|to\s+dentro|t[oô]\s+dentro|quero\s+participar)[!?.\s]*$/i;
+const PRESENT=/^bot\s+(?:se\s+apresenta|se\s+apresente|apresente-se|apresenta(?:r)?|apresentacao|quem\s+e\s+voce|fala\s+de\s+voce)[!?.\s]*$/i;
+const JOIN=/^(?:bot\s+)?(?:eu|eu\s+quero|eu\s+vou|eu\s+participo|eu\s+topo|to\s+dentro|t[oô]\s+dentro|quero\s+participar)[!?.\s]*$/i;
 const WISH_HELP=/^(?:(?:bot\s+)?(?:presente|meu\s+sorteado|quem\s+eu\s+tirei|minhas\s+ideias|ajuda\s+presente|sugest[oõ]es)|oi|ol[aá])[!?.\s]*$/i;
 const WISH_REMOVE=/^(?:bot\s+)?(?:apagar\s+ideias|remover\s+ideias)[!?.\s]*$/i;
 const normalize=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
@@ -44,7 +45,7 @@ function drawCycle(people,randomInt=crypto.randomInt) {
   return assignments;
 }
 function createSecretSanta({db, roster=[],adminPhone='',isOriginalGroup,resolveIdentity,
-  sendGroup,sendPrivate,isActive,logger=console}) {
+  sendGroup,sendPrivate,isActive,strictInviteGroup=false,logger=console}) {
   const list=roster.map(p=>({phone:asPhone(p.phone),name:p.name})).filter(p=>validPhone(p.phone)&&p.name);
   if(list.length<3||new Set(list.map(p=>p.phone)).size!==list.length)throw new Error('Lista privada do amigo secreto não configurada.');
   const names=new Map(list.map(p=>[p.phone,p.name]));
@@ -55,13 +56,30 @@ function createSecretSanta({db, roster=[],adminPhone='',isOriginalGroup,resolveI
   const isActivation=text=>START.test(normalize(text));
   const isBoundGroup=jid=>validGroup(jid)&&bound===jid;
   const mightHandleGroup=(jid,text)=>validGroup(jid)&&!isOriginalGroup(jid)&&
-    (isBoundGroup(jid)||(!bound&&isActivation(text)));
+    (isBoundGroup(jid)||(!bound&&!strictInviteGroup&&isActivation(text)));
   const publicSend=(gid,text)=>isActive()?sendGroup(gid,text):Promise.resolve();
   const find=()=>bound?col.findOne({_id:bound}):null;
   const personFor=phone=>({phone,name:names.get(phone)||''});
   async function init() {
     const item=await settings.findOne({_id:'bound_santa_group'});
     if(validGroup(item?.groupId)&&!isOriginalGroup(item.groupId))bound=item.groupId;
+  }
+  // Only bind to a JID independently verified against the supplied invite
+  // and the WhatsApp account's actual participating groups.
+  async function bindVerifiedInvite(groupId) {
+    if(!validGroup(groupId)||isOriginalGroup(groupId))throw new Error('Grupo do Amigo Secreto inválido.');
+    if(bound && bound!==groupId)throw new Error('O Amigo Secreto já está vinculado a outro grupo.');
+    if(!bound) {
+      try {
+        await settings.insertOne({_id:'bound_santa_group',groupId,verifiedInvite:true,createdAt:time()});
+      } catch(err) {
+        if(err.code!==11000)throw err;
+        const existing=await settings.findOne({_id:'bound_santa_group'});
+        if(existing?.groupId!==groupId)throw new Error('Vinculação já existente a outro grupo.');
+      }
+      bound=groupId;
+    }
+    return groupId;
   }
   async function identity(raw,groupId) {
     const details=await resolveIdentity({jids:raw,groupId,phones:list.map(p=>p.phone)});
@@ -87,7 +105,7 @@ function createSecretSanta({db, roster=[],adminPhone='',isOriginalGroup,resolveI
     const current=await find();
     if(activePhase(current?.phase)) {
       const msg=current.phase==='registration'
-        ? '🎁 As inscrições já estão abertas! Digitem *EU*. Quando todos entrarem, eu sorteio automaticamente; ou Gustavo pode escrever *bot sortear agora*.'
+        ? '🎁 As inscrições já estão abertas! Digitem *EU*: vou registrar em silêncio. Para confirmar, usem *bot status sorteio*. Quando todos entrarem, eu sorteio automaticamente; ou Gustavo pode escrever *bot sortear agora*.'
         : '🔒 Esse Amigo Secreto já foi sorteado. Não vou refazer nem trocar os pares sem um novo evento.';
       await publicSend(groupId,msg);return;
     }
@@ -97,9 +115,9 @@ function createSecretSanta({db, roster=[],adminPhone='',isOriginalGroup,resolveI
     const result=await col.updateOne({_id:groupId,phase:{$nin:['registration','drawing','drawn']}},
       {$set:round,$setOnInsert:{_id:groupId}},{upsert:!current});
     if(!result.modifiedCount&&!result.upsertedCount)return;
-    await publicSend(groupId,'🎄🎁 *AMIGO SECRETO DA TURMA!* 🎁🎄\n\n✨ *Inscrições abertas!* Quem vai participar, escreva *EU* aqui no grupo. Eu vou guardar os nomes, sem pressa.\n\n👥 Convidados: '+list.map(p=>p.name).join(' • ')+'.\n\n🎲 Assim que todos os '+list.length+' confirmarem, o sorteio acontece! Se forem menos, Gustavo pode encerrar com *bot sortear agora* (mínimo 3).\n\n🤫 O resultado é enviado *exclusivamente no privado*. Depois eu pergunto seus desejos e os entrego anonimamente para quem tirou você. Ninguém vê os pares no grupo!');
+    await publicSend(groupId,'🎄🎁 *AMIGO SECRETO DA TURMA!* 🎁🎄\n\n✨ *Inscrições abertas!* Quem vai participar, escreva *EU* aqui no grupo. Vou registrar sem responder, porque só falo no grupo quando me chamam com *bot*. Sem pressa.\n\n👥 Convidados: '+list.map(p=>p.name).join(' • ')+'.\n\n🎲 Assim que todos os '+list.length+' confirmarem, o sorteio acontece! Se forem menos, Gustavo pode encerrar com *bot sortear agora* (mínimo 3).\n\n🤫 O resultado é enviado *exclusivamente no privado*. Depois eu pergunto seus desejos e os entrego anonimamente para quem tirou você. Ninguém vê os pares no grupo!');
   }
-  async function join(groupId,who){
+  async function join(groupId,who,publicReply=false){
     const game=await find();
     if(!game||game.phase!=='registration')return;
     if(!who){return}
@@ -109,10 +127,10 @@ function createSecretSanta({db, roster=[],adminPhone='',isOriginalGroup,resolveI
       aliases:who.aliases.slice(0,4)}},$set:{updatedAt:time()}});
     if(!result.modifiedCount)return;
     const updated=await find();
-    await publicSend(groupId,'✅ *'+who.name+'* entrou no Amigo Secreto! 🎁  *'+updated.participants.length+'/'+list.length+'* confirmados.');
-    if(updated.participants.length===list.length)await draw(groupId,admin,true);
+    if(publicReply)await publicSend(groupId,'✅ *'+who.name+'* entrou no Amigo Secreto! 🎁  *'+updated.participants.length+'/'+list.length+'* confirmados.');
+    if(updated.participants.length===list.length)await draw(groupId,admin,true,false);
   }
-  async function draw(groupId,requester,automatic=false){
+  async function draw(groupId,requester,automatic=false,announce=true){
     if(!automatic&&requester?.phone!==admin)return;
     const current=await find();
     if(current?.phase!=='registration')return;
@@ -129,25 +147,39 @@ function createSecretSanta({db, roster=[],adminPhone='',isOriginalGroup,resolveI
     for(const p of game.participants)outbox[p.phone]={state:'pending',tries:0,nextTryAt:0};
     await col.updateOne({_id:groupId,gameId:game.gameId,phase:'drawing'},
       {$set:{phase:'drawn',assignments:matches,outbox,drawnAt:time(),updatedAt:time()}});
-    await publicSend(groupId,'🎲✨ *O SORTEIO FOI REALIZADO!* 🎄\n\n🤫 Nada de nomes sorteados aqui! Vou entregar cada resultado *no privado* e pedir a lista de desejos.\n\n💌 Se não receber, abra minha conversa privada e envie *presente*. Guarde segredo! 🎁');
+    if(announce)await publicSend(groupId,'🎲✨ *O SORTEIO FOI REALIZADO!* 🎄\n\n🤫 Nada de nomes sorteados aqui! Vou entregar cada resultado *no privado* e pedir a lista de desejos.\n\n💌 Se não receber, abra minha conversa privada e envie *presente*. Guarde segredo! 🎁');
   }
   async function groupMessage({groupId,text,jids}) {
     if(!mightHandleGroup(groupId,text))return false;
     const msg=normalize(text);
     const isStart=START.test(msg),isJoin=JOIN.test(msg),isDraw=DRAW.test(msg);
-    const isStatus=STATUS.test(msg),isHelp=HELP.test(msg);
-    if(!isStart&&!isJoin&&!isDraw&&!isStatus&&!isHelp)return false;
+    const isStatus=STATUS.test(msg),isHelp=HELP.test(msg),isPresent=PRESENT.test(msg);
+    if(!isStart&&!isJoin&&!isDraw&&!isStatus&&!isHelp&&!isPresent)return false;
     const who=await identity(jids,groupId);
     if(!bound) {
       if(isStart&&who?.phone===admin)await start(groupId,who);
       return !!(isStart&&who?.phone===admin);
     }
     if(groupId!==bound)return false;
+    if(isPresent) {
+      if(who?.phone===admin) await publicSend(groupId,
+        '🎄🤖 *PRAZER, TURMA! EU SOU O BOT DO AMIGO SECRETO!* 🎁✨\n\n'+
+        'Fui criado pelo *Gustavo* para deixar o nosso Amigo Secreto mais divertido e, principalmente, *misterioso*! 🤫\n\n'+
+        '🎅 *Como vai funcionar?*\n'+
+        '🎁 Gustavo escreve *bot começa o sorteio* e abre as inscrições.\n'+
+        '🙋 Quem quiser participar responde *EU*. Eu anoto em silêncio; se quiser confirmação, mande *bot eu*.\n'+
+        '🎲 Quando todos entrarem, sorteio sem ninguém tirar a si mesmo. Gustavo também pode finalizar com *bot sortear agora*.\n'+
+        '💌 Mando no *privado* o nome de quem cada pessoa tirou. Esse segredo fica entre nós!\n'+
+        '🎀 Depois pergunto o que cada um gostaria de ganhar e envio as ideias *só para quem tirou a pessoa*, sem contar quem foi!\n\n'+
+        '🔐 Não misturo este grupo com outros jogos nem revelo os pares aqui. E no grupo só respondo quando me chamarem com *bot*.\n\n'+
+        '✨ Preparados? Que comece a magia! 🎄💜');
+      return true;
+    }
     if(isStart){if(who?.phone===admin)await start(groupId,who);return true}
-    if(isJoin){await join(groupId,who);return true}
+    if(isJoin){await join(groupId,who,/^bot\s+/i.test(msg));return true}
     if(isDraw){await draw(groupId,who);return true}
     if(isHelp){
-      await publicSend(groupId,'🎄 *AMIGO SECRETO*\nEscreva *EU* para entrar quando as inscrições estiverem abertas.\nGustavo pode usar *bot sortear agora* quando houver pelo menos 3 pessoas.\nDepois de sorteado, o Bot envia o nome apenas no privado. Em resposta, diga o que gostaria de ganhar e eu envio as ideias a quem tirou você, sem revelar quem foi.\n*bot status sorteio*: acompanha somente os números.');
+      await publicSend(groupId,'🎄 *AMIGO SECRETO*\nEscreva *EU* para entrar em silêncio quando as inscrições estiverem abertas, ou *bot eu* para receber confirmação.\nGustavo pode usar *bot sortear agora* quando houver pelo menos 3 pessoas.\nDepois de sorteado, o Bot envia o nome apenas no privado. Em resposta, diga o que gostaria de ganhar e eu envio as ideias a quem tirou você, sem revelar quem foi.\n*bot status sorteio*: acompanha somente os números.');
       return true;
     }
     if(isStatus){
@@ -281,7 +313,7 @@ function createSecretSanta({db, roster=[],adminPhone='',isOriginalGroup,resolveI
     }catch(e){logger.error('[santa] Erro interno do sorteio: '+String(e?.message||e).slice(0,120))}
     finally{busy=false}
   }
-  return {init,mightHandleGroup,isActivation,isBoundGroup,groupMessage,privateMessage,tick,
+  return {init,bindVerifiedInvite,mightHandleGroup,isActivation,isBoundGroup,groupMessage,privateMessage,tick,
     rosterCount:()=>list.length,getBoundGroup:()=>bound};
 }
 module.exports={createSecretSanta,rosterFromJSON,drawCycle};
