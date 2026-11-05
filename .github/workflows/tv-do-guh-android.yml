@@ -1,0 +1,44 @@
+name: TV DO GUH AI APK
+on:
+  push:
+    branches: [tv-do-guh-ai]
+    paths: ['tv-android/**', 'tv-bridge/**', 'tv-do-guh-ai/**', '.github/workflows/tv-do-guh-android.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: tv-do-guh-apk
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test bridge API
+        run: npm test --prefix tv-bridge
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install SDK
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Compile, unit tests and lint
+        working-directory: tv-android
+        run: ./gradlew --no-daemon :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tv-do-guh-ai-apk
+          path: tv-android/app/build/outputs/apk/debug/app-debug.apk
+      - name: Publish direct APK download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp tv-android/app/build/outputs/apk/debug/app-debug.apk tv-do-guh-ai.apk
+          sha256sum tv-do-guh-ai.apk > tv-do-guh-ai.apk.sha256
+          tag="tv-do-guh-build-${GITHUB_RUN_NUMBER}"
+          gh release create "$tag" tv-do-guh-ai.apk tv-do-guh-ai.apk.sha256 --target "$GITHUB_SHA" --title "TV DO GUH AI build ${GITHUB_RUN_NUMBER}" --notes "APK de teste Android TV. Requer ativação manual de Acessibilidade. Compilação: ${GITHUB_SHA}. Sem validação física na TCL."
