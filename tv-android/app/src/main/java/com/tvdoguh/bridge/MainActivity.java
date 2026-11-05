@@ -10,7 +10,7 @@ import android.view.Gravity;
 import android.widget.*;
 
 public class MainActivity extends Activity {
- private final Handler handler=new Handler();
+ private final Handler handler=new Handler(android.os.Looper.getMainLooper());
  private TextView status;
  private final Runnable refresh=new Runnable(){public void run(){
   SharedPreferences p=getSharedPreferences("bridge",MODE_PRIVATE);
@@ -23,7 +23,7 @@ public class MainActivity extends Activity {
   text+="\n\n"+p.getString("status","");status.setText(text);handler.postDelayed(this,1000);
  }};
  @Override public void onCreate(Bundle state){super.onCreate(state);
-  LinearLayout layout=new LinearLayout(this);layout.setOrientation(1);layout.setPadding(40,24,40,24);layout.setGravity(Gravity.CENTER);
+  LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);layout.setPadding(40,24,40,24);layout.setGravity(Gravity.CENTER);
   status=new TextView(this);status.setTextSize(23);status.setGravity(Gravity.CENTER);
   layout.addView(status,new LinearLayout.LayoutParams(-1,0,1));
   Button settings=new Button(this);settings.setText("Ativar controle em Acessibilidade");settings.setOnClickListener(v->startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));layout.addView(settings);
