@@ -831,10 +831,11 @@ async function main() {
     santaChat=createSantaChat({
       db,
       isActive:()=>botEnabled&&status.connected&&!!sock,
-      reply:({text,history,authorName,systemInstruction,disableRanking})=>reply({
-        key:geminiKey,model:MODEL,text,history,authorName,systemInstruction,disableRanking,
-        useWebSearch:false
-      }),
+      reply:({text,history,authorName,systemInstruction,disableRanking})=>{
+        if(!geminiKey)throw new Error('IA temporariamente sem configuração');
+        return reply({key:geminiKey,model:MODEL,text,history,authorName,systemInstruction,
+          disableRanking,useWebSearch:false});
+      },
       sendGroup:async(groupId,text)=>{
         if(!sock||!botEnabled||!status.connected||!secretSanta?.isBoundGroup(groupId))return;
         const current=sock;
