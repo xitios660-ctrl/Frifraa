@@ -22,6 +22,7 @@ const DB_NAME = process.env.MONGODB_DB || 'bomba_party_whatsapp';
 const MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 const GROUP_INVITE_CODE = String(process.env.WHATSAPP_GROUP_INVITE_CODE || '').trim();
 const PRIMARY_GROUP_PROTECTION = process.env.PRIMARY_GROUP_ID || '120363433794510714@g.us';
+const SECRET_SANTA_INVITE_CODE = String(process.env.SECRET_SANTA_GROUP_INVITE_CODE || '').trim();
 if (ADMIN_PASSWORD.length < 8) throw new Error('Defina ADMIN_PASSWORD de ao menos 8 caracteres no Render (16 ou mais recomendado).');
 if (!MONGODB_URI || SESSION_SECRET.length < 24) throw new Error('Defina MONGODB_URI e SESSION_SECRET no Render.');
 if (DB_NAME !== 'bomba_party_whatsapp') throw new Error('Somente o banco separado bomba_party_whatsapp é permitido.');
@@ -490,6 +491,27 @@ function queueContact(msg) {
     if(queues.get(queueKey)===next)queues.delete(queueKey);
   });
 }
+// Secret Santa's invite is NEVER written to the legacy group setting.
+async function activateSantaInvitedGroup(socket) {
+  if(!secretSanta||!SECRET_SANTA_INVITE_CODE||!status.connected||socket!==sock||stopping)return;
+  try {
+    if(!/^[a-zA-Z0-9_-]{12,90}$/.test(SECRET_SANTA_INVITE_CODE))
+      throw new Error('Código de convite do Amigo Secreto inválido.');
+    const invitation=await socket.groupGetInviteInfo(SECRET_SANTA_INVITE_CODE);
+    const target=String(invitation?.id||'');
+    if(!/^\d+(?:-\d+)?@g\.us$/.test(target))
+      throw new Error('O WhatsApp não retornou um grupo válido para o Amigo Secreto.');
+    if(target===selectedGroupId||target===PRIMARY_GROUP_PROTECTION)
+      throw new Error('O convite do Amigo Secreto aponta para o grupo original.');
+    const memberships=await socket.groupFetchAllParticipating();
+    if(!memberships||!Object.prototype.hasOwnProperty.call(memberships,target))
+      throw new Error('O Bot ainda não aparece como participante do grupo do Amigo Secreto.');
+    await secretSanta.bindVerifiedInvite(target);
+    console.log('[santa] Grupo do convite confirmado e vinculado, sem alterar o grupo original.');
+  }catch(e){
+    console.warn('[santa] Não vinculou o convite: '+String(e.message).slice(0,150));
+  }
+}
 function scheduleReconnect(delay = 4500) {
   if (stopping || reconnectTimer) return;
   reconnectTimer = setTimeout(() => { reconnectTimer = null; startWhatsApp().catch(e => console.error('[whatsapp] Reconexão:', e.message)); }, delay);
@@ -580,6 +602,7 @@ async function startWhatsApp() {
         status.lastError = '';
         await socket.sendPresenceUpdate('available').catch(() => {});
         activateInvitedGroup(socket).catch(error => console.error('[grupo] Vinculação:', String(error.message).slice(0, 100)));
+        activateSantaInvitedGroup(socket).catch(error=>console.error('[santa] Vinculação:',String(error.message).slice(0,100)));
         applyBotName(socket).catch(error => console.error('[perfil] Nome:', String(error.message).slice(0, 90)));
       }
       if (update.connection === 'close') {
@@ -756,6 +779,7 @@ async function main() {
     secretSanta=createSecretSanta({
       db,roster:santaRoster,adminPhone:process.env.SECRET_SANTA_ADMIN_PHONE||'',
       isOriginalGroup:groupId=>groupId===selectedGroupId||groupId===PRIMARY_GROUP_PROTECTION,
+      strictInviteGroup:!!SECRET_SANTA_INVITE_CODE,
       resolveIdentity:resolveSantaIdentity,
       isActive:()=>botEnabled&&status.connected&&!!sock,
       sendGroup:async(groupId,text)=>{
