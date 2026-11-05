@@ -449,7 +449,9 @@ async function handlePrivateMessage(msg) {
   const seen=await db.collection('whatsapp_seen').updateOne(
     {_id:'private:'+jid+':'+msg.key.id},{$setOnInsert:{createdAt:new Date()}},{upsert:true});
   if(!seen.upsertedCount)return;
-  if(blackjack && selectedGroupId) {
+  // Only resolve identities for Blackjack if a Blackjack round is active.
+  // Otherwise private gift suggestions go straight to Secret Santa, with no old-group lookup.
+  if(blackjack && selectedGroupId && await blackjack.isRunning()) {
     const identityMessage={key:{participant:jid,participantAlt:normalizedJid(msg.key.remoteJidAlt)},participant:jid};
     const identity=await getVerifiedGroupSender(identityMessage,selectedGroupId)
       .catch(()=>({name:null,jids:[jid]}));
